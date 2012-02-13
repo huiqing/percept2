@@ -1,0 +1,209 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html xmlns:fn="http://www.w3.org/2005/02/xpath-functions">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" href="../../../../doc/otp_doc.css" type="text/css">
+<title>Erlang -- egd</title>
+</head>
+<body bgcolor="white" text="#000000" link="#0000ff" vlink="#ff00ff" alink="#ff0000"><div id="container">
+<script id="js" type="text/javascript" language="JavaScript" src="../../../../doc/js/flipmenu/flipmenu.js"></script><script id="js2" type="text/javascript" src="../../../../doc/js/erlresolvelinks.js"></script><script language="JavaScript" type="text/javascript">
+            <!--
+              function getWinHeight() {
+                var myHeight = 0;
+                if( typeof( window.innerHeight ) == 'number' ) {
+                  //Non-IE
+                  myHeight = window.innerHeight;
+                } else if( document.documentElement && ( document.documentElement.clientWidth ||
+                                                         document.documentElement.clientHeight ) ) {
+                  //IE 6+ in 'standards compliant mode'
+                  myHeight = document.documentElement.clientHeight;
+                } else if( document.body && ( document.body.clientWidth || document.body.clientHeight ) ) {
+                  //IE 4 compatible
+                  myHeight = document.body.clientHeight;
+                }
+                return myHeight;
+              }
+
+              function setscrollpos() {
+                var objf=document.getElementById('loadscrollpos');
+                 document.getElementById("leftnav").scrollTop = objf.offsetTop - getWinHeight()/2;
+              }
+
+              function addEvent(obj, evType, fn){
+                if (obj.addEventListener){
+                obj.addEventListener(evType, fn, true);
+                return true;
+              } else if (obj.attachEvent){
+                var r = obj.attachEvent("on"+evType, fn);
+                return r;
+              } else {
+                return false;
+              }
+             }
+
+             addEvent(window, 'load', setscrollpos);
+
+             //--></script><div id="leftnav"><div class="innertube">
+<img alt="Erlang logo" src="../../../../doc/erlang-logo.png"><br><small><a href="users_guide.html">User's Guide</a><br><a href="index.html">Reference Manual</a><br><a href="release_notes.html">Release Notes</a><br><a href="../pdf/percept-0.8.6.pdf">PDF</a><br><a href="../../../../doc/index.html">Top</a></small><p><strong>Percept</strong><br><strong>Reference Manual</strong><br><small>Version 0.8.6</small></p>
+<br><a href="javascript:openAllFlips()">Expand All</a><br><a href="javascript:closeAllFlips()">Contract All</a><p><small><strong>Table of Contents</strong></small></p>
+<ul class="flipMenu">
+<li id="loadscrollpos" title="egd " expanded="true">egd<ul>
+<li><a href="egd.html">
+                  Top of manual page
+                </a></li>
+<li title="color-1"><a href="egd.html#color-1">color/1</a></li>
+<li title="create-2"><a href="egd.html#create-2">create/2</a></li>
+<li title="destroy-1"><a href="egd.html#destroy-1">destroy/1</a></li>
+<li title="filledEllipse-4"><a href="egd.html#filledEllipse-4">filledEllipse/4</a></li>
+<li title="filledRectangle-4"><a href="egd.html#filledRectangle-4">filledRectangle/4</a></li>
+<li title="line-4"><a href="egd.html#line-4">line/4</a></li>
+<li title="rectangle-4"><a href="egd.html#rectangle-4">rectangle/4</a></li>
+<li title="render-1"><a href="egd.html#render-1">render/1</a></li>
+<li title="render-2"><a href="egd.html#render-2">render/2</a></li>
+<li title="render-3"><a href="egd.html#render-3">render/3</a></li>
+<li title="save-2"><a href="egd.html#save-2">save/2</a></li>
+<li title="text-5"><a href="egd.html#text-5">text/5</a></li>
+</ul>
+</li>
+<li id="no" title="percept " expanded="false">percept<ul>
+<li><a href="percept.html">
+                  Top of manual page
+                </a></li>
+<li title="analyze-1"><a href="percept.html#analyze-1">analyze/1</a></li>
+<li title="profile-1"><a href="percept.html#profile-1">profile/1</a></li>
+<li title="profile-2"><a href="percept.html#profile-2">profile/2</a></li>
+<li title="profile-3"><a href="percept.html#profile-3">profile/3</a></li>
+<li title="start_webserver-0"><a href="percept.html#start_webserver-0">start_webserver/0</a></li>
+<li title="start_webserver-1"><a href="percept.html#start_webserver-1">start_webserver/1</a></li>
+<li title="stop_profile-0"><a href="percept.html#stop_profile-0">stop_profile/0</a></li>
+<li title="stop_webserver-0"><a href="percept.html#stop_webserver-0">stop_webserver/0</a></li>
+</ul>
+</li>
+<li id="no" title="percept_profile " expanded="false">percept_profile<ul>
+<li><a href="percept_profile.html">
+                  Top of manual page
+                </a></li>
+<li title="start-1"><a href="percept_profile.html#start-1">start/1</a></li>
+<li title="start-2"><a href="percept_profile.html#start-2">start/2</a></li>
+<li title="start-3"><a href="percept_profile.html#start-3">start/3</a></li>
+<li title="stop-0"><a href="percept_profile.html#stop-0">stop/0</a></li>
+</ul>
+</li>
+</ul>
+</div></div>
+<div id="content">
+<div class="innertube">
+<!-- refpage --><center><h1>egd</h1></center>
+
+<h3>MODULE</h3>
+<div class="REFBODY">egd</div>
+<h3>MODULE SUMMARY</h3>
+<div class="REFBODY">egd - erlang graphical drawer.</div>
+<h3>DESCRIPTION</h3>
+<div class="REFBODY"><p>
+<p>egd - erlang graphical drawer</p>
+ 
+ </p></div>
+<h3><a name="id60010">DATA TYPES</a></h3>
+<div class="REFBODY">
+<a name="types"></a>
+
+<dl>
+<dt><strong><span class="code">color()</span></strong></dt>
+<dd>
+<a name="type-color"></a> </dd>
+<dt><strong><span class="code">egd_image()</span></strong></dt>
+<dd>
+<a name="type-egd_image"></a> </dd>
+<dt><strong><span class="code">font()</span></strong></dt>
+<dd>
+<a name="type-font"></a> </dd>
+<dt><strong><span class="code">point() = {integer(), integer()}</span></strong></dt>
+<dd>
+<a name="type-point"></a> </dd>
+<dt><strong><span class="code">render_option() = {render_engine, opaque} | {render_engine, alpha}</span></strong></dt>
+<dd>
+<a name="type-render_option"></a> </dd>
+</dl>
+</div>
+<h3>EXPORTS</h3>
+<p><a name="color-1"><span class="bold_code">color(Color::Value | Name) -&gt; color()</span></a><br></p>
+<div class="REFBODY">
+<p>Types:</p>
+<div class="REFTYPES">
+<span class="bold_code">Value = {byte(), byte(), byte()} | {byte(), byte(), byte(), byte()}</span><br>
+</div>
+<div class="REFTYPES">
+<span class="bold_code">Name = black | silver | gray | white | maroon | red | purple | fuchia | green | lime | olive | yellow | navy | blue | teal | aqua</span><br>
+</div>
+</div>
+<div class="REFBODY"><p><a name="color-1"></a>
+
+<p>Creates a color reference.</p>
+</p></div>
+<p><a name="create-2"><span class="bold_code">create(Width::integer(), Height::integer()) -&gt; egd_image()</span></a><br></p>
+<div class="REFBODY"><p><a name="create-2"></a>
+
+<p>Creates an image area and returns its reference.</p>
+</p></div>
+<p><a name="destroy-1"><span class="bold_code">destroy(Image::egd_image()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="destroy-1"></a>
+
+<p>Destroys the image.</p>
+</p></div>
+<p><a name="filledEllipse-4"><span class="bold_code">filledEllipse(Image::egd_image(), P1::point(), P2::point(), Color::color()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="filledEllipse-4"></a>
+
+<p>Creates a filled ellipse object.</p>
+</p></div>
+<p><a name="filledRectangle-4"><span class="bold_code">filledRectangle(Image::egd_image(), P1::point(), P2::point(), Color::color()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="filledRectangle-4"></a>
+
+<p>Creates a filled rectangle object.</p>
+</p></div>
+<p><a name="line-4"><span class="bold_code">line(Image::egd_image(), P1::point(), P2::point(), Color::color()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="line-4"></a>
+
+<p>Creates a line object from P1 to P2 in the image.</p>
+</p></div>
+<p><a name="rectangle-4"><span class="bold_code">rectangle(Image::egd_image(), P1::point(), P2::point(), Color::color()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="rectangle-4"></a>
+
+<p>Creates a rectangle object.</p>
+</p></div>
+<p><a name="render-1"><span class="bold_code">render(Image::egd_image()) -&gt; binary()</span></a><br></p>
+<div class="REFBODY"><p><a name="render-1"></a>
+<p>Equivalent to <span class="bold_code"><a href="#render-3">render(Image, png, [{render_engine, opaque}])</a></span>.</p>
+</p></div>
+<p><a name="render-2"><span class="bold_code">render(Image::egd_image(), Type::png | raw_bitmap) -&gt; binary()</span></a><br></p>
+<div class="REFBODY"><p><a name="render-2"></a>
+<p>Equivalent to <span class="bold_code"><a href="#render-3">render(Image, Type, [{render_engine, opaque}])</a></span>.</p>
+</p></div>
+<p><a name="render-3"><span class="bold_code">render(Image::egd_image(), Type::png | raw_bitmap, Options::[render_option()]) -&gt; binary()</span></a><br></p>
+<div class="REFBODY"><p><a name="render-3"></a>
+
+<p>Renders a binary from the primitives specified by egd_image(). The
+  	binary can either be a raw bitmap with rgb tripplets or a binary in png
+ 	format.</p>
+</p></div>
+<p><a name="save-2"><span class="bold_code">save(Binary::binary(), Filename::string()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="save-2"></a>
+
+<p>Saves the binary to file.</p>
+</p></div>
+<p><a name="text-5"><span class="bold_code">text(Image::egd_image(), P::point(), Font::font(), Text::string(), Color::color()) -&gt; ok</span></a><br></p>
+<div class="REFBODY"><p><a name="text-5"></a>
+
+<p>Creates a text object.</p>
+</p></div>
+
+
+ 
+ </div>
+<div class="footer">
+<hr>
+<p>Copyright © 2007-2011 Ericsson AB, All Rights Reserved</p>
+</div>
+</div>
+</div></body>
+</html>

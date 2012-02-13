@@ -1,0 +1,166 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html xmlns:fn="http://www.w3.org/2005/02/xpath-functions">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="stylesheet" href="../../../../doc/otp_doc.css" type="text/css">
+<title>Erlang -- percept_profile</title>
+</head>
+<body bgcolor="white" text="#000000" link="#0000ff" vlink="#ff00ff" alink="#ff0000"><div id="container">
+<script id="js" type="text/javascript" language="JavaScript" src="../../../../doc/js/flipmenu/flipmenu.js"></script><script id="js2" type="text/javascript" src="../../../../doc/js/erlresolvelinks.js"></script><script language="JavaScript" type="text/javascript">
+            <!--
+              function getWinHeight() {
+                var myHeight = 0;
+                if( typeof( window.innerHeight ) == 'number' ) {
+                  //Non-IE
+                  myHeight = window.innerHeight;
+                } else if( document.documentElement && ( document.documentElement.clientWidth ||
+                                                         document.documentElement.clientHeight ) ) {
+                  //IE 6+ in 'standards compliant mode'
+                  myHeight = document.documentElement.clientHeight;
+                } else if( document.body && ( document.body.clientWidth || document.body.clientHeight ) ) {
+                  //IE 4 compatible
+                  myHeight = document.body.clientHeight;
+                }
+                return myHeight;
+              }
+
+              function setscrollpos() {
+                var objf=document.getElementById('loadscrollpos');
+                 document.getElementById("leftnav").scrollTop = objf.offsetTop - getWinHeight()/2;
+              }
+
+              function addEvent(obj, evType, fn){
+                if (obj.addEventListener){
+                obj.addEventListener(evType, fn, true);
+                return true;
+              } else if (obj.attachEvent){
+                var r = obj.attachEvent("on"+evType, fn);
+                return r;
+              } else {
+                return false;
+              }
+             }
+
+             addEvent(window, 'load', setscrollpos);
+
+             //--></script><div id="leftnav"><div class="innertube">
+<img alt="Erlang logo" src="../../../../doc/erlang-logo.png"><br><small><a href="users_guide.html">User's Guide</a><br><a href="index.html">Reference Manual</a><br><a href="release_notes.html">Release Notes</a><br><a href="../pdf/percept-0.8.6.pdf">PDF</a><br><a href="../../../../doc/index.html">Top</a></small><p><strong>Percept</strong><br><strong>Reference Manual</strong><br><small>Version 0.8.6</small></p>
+<br><a href="javascript:openAllFlips()">Expand All</a><br><a href="javascript:closeAllFlips()">Contract All</a><p><small><strong>Table of Contents</strong></small></p>
+<ul class="flipMenu">
+<li id="no" title="egd " expanded="false">egd<ul>
+<li><a href="egd.html">
+                  Top of manual page
+                </a></li>
+<li title="color-1"><a href="egd.html#color-1">color/1</a></li>
+<li title="create-2"><a href="egd.html#create-2">create/2</a></li>
+<li title="destroy-1"><a href="egd.html#destroy-1">destroy/1</a></li>
+<li title="filledEllipse-4"><a href="egd.html#filledEllipse-4">filledEllipse/4</a></li>
+<li title="filledRectangle-4"><a href="egd.html#filledRectangle-4">filledRectangle/4</a></li>
+<li title="line-4"><a href="egd.html#line-4">line/4</a></li>
+<li title="rectangle-4"><a href="egd.html#rectangle-4">rectangle/4</a></li>
+<li title="render-1"><a href="egd.html#render-1">render/1</a></li>
+<li title="render-2"><a href="egd.html#render-2">render/2</a></li>
+<li title="render-3"><a href="egd.html#render-3">render/3</a></li>
+<li title="save-2"><a href="egd.html#save-2">save/2</a></li>
+<li title="text-5"><a href="egd.html#text-5">text/5</a></li>
+</ul>
+</li>
+<li id="no" title="percept " expanded="false">percept<ul>
+<li><a href="percept.html">
+                  Top of manual page
+                </a></li>
+<li title="analyze-1"><a href="percept.html#analyze-1">analyze/1</a></li>
+<li title="profile-1"><a href="percept.html#profile-1">profile/1</a></li>
+<li title="profile-2"><a href="percept.html#profile-2">profile/2</a></li>
+<li title="profile-3"><a href="percept.html#profile-3">profile/3</a></li>
+<li title="start_webserver-0"><a href="percept.html#start_webserver-0">start_webserver/0</a></li>
+<li title="start_webserver-1"><a href="percept.html#start_webserver-1">start_webserver/1</a></li>
+<li title="stop_profile-0"><a href="percept.html#stop_profile-0">stop_profile/0</a></li>
+<li title="stop_webserver-0"><a href="percept.html#stop_webserver-0">stop_webserver/0</a></li>
+</ul>
+</li>
+<li id="loadscrollpos" title="percept_profile " expanded="true">percept_profile<ul>
+<li><a href="percept_profile.html">
+                  Top of manual page
+                </a></li>
+<li title="start-1"><a href="percept_profile.html#start-1">start/1</a></li>
+<li title="start-2"><a href="percept_profile.html#start-2">start/2</a></li>
+<li title="start-3"><a href="percept_profile.html#start-3">start/3</a></li>
+<li title="stop-0"><a href="percept_profile.html#stop-0">stop/0</a></li>
+</ul>
+</li>
+</ul>
+</div></div>
+<div id="content">
+<div class="innertube">
+<!-- refpage --><center><h1>percept_profile</h1></center>
+
+<h3>MODULE</h3>
+<div class="REFBODY">percept_profile</div>
+<h3>MODULE SUMMARY</h3>
+<div class="REFBODY">Percept Collector.</div>
+<h3>DESCRIPTION</h3>
+<div class="REFBODY"><p>
+<p>Percept Collector</p>
+ 
+ 	<p>This module provides the user interface for the percept data
+	collection (profiling).
+ </p></p></div>
+<h3><a name="id59041">DATA TYPES</a></h3>
+<div class="REFBODY">
+<a name="types"></a>
+
+<dl>
+<dt><strong><span class="code">percept_option() = procs | ports | exclusive</span></strong></dt>
+<dd>
+<a name="type-percept_option"></a> </dd>
+</dl>
+</div>
+<h3>EXPORTS</h3>
+<p><a name="start-1"><span class="bold_code">start(Filename::string()) -&gt; {ok, Port} | {already_started, Port}</span></a><br></p>
+<div class="REFBODY"><p><a name="start-1"></a>
+<p>Equivalent to <span class="bold_code"><a href="#start-2">start(Filename, [procs])</a></span>.</p>
+</p></div>
+<p><a name="start-2"><span class="bold_code">start(Filename::string(), Options::[percept_option()]) -&gt; {ok, Port} | {already_started, Port}</span></a><br></p>
+<div class="REFBODY">
+<p>Types:</p>
+<div class="REFTYPES">
+<span class="bold_code">Port = port()</span><br>
+</div>
+</div>
+<div class="REFBODY"><p><a name="start-2"></a>
+
+<p>Starts profiling with supplied options.
+ 	All events are stored in the file given by Filename.
+ 	An explicit call to stop/0 is needed to stop profiling.</p>
+</p></div>
+<p><a name="start-3"><span class="bold_code">start(Filename::string(), MFA::mfa(), Options::[percept_option()]) -&gt; ok | {already_started, Port} | {error, not_started}</span></a><br></p>
+<div class="REFBODY">
+<p>Types:</p>
+<div class="REFTYPES">
+<span class="bold_code">Port = port()</span><br>
+</div>
+</div>
+<div class="REFBODY"><p><a name="start-3"></a>
+
+<p>Starts profiling at the entrypoint specified by the MFA. All events are collected,
+ 	this means that processes outside the scope of the entry-point are also profiled.
+ 	No explicit call to stop/0 is needed, the profiling stops when
+ 	the entry function returns.</p>
+</p></div>
+<p><a name="stop-0"><span class="bold_code">stop() -&gt; ok | {error, not_started}</span></a><br></p>
+<div class="REFBODY"><p><a name="stop-0"></a>
+
+<p>Stops profiling.</p>
+</p></div>
+
+
+ 
+ </div>
+<div class="footer">
+<hr>
+<p>Copyright © 2007-2011 Ericsson AB, All Rights Reserved</p>
+</div>
+</div>
+</div></body>
+</html>

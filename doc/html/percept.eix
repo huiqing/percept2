@@ -1,0 +1,41 @@
+%% 
+%% Search data file for percept 0.8.6
+%% generated October  3 2011
+%% 
+{"egd.html", {function, {"percept", "egd"}},
+[
+  {"color", "color(Color::Value | Name)", "color-1"},
+  {"create", "create(Width::integer(), Height::integer())", "create-2"},
+  {"destroy", "destroy(Image::egd_image())", "destroy-1"},
+  {"filledEllipse", "filledEllipse(Image::egd_image(), P1::point(), P2::point(), Color::color())", "filledEllipse-4"},
+  {"filledRectangle", "filledRectangle(Image::egd_image(), P1::point(), P2::point(), Color::color())", "filledRectangle-4"},
+  {"line", "line(Image::egd_image(), P1::point(), P2::point(), Color::color())", "line-4"},
+  {"rectangle", "rectangle(Image::egd_image(), P1::point(), P2::point(), Color::color())", "rectangle-4"},
+  {"render", "render(Image::egd_image())", "render-1"},
+  {"render", "render(Image::egd_image(), Type::png | raw_bitmap)", "render-2"},
+  {"render", "render(Image::egd_image(), Type::png | raw_bitmap, Options::[render_option()])", "render-3"},
+  {"save", "save(Binary::binary(), Filename::string())", "save-2"},
+  {"text", "text(Image::egd_image(), P::point(), Font::font(), Text::string(), Color::color())", "text-5"},
+]}.
+{"egd.html", {module, "percept"}, ["egd"]}.
+{"percept.html", {function, {"percept", "percept"}},
+[
+  {"analyze", "analyze(Filename::string())", "analyze-1"},
+  {"profile", "profile(Filename::string())", "profile-1"},
+  {"profile", "profile(Filename::string(), Options::[percept_option()])", "profile-2"},
+  {"profile", "profile(Filename::string(), MFA::mfa(), Options::[percept_option()])", "profile-3"},
+  {"start_webserver", "start_webserver()", "start_webserver-0"},
+  {"start_webserver", "start_webserver(Port::integer())", "start_webserver-1"},
+  {"stop_profile", "stop_profile()", "stop_profile-0"},
+  {"stop_webserver", "stop_webserver()", "stop_webserver-0"},
+]}.
+{"percept.html", {module, "percept"}, ["percept"]}.
+{"percept_profile.html", {function, {"percept", "percept_profile"}},
+[
+  {"start", "start(Filename::string())", "start-1"},
+  {"start", "start(Filename::string(), Options::[percept_option()])", "start-2"},
+  {"start", "start(Filename::string(), MFA::mfa(), Options::[percept_option()])", "start-3"},
+  {"stop", "stop()", "stop-0"},
+]}.
+{"percept_profile.html", {module, "percept"}, ["percept_profile"]}.
+{notused, application, ["percept"]}.
