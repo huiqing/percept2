@@ -1,4 +1,4 @@
-%%
+%
 %% %CopyrightBegin%
 %%
 %% Copyright Ericsson AB 2007-2010. All Rights Reserved.
@@ -37,7 +37,7 @@
 	id 			,%:: pid() | port() | scheduler_id(), 
 	state = undefined	,%:: state() | 'undefined', 
 	where = undefined	,%:: true_mfa() | 'undefined', 
-	runnable_count = 0	%:: non_neg_integer()
+ 	runnable_count = 0	%:: non_neg_integer()
 	}).
 
 -record(information, {
@@ -50,7 +50,11 @@
         ancestors =[]           ,%:: [pid()|'undefined'] 
         rq_history=[]           ,%::[integer()]
 	children = []		,%:: [pid()]
-        no_msgs_received =0     ,
-        no_msgs_sent     =0
+        msgs_received ={0, 0}     ,
+        msgs_sent     ={0, 0, 0, 0} %::{integer(), integer(), integer(), integer()}
 	}).
  
+-record(fun_info, {
+          mfa::mfa(),
+          start_ended=[], %::[{timestamp(), timestamp()}],
+          started=[]}).   %::[{pid(), timestamp()}]}).
