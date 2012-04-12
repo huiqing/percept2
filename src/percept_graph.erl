@@ -16,7 +16,9 @@
 %% 
 %% %CopyrightEnd%
 
-%% @doc Interface for CGI request on graphs used by percept. The module exports two functions that are implementations for ESI callbacks used by the httpd server. See http://www.erlang.org//doc/apps/inets/index.html.
+%% @doc Interface for CGI request on graphs used by percept. The module exports two functions that 
+%%are implementations for ESI callbacks used by the httpd server. 
+%%See http://www.erlang.org//doc/apps/inets/index.html.
 
 -module(percept_graph).
 -export([proc_lifetime/3, graph/3, scheduler_graph/3, activity/3, percentage/3]).
@@ -82,6 +84,7 @@ graph(_Env, Input) ->
     percept_image:graph(Width, Height,Counts).
 
 scheduler_graph(_Env, Input) -> 
+    io:format("Input:\n~p\n", [Input]),
     Query    = httpd:parse_query(Input),
     RangeMin = percept_html:get_option_value("range_min", Query),
     RangeMax = percept_html:get_option_value("range_max", Query),
@@ -94,7 +97,7 @@ scheduler_graph(_Env, Input) ->
     
 
     Acts     = percept_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
-    
+    %% io:format("Acts:\n~p\n", [Acts]),
     Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #activity{where = Scheds, timestamp = Ts} <- Acts],
     percept_image:graph(Width, Height, Counts).
 

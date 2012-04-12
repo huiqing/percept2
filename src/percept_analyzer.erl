@@ -36,6 +36,8 @@
 
 -include("percept.hrl").
 
+-define(ts(EndTs,StartTs), timer:now_diff(EndTs, StartTs)).
+
 %%==========================================================================
 %%
 %% 		Interface functions
@@ -64,17 +66,37 @@ minmax(Data) ->
 %% @doc Calculates the mean and the standard deviation of a set of
 %%	numbers.
 
-mean([])      -> {0, 0, 0}; 
-mean([Value]) -> {Value, 0, 1};
-mean(List)    -> mean(List, {0, 0, 0}).
+%% mean([])      -> {0, 0, 0}; 
+%% mean([Value]) -> {Value, 0, 1};
+%% mean(List)    -> mean(List, {0, 0, 0}).
 
-mean([], {Sum, SumSquare, N}) -> 
-    Mean   = Sum / N,
-    StdDev = math:sqrt((SumSquare - Sum*Sum/N)/(N - 1)),
-    {Mean, StdDev, N};
-mean([Value | List], {Sum, SumSquare, N}) -> 
-    mean(List, {Sum + Value, SumSquare + Value*Value, N + 1}).
+%% mean([], {Sum, SumSquare, N}) -> 
+%%     Mean   = Sum / N,
+%%     io:format("Mean:\n~p\n", [{Mean, SumSquare, (SumSquare - Sum*Sum/N)}]),
+%%     StdDev = math:sqrt((SumSquare - Sum*Sum/N)/(N - 1)),
+%%     {Mean, StdDev, N};
+%% mean([Value | List], {Sum, SumSquare, N}) -> 
+%%     mean(List, {Sum + Value, SumSquare + Value*Value, N + 1}).
 
+
+mean([])      -> {0, 0, 0, 0}; 
+mean([Value]) -> {Value, Value, 0, 1};
+mean(List)    ->
+    N = length(List),
+    Total = lists:sum(List),
+    Mean= Total/N,
+    SumSquare=lists:sum([(V-Mean)*(V-Mean)||V<-List]),
+    StdDev = math:sqrt(SumSquare/N),
+   %% io:format("Res:\n~p\n",  [{lists:sum(List),Mean, StdDev, N}]),
+    {Total, Mean, StdDev, N}.
+
+%% mean([], {Sum, SumSquare, N}) -> 
+%%     Mean   = Sum / N,
+%%     io:format("Mean:\n~p\n", [{Mean, SumSquare, (SumSquare - Sum*Sum/N)}]),
+%%     StdDev = math:sqrt((SumSquare - Sum*Sum/N)/(N - 1)),
+%%     {Mean, StdDev, N};
+%% mean([Value | List], {Sum, SumSquare, N}) -> 
+%%     mean(List, {Sum + Value, SumSquare + Value*Value, N + 1}).
 
 
 activities2count2(Acts, StartTs) -> 
@@ -168,23 +190,20 @@ waiting_activities(Activities) ->
     ListedMfas = waiting_activities_mfa_list(Activities, []),
     Unsorted = lists:foldl(
     	fun (Mfa, MfaList) ->
-	    {Total, WaitingTimes} = get({waiting_mfa, Mfa}),
-	    
-	    % cleanup
-	    erlang:erase({waiting_mfa, Mfa}),
-	    
-	    % statistics of receive waiting places
-	    Stats = mean(WaitingTimes),
-
-	    [{Total, Mfa, Stats} | MfaList]
+                {_Total0, WaitingTimes} = get({waiting_mfa, Mfa}),
+                % cleanup
+                erlang:erase({waiting_mfa, Mfa}),
+                % statistics of receive waiting places
+                {Total, Mean, StdDev, N} = mean(WaitingTimes),
+                [{Total, Mfa, {Mean, StdDev, N}} | MfaList]
 	end, [], ListedMfas),
     lists:sort(fun ({A,_,_},{B,_,_}) ->
-	if 
-	    A > B -> true;
-	    true -> false 
-	end
-    end, Unsorted).
-    	
+                       if 
+                           A > B -> true;
+                           true -> false 
+                       end
+               end, Unsorted).
+
 
 %% Generate lists of receive waiting times per mfa
 %% Out:
@@ -209,32 +228,29 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
                     case Info#information.stop of
 			undefined ->
 			% get profile end time
-			    Waited = ?seconds(
-				percept_db:select({system,stop_ts}),
-				Time);
+			    Waited = ?seconds(percept_db:select({system,stop_ts}),Time);
 			Time2 ->
 			    Waited = ?seconds(Time2, Time)
 		    end,
 		    case get({waiting_mfa, MFA}) of 
 			undefined ->
-			    put({waiting_mfa, MFA}, {Waited, [Waited]}),
+                            put({waiting_mfa, MFA}, {Waited, [Waited]}),
 			    [MFA | ListedMfas];
 		    	{Total, TimedMfa} ->
-			    put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
+                            put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
 			    ListedMfas
 		    end;
 		[#activity{timestamp=Time2, id = Pid, state = active} | _ ] ->
 		    % Calculate waiting time
-		    Waited = ?seconds(Time2, Time),
+                    Waited = ?seconds(Time2, Time),
 		    % Get previous entry
-
-		    case get({waiting_mfa, MFA}) of
+   		    case get({waiting_mfa, MFA}) of
 		    	undefined ->
 			    % add entry to list
-			    put({waiting_mfa, MFA}, {Waited, [Waited]}),
+                            put({waiting_mfa, MFA}, {Waited, [Waited]}),
 			    waiting_activities_mfa_list(Activities, [MFA|ListedMfas]);
 			{Total, TimedMfa} ->
-			    put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
+                            put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
 			    waiting_activities_mfa_list(Activities, ListedMfas)
 		    end;
 		 _ -> error

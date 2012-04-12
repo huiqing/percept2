@@ -111,8 +111,9 @@ overview_content(_Env, Input) ->
     InformationTable = 
 	"<table>" ++
 	table_line(["Profile time:", TotalProfileTime]) ++
+        table_line(["Schedulers:", erlang:system_info(schedulers)]) ++
 	table_line(["Processes:", RegisteredProcs]) ++
-	table_line(["Ports:", RegisteredPorts]) ++
+        table_line(["Ports:", RegisteredPorts]) ++
     	table_line(["Min. range:", Min]) ++
     	table_line(["Max. range:", Max]) ++
     	"</table>",
@@ -202,9 +203,11 @@ url_sched_graph(W, H, Min, Max, []) ->
 %%% process_info_content
 
 process_info_content(_Env, Input) ->
+   %% wrangler_io:format("Input:\n~p\n",[Input]),
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     [I] = percept_db:select({information, Pid}),
+   %% wrangler_io:format("I:\n~p\n", [I]),
     ArgumentString = case I#information.entry of
     	{_, _, Arguments} -> lists:flatten( [term2html(Arg) ++ "<br>" || Arg <- Arguments]);
 	_                 -> ""
@@ -223,23 +226,23 @@ process_info_content(_Env, Input) ->
 	]),   
 
     InfoTable = html_table([
-	[{th, "Pid"},        term2html(I#information.id)],
-	[{th, "Name"},       term2html(I#information.name)],
-	[{th, "Entrypoint"}, mfa2html(I#information.entry)],
-	[{th, "Arguments"},  ArgumentString],
-	[{th, "Timetable"},  TimeTable],
-	[{th, "Parent"},     pid2html(I#information.parent)],
-	[{th, "Children"},   lists:flatten(lists:map(fun(Child) -> pid2html(Child) ++ " " end, I#information.children))],
-        [{th, "RQ_Migration"}, term2html(lists:reverse(I#information.rq_history))],
-        [{th, "#msg_received"}, term2html(I#information.no_msgs_received)],
-        [{th, "#msg_sent"},     term2html(I#information.no_msgs_sent)]
-	]), 
+                            [{th, "Pid"},        term2html(I#information.id)],
+                            [{th, "Name"},       term2html(I#information.name)],
+                            [{th, "Entrypoint"}, mfa2html(I#information.entry)],
+                            [{th, "Arguments"},  ArgumentString],
+                            [{th, "Timetable"},  TimeTable],
+                            [{th, "Parent"},     pid2html(I#information.parent)],
+                            [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> pid2html(Child) ++ " " end, I#information.children))],
+                            [{th, "RQ_history"}, term2html(lists:reverse(I#information.rq_history))],
+                            [{th, "{#msg_received, <br>  avg_msg_size}"},term2html(info_msg_received(I))],
+                            [{th, "{#msg_sent, <br> #msg_sent_to_same_RQ, <br> #msg_sent_to_another_RQ,<br> avg_msg_size}"},  term2html(info_msg_sent(I))]
+                           ]),
 
     PidActivities = percept_db:select({activity, [{id, Pid}]}),
     WaitingMfas   = percept_analyzer:waiting_activities(PidActivities),
-  
+  %%io:format("WaitingMFas:\n~p\n",[WaitingMfas]),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
-    
+  %%io:format("TotalWaitTime:\n~p\n", [TotalWaitTime]),
     MfaTable = html_table([
         [{th, "percentage"},
          {th, "total"},         
@@ -268,14 +271,17 @@ concurrency_content(_Env, Input) ->
     Pids = [value2pid(PidValue) || {PidValue, Case} <- Query, Case == "on", PidValue /= "select_all"],
     IDs  = [{id, Pid} || Pid <- Pids],
 
+   %%o:format("IDs:\n~p\n", [IDs]),
     % FIXME: A lot of extra work here, redo
 
     %% Analyze activities and calculate area bounds
     Activities = percept_db:select({activity, IDs}),
     StartTs = percept_db:select({system, start_ts}), 
     Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept_analyzer:activities2count2(Activities, StartTs)],
-    {T0,_,T1,_} = percept_analyzer:minmax(Counts),
-
+    %%angler_io:format("Counts:\n~p\n", [Counts]),
+    {T00,_,T10,_} = percept_analyzer:minmax(Counts),
+    T0 = T00/1000000,
+    T1 = T10/1000000, 
     % FIXME: End
     
     PidValues = [pid2value(Pid) || Pid <- Pids],
@@ -308,14 +314,16 @@ concurrency_content(_Env, Input) ->
     "</table></div>\n".
 
 processes_content(ProcessTree, {TsMin, TsMax}) ->
+   %%wrangler_io:format("Info:\n~p\n", [ {TsMin, TsMax}]),
     Ports = percept_db:select({information, ports}),
     SystemStartTS = percept_db:select({system, start_ts}),
     SystemStopTS = percept_db:select({system, stop_ts}),
+   %%io:format("Time:\n~p\n", [{SystemStartTS,SystemStopTS}]),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
+   %% wrangler_io:format("ProfileTime:\n~p\n", [ProfileTime]),
     Acts = percept_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
     ActiveProcsInfo=lists:append([ets:lookup(pdb_info, Pid)||Pid <- ActivePids]),
-    %% wrangler_io:format("Info:\n~p\n", [ActiveProcsInfo]),
     ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo),
     PortsHtml = lists:foldl(
     	fun (I, Out) -> 
@@ -334,10 +342,10 @@ processes_content(ProcessTree, {TsMin, TsMax}) ->
 		    mfa2html(I#information.entry),
 		    term2html(I#information.name),
 		    pid2html(I#information.parent),
-                    integer_to_list(length(I#information.rq_history)-1),
-                    term2html(I#information.no_msgs_received),
-                    term2html(I#information.no_msgs_sent)       
-		]),
+                    integer_to_list(max(0,length(I#information.rq_history)-1)),
+                    term2html(info_msg_received(I)),
+                    term2html(info_msg_sent(I))
+       		]),
 		[Prepare|Out]
 	end, [], Ports),
 
@@ -353,18 +361,18 @@ processes_content(ProcessTree, {TsMin, TsMax}) ->
 	    ProcsHtmlResult = 
 	    "<tr><td><b>Processes</b></td></tr>
 	    <tr><td>
- 	   <table width=800 cellspacing=10 border=0>
+ 	   <table width=900 cellspacing=10 border=0>
 		<tr>
 		<td align=middle width=40><b>Select</b></td>
-                <td> <b>[+/-]</b></td>
-		<td align=middle width=40><b>Pid</b></td>
-		<td><b>Lifetime</b></td>
-		<td><b>Entrypoint</b></td>
-		<td><b>Name</b></td>
-		<td><b>Parent</b></td>
-                <td align=middle><b>#RQ_migration</b></td>
-                <td><b>#msgs_received</b></td>
-                <td><b>#msgs_sent</b></td>
+                <td align=middle width=40> <b>[+/-]</b></td>
+		<td align=middle width=80><b>Pid</b></td>
+		<td align=middle width=80><b>Lifetime</b></td>
+	        <td align=middle width=80><b>Name</b></td>
+		<td align=middle width=80><b>Parent</b></td>
+                <td align=middle width=80><b>#RQ_chgs</b></td>
+                <td align=middle width=80><b>#msgs_received</b></td>
+                <td align=middle width=80><b>#msgs_sent</b></td>
+                <td align=middle width=100><b>Entrypoint</b></td>
 		</tr>" ++
 		lists:flatten(ProcsHtml) ++ 
 	    "</table>
@@ -376,18 +384,20 @@ processes_content(ProcessTree, {TsMin, TsMax}) ->
 	length(PortsHtml) > 0 ->
     	    PortsHtmlResult = " 
 	    <tr><td><b>Ports</b></td></tr>
-	    <tr><td>
-	    	<table width=800 cellspacing=10 border=0>
+            <table width=900 cellspacing=10 border=0>
 		<tr>
 		<td align=middle width=40><b>Select</b></td>
-		<td align=left width=40><b>Pid</b></td>
-		<td><b>Lifetime</b></td>
-		<td><b>Entrypoint</b></td>
-		<td><b>Name</b></td>
-		<td><b>Parent</b></td>
-                <td align=middle><b>#RQ_migration</b></td>
-                </tr>" ++
-		lists:flatten(PortsHtml) ++
+                <td align=middle width=40> <b>[+/-]</b></td>
+		<td align=middle width=80><b>Pid</b></td>
+		<td align=middle width=80><b>Lifetime</b></td>
+	        <td align=middle width=80><b>Name</b></td>
+		<td align=middle width=80><b>Parent</b></td>
+                <td align=middle width=80><b>#RQ_chgs</b></td>
+                <td align=middle width=80><b>#msgs_received</b></td>
+                <td align=middle width=80><b>#msgs_sent</b></td>
+                <td align=middle width=100><b>Entrypoint</b></td>
+		</tr>" ++
+	      lists:flatten(PortsHtml) ++
 		"</table>
 	    </td></tr>";
 	true ->
@@ -431,16 +441,33 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                                                            {"end", term2html(float(EndTime))},
                                                            {width, 100},
                                                            {height, 10}]),
-                              mfa2html(I#information.entry),
-                              term2html(I#information.name),
+                             term2html(I#information.name),
                               pid2html(I#information.parent),
-                              integer_to_list(length(I#information.rq_history)-1),
-                              term2html(I#information.no_msgs_received),
-                              term2html(I#information.no_msgs_sent)
-                             ]),
+                              integer_to_list(max(0,length(I#information.rq_history)-1)),
+                              msg2html(info_msg_received(I)),
+                              msg2html(info_msg_sent(I)),
+                              mfa2html(I#information.entry)]),
               SubTable = sub_table(Id, Children, ProfileTime, ActiveProcsInfo),
               [Prepare, SubTable|Out]
       end, [], ProcessTree).
+
+info_msg_received(I) ->
+    {No, Size} = I#information.msgs_received,
+    AvgSize = case No of 
+                  0 -> 0;
+                  _ -> Size div No
+              end,
+    {No, AvgSize}.
+
+
+info_msg_sent(I) ->
+    {No, SameRq, OtherRqs, Size} = I#information.msgs_sent,
+    AvgSize = case No of 
+                  0 -> 0;
+                  _ -> Size div No
+              end,
+    {No, SameRq, OtherRqs, AvgSize}.
+
 
 expand_or_collapse(Children, Id) ->
     case Children of 
@@ -459,9 +486,9 @@ sub_table(_Id, [], _ProfileTime, _) ->
     "";
 sub_table(Id, Children, ProfileTime, ActivePids) ->
     SubHtml=mk_procs_html(Children, ProfileTime, ActivePids),
-    "<tr><td colspan=\"8\"> <table width=900 cellspacing=10 "
-        "border=0, id=\""++mk_table_id(Id)++"\", style=\"margin-left:50px;\">" ++
-     SubHtml ++ "</table></td></tr>".
+    "<tr><td colspan=\"10\"> <table width=950 cellspacing=10 "
+        "border=0, id=\""++mk_table_id(Id)++"\", style=\"margin-left:60px;\">" ++
+        SubHtml ++ "</table></td></tr>".
 
 
 mk_display_style(ProcessTrees) ->
@@ -655,7 +682,14 @@ pid2html_with_color(Pid) when is_port(Pid) ->
 pid2html_with_color(_) ->
     "undefined".
 
-
+msg2html(Msg) ->
+    AvgMsgSize = lists:last(tuple_to_list(Msg)),
+    case AvgMsgSize < 1000 of   %% TODO: generalise this function!
+        true ->
+            term2html(Msg);
+        false ->
+            " <font color=\"#FF0000\">"++term2html(Msg)++"</font></a>"
+    end.
 
 
 -spec image_string(Request :: string()) -> string().
@@ -688,7 +722,6 @@ image_string_tail(Request, [{Type, Value} | Opts], Out) ->
     Opt = join_strings(["&",Type,"=",Value]),
     image_string_tail(Request, Opts, [Opt|Out]).
         
-
 %%% percept conversions
 
 -spec pid2value(Pid :: pid()) -> string().

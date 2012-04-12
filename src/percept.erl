@@ -39,6 +39,7 @@
 	start/2, 
 	stop/1]).
 
+-compile(export_all).
 
 -include("percept.hrl").
 
@@ -104,13 +105,15 @@ profile(Filename, Options) ->
 %% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) -> ok | {already_started, Port} | {error, not_started}
 %% @see percept_profile
 
--spec profile(Filename :: file:filename(),
+-spec profile(Type :: {file, file:filename()}|{ip,integer()},
 	      Entry :: {atom(), atom(), list()},
 	      Options :: [percept_option()]) ->
 	'ok' | {'already_started', port()} | {'error', 'not_started'}.
 
-profile(Filename, MFA, Options) ->
-    percept_profile:start(Filename, MFA, Options).
+profile(Type, MFA, Options) ->
+    percept_profile:start(Type, MFA, Options).
+
+
 
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
 
@@ -253,7 +256,8 @@ mk_trace_parser(Pid) ->
 trace_parser(end_of_trace, {Count, Pid}) -> 
     Pid ! {parse_complete, {self(),Count}},
     receive
-	{ack, Pid} -> 
+	{ack, Pid} ->
+            io:format("Received ack\n"),
 	    ok
     end;
 trace_parser(Trace, {Count, Pid}) ->

@@ -188,7 +188,7 @@ consolidate() ->
     ok.
 
 %%==========================================================================
-%%
+ %%
 %% 		Database loop 
 %%
 %%==========================================================================
@@ -198,16 +198,20 @@ init_percept_db() ->
     ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set]),
 
     % Scheduler runnability
-    ets:new(pdb_scheduler, [named_table, private, {keypos, #activity.timestamp}, ordered_set]),
+    ets:new(pdb_scheduler, [named_table, public, {keypos, #activity.timestamp}, ordered_set]),
     
     % Process and Port runnability
-    ets:new(pdb_activity, [named_table, private, {keypos, #activity.timestamp}, ordered_set]),
+    ets:new(pdb_activity, [named_table, public, {keypos, #activity.timestamp}, ordered_set]),
     
     % System status
     ets:new(pdb_system, [named_table, private, {keypos, 1}, set]),
     
     % System warnings
     ets:new(pdb_warnings, [named_table, private, {keypos, 1}, ordered_set]),
+
+    %functions
+    ets:new(fun_info, [named_table, public, {keypos, #fun_info.mfa}, set]),
+
     put(debug, 0),
     loop_percept_db().
 
@@ -251,12 +255,45 @@ clean_trace_1(Trace) when is_pid(Trace) ->
     erlang:list_to_pid("<0." ++ P2 ++ "." ++ P3 ++ ">");
 clean_trace_1(Trace) -> Trace.
 
+
 insert_trace(Trace) ->
     case Trace of
 	{profile_start, Ts} ->
 	    update_system_start_ts(Ts),
 	    ok;
-	{profile_stop, Ts} ->
+        {profile_stop, Ts} ->
+	    update_system_stop_ts(Ts),
+	    ok; 
+        %%% erlang:system_profile, option: runnable_procs
+    	%%% ---------------------------------------------
+    	{profile, Id, State, Mfa, TS} when is_pid(Id) ->
+	    % Update runnable count in activity and db
+	    case check_activity_consistency(Id, State) of
+		invalid_state -> 
+		    ignored;
+		ok ->
+		    Rc = get_runnable_count(procs, State),
+		    % Update registered procs
+		    % insert proc activity
+		    update_activity(#activity{
+		    	id = Id, 
+			state = State, 
+			timestamp = TS, 
+			runnable_count = Rc,
+			where = Mfa}),
+		    ok
+            end;
+        _Unhandled ->
+            io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
+            ok
+    end.
+
+insert_trace(Trace) ->
+    case Trace of
+	{profile_start, Ts} ->
+	    update_system_start_ts(Ts),
+	    ok;
+        {profile_stop, Ts} ->
 	    update_system_stop_ts(Ts),
 	    ok; 
         %%% erlang:system_profile, option: runnable_procs
@@ -300,13 +337,13 @@ insert_trace(Trace) ->
 		    ok
 	    end;
 	%%% erlang:system_profile, option: scheduler
-	{profile, scheduler, Id, State, Scheds, Ts} ->
-          	    % insert scheduler activity
-	    update_scheduler(#activity{
+	{profile, scheduler, Id, State, NoScheds, Ts} ->
+            % insert scheduler activity
+            update_scheduler(#activity{
 	    	id = {scheduler, Id}, 
 		state = State, 
 		timestamp = Ts, 
-		where = Scheds}),
+		where = NoScheds}),
 	    ok;
 
 	%%% erlang:trace, option: procs
@@ -351,12 +388,23 @@ insert_trace(Trace) ->
         {trace_ts, Pid, in, Rq,  _MFA, _Ts} when is_pid(Pid) ->
             update_information_rq(Pid, Rq);
 
-        {trace_ts, Pid, 'receive', _Msg, _Ts} when is_pid(Pid)->
-            update_information_received(Pid);
-        {trace_ts, Pid, send, _Msg, _To, _Ts} when is_pid(Pid) ->
-            update_information_sent(Pid);
-        {trace_ts, Pid, send_to_non_existing_process, _Msg, _To, _Ts} when is_pid(Pid) ->
-            update_information_sent(Pid);
+        {trace_ts, Pid, out, _Rq,  _MFA, _Ts} when is_pid(Pid) ->
+            ok;
+        {trace_ts, Pid, 'receive', MsgSize, _Ts} when is_pid(Pid)->
+            %% io:format("Msg:\n~p\n", [MsgSize]),
+            update_information_received(Pid, erlang:external_size(MsgSize));
+          %%  update_information_received(Pid, MsgSize);
+        {trace_ts, Pid, send, MsgSize, To, _Ts} when is_pid(Pid) ->
+            %% io:format("Msg:\n~p\n", [Msg]),
+            update_information_sent(Pid, erlang:external_size(MsgSize), To);
+           %% update_information_sent(Pid, MsgSize, To);
+        {trace_ts, Pid, send_to_non_existing_process, Msg, _To, _Ts} when is_pid(Pid) ->
+            update_information_sent(Pid, erlang:external_size(Msg), none);
+        {trace_ts, Pid, call, {M, F, Args}, Ts} when is_pid(Pid) ->
+            update_information_call(Pid, {M, F, length(Args)}, Ts);
+        {trace_ts, Pid, return_from, {M, F, Arity}, _Value,  Ts} when is_pid(Pid) ->
+            update_information_return_from(Pid, {M, F, Arity}, Ts);
+
 	%%erlang:trace, option: ports
 	%%% ----------------------------
 	{trace_ts, Caller, open, Port, Driver, TS} ->
@@ -369,8 +417,8 @@ insert_trace(Trace) ->
 	    update_information(#information{id = Port, stop = Ts}),
 	    ok;
         _Unhandled ->
-            ok
-  	    %%io:format("insert_trace, unhandled: ~p~n", [_Unhandled])
+            io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
+          ok
     end.
 
 mfa2informative({erlang, apply, [M, F, Args]})  -> mfa2informative({M, F,Args});
@@ -386,7 +434,7 @@ mfa2informative({erlang, apply, [Fun, Args]}) ->
                 %% wrangler_io:format("FunInfo:\n~p\n", [FunInfo]),
                 undefined_fun_function;
 	    undefined -> 
-                undefined_fun_function;
+                undefined_fun_function; 
 	    Function  -> Function
 	end,
     mfa2informative({M, F, Args});
@@ -472,7 +520,7 @@ get_runnable_count(Type, State) ->
 check_activity_consistency(Id, State) ->
     case get({previous_state, Id}) of
 	State ->
-	    io:format("check_activity_consistency, state flow invalid.~n"),
+          %%  io:format("check_activity_consistency, state flow invalid.~n"),
 	    invalid_state;
 	undefined when State == inactive -> 
 	    invalid_state;
@@ -736,11 +784,15 @@ update_information(#information{id = Id} = NewInfo) ->
 			    {Tail, [InfoElem | Out]};
 		    	[] ->
 			    {Tail, [InfoElem | Out]};
-			NewInfoElem ->
+			{0,0,0,0} ->
+                             {Tail, [InfoElem | Out]};
+                        {0,0} ->
+                            {Tail, [InfoElem | Out]};
+                        _ ->
 			    {Tail, [NewInfoElem | Out]}
 		    end
 		end, {tuple_to_list(NewInfo), []}, tuple_to_list(Info)),
-	    ets:insert(pdb_info, list_to_tuple(lists:reverse(Result))),
+            ets:insert(pdb_info, list_to_tuple(lists:reverse(Result))),
 	    ok
     end.
 
@@ -765,27 +817,60 @@ update_information_rq(Pid, Rq) ->
                 [Rq|_] ->
                     ok;
                 _ ->
+                 %%   io:format("Rq:\n~pn", [[Rq|I#information.rq_history]]),
                     ets:update_element(
                       pdb_info, Pid, {9, [Rq|I#information.rq_history]})
             end
     end.
-
-update_information_sent(Pid) ->
-    case  ets:lookup(pdb_info, Pid) of
+                
+update_information_sent(From, MsgSize, To) ->
+    case  ets:lookup(pdb_info, From) of
         [] -> 
             ok; %% this should not happen;
         [I] ->
-            ets:update_element(pdb_info, Pid, {12, I#information.no_msgs_sent+1})
+            {No, SameRq, OtherRq,  Size} = I#information.msgs_sent,
+            NewSize = Size + MsgSize, 
+            NewNo = No +1,
+            if To==none ->
+                    Data = {NewNo, SameRq,OtherRq + 1,  NewSize},
+                    update_information_sent_1(From,Data);
+               true ->
+                    case ets:lookup(pdb_info, To) of 
+                        [R] ->
+                            case R#information.rq_history of 
+                                [Rq|_] ->
+                                    case I#information.rq_history of 
+                                        [Rq|_] ->
+                                            Data = {NewNo,SameRq + 1, OtherRq,  NewSize},
+                                            update_information_sent_1(From,Data);
+                                        _ ->
+                                            Data = {NewNo, SameRq, OtherRq + 1,NewSize},
+                                            update_information_sent_1(From,Data)
+                                    end;
+                                _ ->
+                                    Data = {NewNo, SameRq + 1, OtherRq, NewSize},
+                                    update_information_sent_1(From, Data)
+                            end;
+                        _ ->
+                            Data = {NewNo, SameRq + 1, OtherRq, NewSize},
+                            update_information_sent_1(From, Data)
+                    end
+            end
     end.
-            
 
-update_information_received(Pid) ->
+update_information_sent_1(From, Data) ->
+    ets:update_element(pdb_info, From, {12, Data}).
+
+                               
+
+update_information_received(Pid, MsgSize) ->
     case  ets:lookup(pdb_info, Pid) of
         [] -> 
             ok; %% this should not happen;
         [I] ->
+            {No, Size} = I#information.msgs_received,
             ets:update_element(pdb_info, Pid,
-                               {11, I#information.no_msgs_received+1})
+                               {11, {No+1, Size+MsgSize}})
     end.
     
             
@@ -866,3 +951,36 @@ add_ancestors(ProcessTree, As) ->
           add_ancestors(Children, [Parent#information.id|As])}
      end
       ||{Parent, Children} <- ProcessTree].
+
+
+update_information_call(Pid, MFA, Ts) ->
+    case lists:lookup(fun_info, MFA) of 
+        [] ->
+            NewInfo=#fun_info{mfa=MFA, 
+                              started=[{Pid, MFA, Ts}]},
+            ets:insert(fun_info, NewInfo);
+        [FunInfo] ->
+            ets:upate_element(fun_info, MFA, [{Pid, MFA, Ts}|FunInfo#fun_info.started])
+    end.
+
+update_information_return_from(_Pid, _MFA, _Ts) ->
+    ok.
+        
+
+%% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
+
+%% percept_profile:start({file, "sim_code_v0.dat"}, {refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
+
+%% percept_profile:start({file, "sim_code_v1.dat"}, {refac_sim_code_par_v1,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, []).
+
+
+%% percept_profile:start({file, "sim_code_v2.dat"}, {refac_sim_code_par_v2,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, []).
+
+
+%% percept_profile:start({file, "sim_code_v3.dat"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, []).
+
+
+%% percept_profile:start({file, "sim_code_v4.dat"}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
+
+
+%% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/percept/test"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/percept/test"], 8]}, [])  

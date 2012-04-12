@@ -32,6 +32,9 @@
 	stop/0
 	]).
 
+-include("percept.hrl").
+
+-compile(export_all).
 
 %%==========================================================================
 %%
@@ -43,33 +46,25 @@
 
 -type percept_option() :: 'procs' | 'ports' | 'exclusive' | 'scheduler'.
 
+-type port_number() :: integer().
 %%==========================================================================
 %%
 %% 		Interface functions
 %%
 %%==========================================================================
 
-%% @spec start(Filename::string()) -> {ok, Port} | {already_started, Port}
-%% @equiv start(Filename, [procs])
+-spec start(Type :: {file, file:filename()}|{ip,port_number()}) ->
+            {'ok', port()} | {'already_started', port()}.
 
--spec start(Filename :: file:filename()) ->
-	{'ok', port()} | {'already_started', port()}.
+start(Type) ->
+    start_profile(Type, [procs]).
 
-start(Filename) ->
-    profile_to_file(Filename, [procs]).
-
-%% @spec start(Filename::string(), [percept_option()]) -> {ok, Port} | {already_started, Port}
-%%	Port = port() 
-%% @doc Starts profiling with supplied options. 
-%%	All events are stored in the file given by Filename. 
-%%	An explicit call to stop/0 is needed to stop profiling. 
-
--spec start(Filename :: file:filename(),
+-spec start(Type :: {file, file:filename()}|{ip,port_number()},
 	    Options :: [percept_option()]) ->
 	{'ok', port()} | {'already_started', port()}.
 
-start(Filename, Options) ->
-    profile_to_file(Filename, Options). 
+start(Type, Options) ->
+    start_profile(Type, Options). 
 
 %% @spec start(string(), MFA::mfa(), [percept_option()]) -> ok | {already_started, Port} | {error, not_started}
 %%	Port = port()
@@ -78,22 +73,24 @@ start(Filename, Options) ->
 %%	No explicit call to stop/0 is needed, the profiling stops when
 %%	the entry function returns.
 
--spec start(Filename :: file:filename(),
+-spec start(Type :: {file, file:filename()}|{ip, port_number()},
 	    Entry :: {atom(), atom(), list()},
 	    Options :: [percept_option()]) ->
 	'ok' | {'already_started', port()} | {'error', 'not_started'}.
 
-start(Filename, {Module, Function, Args}, Options) ->
+start(Type, {Module, Function, Args}, Options) ->
     case whereis(percept_port) of
 	undefined ->
-	    profile_to_file(Filename, Options),
+	    start_profile(Type, Options),
+            erlang:trace_pattern({Module, '_', '_'}, 
+                                 [{'_',[],[{return_trace}]}],[global]),
 	    erlang:apply(Module, Function, Args),
 	    stop();
 	Port ->
 	    {already_started, Port}
     end.
 
-deliver_all_trace() ->
+deliver_all_trace() -> 
     Tracee = self(),
     Tracer = spawn(fun() -> 
 	receive {Tracee, start} -> ok end,
@@ -114,7 +111,7 @@ deliver_all_trace() ->
 stop() ->
     erlang:system_profile(undefined, [runnable_ports, runnable_procs]),
     erlang:trace(all, false, [procs, ports, timestamp]),
-    deliver_all_trace(), 
+  %%  deliver_all_trace(),  %%Need to put this back!
     case whereis(percept_port) of
     	undefined -> 
 	    {error, not_started};
@@ -122,6 +119,7 @@ stop() ->
 	    erlang:port_command(Port, erlang:term_to_binary({profile_stop, erlang:now()})),
 	    %% trace delivered?
 	    erlang:port_close(Port),
+            stop_trace_client(),
 	    ok
     end. 
 
@@ -131,14 +129,25 @@ stop() ->
 %%
 %%==========================================================================
 
-profile_to_file(Filename, Opts) ->
+start_profile(Type, Opts) ->
     case whereis(percept_port) of 
 	undefined ->
 	    io:format("Starting profiling.~n", []),
-
 	    erlang:system_flag(multi_scheduling, block),
-	    Port = (dbg:trace_port(file, Filename))(),
-	    % Send start time
+            Port = case Type of 
+                       {file, FileName} -> 
+                           P=(dbg:trace_port(file, FileName))(),
+                           P;
+                       {ip, Number}->
+                           P=(dbg:trace_port(ip, {Number, 50000}))(),
+                           {trace_client, 'hl2@hl-lt'} ! {self(), {start_profile, Number}},
+                           receive 
+                               {trace_client, started} -> 
+                                   ok
+                           end,
+                           P
+                   end,
+            % Send start time
 	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
 	    erlang:system_flag(multi_scheduling, unblock),
 		
@@ -151,15 +160,12 @@ profile_to_file(Filename, Opts) ->
 	    {already_started, Port}
     end.
 
-%% set_tracer
 
 set_tracer(Port, Opts) ->
     {TOpts, POpts} = parse_profile_options(Opts),
-    % Setup profiling and tracing
-    erlang:trace(all, true, [procs, {tracer, Port}, send, 'receive', 
-                             timestamp,running, scheduler_id| TOpts]),
-  %%  erlang:trace(new, true, [send, 'receive', running, timestamp, scheduler_id,{tracer, Port}|TOpts]).
-    %%erlang:trace(new, true, [send, 'receive', {tracer, Port} |TOpts]),
+    %% DO not change 'all' to 'new' here!!!
+    erlang:trace(all, true, [procs, {tracer, Port},  send, 'receive', call,
+                              timestamp,running, scheduler_id| TOpts]),
     erlang:system_profile(Port, [runnable_ports, runnable_procs,scheduler|POpts]).
 
 %% parse_profile_options
@@ -193,4 +199,44 @@ parse_profile_options([Opt|Opts], {TOpts, POpts}) ->
 	    });
 	_ -> 
 	    parse_profile_options(Opts, {TOpts, POpts})
+    end.
+
+
+start_trace_client() ->
+    register(trace_client, spawn_link(fun trace_client_loop/0)).
+
+stop_trace_client() ->
+    {trace_client, 'hl2@hl-lt'} ! stop_profile.
+              
+trace_client_loop() ->
+    receive 
+        {From, {start_profile, Ip}} ->
+            {_, DB} =percept_db:start(), 
+            T0 = erlang:now(),
+            Pid=dbg:trace_client(ip, Ip, percept:mk_trace_parser(self())),
+            Ref = erlang:monitor(process, Pid), 
+            From ! {trace_client, started},
+            parse_and_insert_loop(Pid, Ref, DB, T0),
+            trace_client_loop();
+        stop_profile ->
+            dbg:stop_clear(),
+            trace_client_loop();
+        stop ->
+            dbg:stop_clear()
+    end.
+
+
+parse_and_insert_loop(Pid, Ref, DB, T0) ->
+    receive
+    	{parse_complete, {Pid, Count}} ->
+	   %% receive {'DOWN', Ref, process, Pid, normal} -> ok after 0 -> ok end,
+            Pid ! {ack, self()},
+	    DB ! {action, consolidate},
+	    T1 = erlang:now(),
+	    io:format("Parsed ~p entries in ~p s.~n", [Count, ?seconds(T1, T0)]),
+    	    io:format("    ~p created processes.~n", [length(percept_db:select({information, procs}))]),
+     	    io:format("    ~p opened ports.~n", [length(percept_db:select({information, ports}))]),
+	    ok;
+	{'DOWN',Ref, process, Pid, normal} -> parse_and_insert_loop(Pid, Ref, DB, T0);
+	{'DOWN',Ref, process, Pid, Reason} -> {error, Reason}
     end.
