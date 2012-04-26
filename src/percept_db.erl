@@ -34,9 +34,12 @@
 
 -export([gen_process_tree/0]).
         
+-compile(export_all).
 
 -include("percept.hrl").
+
 -define(STOP_TIMEOUT, 1000).
+
 %%==========================================================================
 %%
 %% 		Type definitions 
@@ -46,7 +49,7 @@
 %% @type activity_option() = 
 %%	{ts_min, timestamp()} | 
 %%	{ts_max, timestamp()} | 
-%%	{ts_exact, bool()} | 
+%%	{ts_exact, bool()} |  
 %%	{mfa, {atom(), atom(), byte()}} | 
 %%	{state, active | inactive} | 
 %%	{id, all | procs | ports | pid() | port()}
@@ -210,8 +213,10 @@ init_percept_db() ->
     ets:new(pdb_warnings, [named_table, private, {keypos, 1}, ordered_set]),
 
     %functions
-    ets:new(fun_info, [named_table, public, {keypos, #fun_info.mfa}, set]),
+    ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, ordered_set]),
 
+    ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, ordered_set]),
+  
     put(debug, 0),
     loop_percept_db().
 
@@ -254,39 +259,6 @@ clean_trace_1(Trace) when is_pid(Trace) ->
     P3 = lists:sublist(P3p, 1, length(P3p) - 1),
     erlang:list_to_pid("<0." ++ P2 ++ "." ++ P3 ++ ">");
 clean_trace_1(Trace) -> Trace.
-
-
-insert_trace(Trace) ->
-    case Trace of
-	{profile_start, Ts} ->
-	    update_system_start_ts(Ts),
-	    ok;
-        {profile_stop, Ts} ->
-	    update_system_stop_ts(Ts),
-	    ok; 
-        %%% erlang:system_profile, option: runnable_procs
-    	%%% ---------------------------------------------
-    	{profile, Id, State, Mfa, TS} when is_pid(Id) ->
-	    % Update runnable count in activity and db
-	    case check_activity_consistency(Id, State) of
-		invalid_state -> 
-		    ignored;
-		ok ->
-		    Rc = get_runnable_count(procs, State),
-		    % Update registered procs
-		    % insert proc activity
-		    update_activity(#activity{
-		    	id = Id, 
-			state = State, 
-			timestamp = TS, 
-			runnable_count = Rc,
-			where = Mfa}),
-		    ok
-            end;
-        _Unhandled ->
-            io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
-            ok
-    end.
 
 insert_trace(Trace) ->
     case Trace of
@@ -349,23 +321,15 @@ insert_trace(Trace) ->
 	%%% erlang:trace, option: procs
 	%%% ---------------------------
 	{trace_ts, Parent, spawn, Pid, Mfa, TS} ->
-            %% wrangler_io:format("Trace:\n~p\n", [Trace]),
-	    InformativeMfa = mfa2informative(Mfa),
-	    % Update id_information
-	    update_information(#information{id = Pid, start = TS, parent = Parent, entry = InformativeMfa}),
+            InformativeMfa = mfa2informative(Mfa),
+            update_information(
+              #information{id = Pid, start = TS, 
+                           parent = Parent, entry = InformativeMfa}),
 	    update_information_child(Parent, Pid),
 	    ok;
 	{trace_ts, Pid, exit, _Reason, TS} ->
-	    % Update registered procs
-    
-	    % Update id_information
-	    update_information(#information{id = Pid, stop = TS}),
-	    
-	    ok;
-	{trace_ts, Pid, register, Name, _Ts} when is_pid(Pid) ->
-	    % Update id_information
-	    update_information(#information{id = Pid, name = Name}),
-	    ok;
+            update_information(#information{id = Pid, stop = TS}),
+            ok;
 	{trace_ts, Pid, register, Name, _Ts} when is_pid(Pid) ->
 	    % Update id_information
 	    update_information(#information{id = Pid, name = Name}),
@@ -386,26 +350,16 @@ insert_trace(Trace) ->
 	    % Update id_information
 	    ok;
         {trace_ts, Pid, in, Rq,  _MFA, _Ts} when is_pid(Pid) ->
-            update_information_rq(Pid, Rq);
-
+           update_information_rq(Pid, Rq);
         {trace_ts, Pid, out, _Rq,  _MFA, _Ts} when is_pid(Pid) ->
             ok;
         {trace_ts, Pid, 'receive', MsgSize, _Ts} when is_pid(Pid)->
-            %% io:format("Msg:\n~p\n", [MsgSize]),
             update_information_received(Pid, erlang:external_size(MsgSize));
-          %%  update_information_received(Pid, MsgSize);
         {trace_ts, Pid, send, MsgSize, To, _Ts} when is_pid(Pid) ->
-            %% io:format("Msg:\n~p\n", [Msg]),
             update_information_sent(Pid, erlang:external_size(MsgSize), To);
-           %% update_information_sent(Pid, MsgSize, To);
         {trace_ts, Pid, send_to_non_existing_process, Msg, _To, _Ts} when is_pid(Pid) ->
             update_information_sent(Pid, erlang:external_size(Msg), none);
-        {trace_ts, Pid, call, {M, F, Args}, Ts} when is_pid(Pid) ->
-            update_information_call(Pid, {M, F, length(Args)}, Ts);
-        {trace_ts, Pid, return_from, {M, F, Arity}, _Value,  Ts} when is_pid(Pid) ->
-            update_information_return_from(Pid, {M, F, Arity}, Ts);
-
-	%%erlang:trace, option: ports
+      	%%erlang:trace, option: ports
 	%%% ----------------------------
 	{trace_ts, Caller, open, Port, Driver, TS} ->
 	    % Update id_information
@@ -416,8 +370,21 @@ insert_trace(Trace) ->
 	    % Update id_information
 	    update_information(#information{id = Port, stop = Ts}),
 	    ok;
+
+         %%function call/returns.
+        {trace_ts, Pid, call, MFA,{cp, CP}, TS} ->
+            %% io:format("Trace:\n~p\n", [Trace]),
+            Func = mfarity(MFA),
+            trace_call(Pid, Func, TS, CP);
+        {trace_ts, Pid, return_to, undefined, TS}->
+            %% io:format("Trace:\n~p\n", [Trace]),
+            trace_return_to(Pid, undefined, TS);
+        {trace_ts, Pid, return_to, MFA, TS} ->
+           %% io:format("Trace:\n~p\n", [Trace]),
+            Func = mfarity(MFA),
+            trace_return_to(Pid, Func, TS);
         _Unhandled ->
-            io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
+           %% io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
           ok
     end.
 
@@ -431,7 +398,6 @@ mfa2informative({erlang, apply, [Fun, Args]}) ->
 	end,
     F = case proplists:get_value(name, FunInfo, undefined) of
 	    []        -> 
-                %% wrangler_io:format("FunInfo:\n~p\n", [FunInfo]),
                 undefined_fun_function;
 	    undefined -> 
                 undefined_fun_function; 
@@ -545,7 +511,11 @@ select_query(Query) ->
 	    select_query_scheduler(Query);
 	{information, _ } -> 
 	    select_query_information(Query);
-	Unhandled ->
+        {code, _} ->
+            select_query_code(Query);
+        {funs, _} ->
+            select_query_funs(Query);
+        Unhandled ->
 	    io:format("select_query, unhandled: ~p~n", [Unhandled]),
 	    []
     end.
@@ -602,6 +572,7 @@ select_query_scheduler(Query) ->
 	    io:format("select_query_scheduler, unhandled: ~p~n", [Unhandled]),
 	    []
     end.
+
 
 %%% select_query_system
 
@@ -694,6 +665,48 @@ lists_filter([D|Ds], Options) ->
 		true      -> true
 	    end
 	end, Options)).
+
+select_query_code(Query) ->
+    io:format("Query:\n~p\n", [Query]),
+    case Query of 
+        {code, Options} when is_list(Options) ->
+            Head = #funcall_info{
+              id={'$1', '$2'}, 
+              end_ts='$3',
+              _='_'},
+            Body =  ['$_'],
+            MinTs = proplists:get_value(ts_min, Options, undefined),
+            MaxTs = proplists:get_value(ts_max, Options, undefined),
+            Constraints = [{'not', {'orelse', {'>=',{const, MinTs},'$3'},{'>=', '$2', {const,MaxTs}}}}],
+            %% Constraints = [{'>=', {const, MinTs}, '$2'}, {'>=', '$3', {const, MaxTs}}],
+            io:format("Info:\n~p\n", [{Head, Constraints, Body}]),
+            ets:select(funcall_info, [{Head, Constraints, Body}]);
+        Unhandled ->
+	    io:format("select_query_code, unhandled: ~p~n", [Unhandled]),
+	    []
+    end.  
+               
+      
+select_query_funs(Query) ->
+    case Query of 
+        {funs, Options} when Options==[] ->
+            Head = #fun_info{
+              id={'$1', '$2'}, 
+              _='_'},
+            Body =  ['$_'],
+            Constraints = [],
+            ets:select(fun_info, [{Head, Constraints, Body}]);
+        {funs, Id={_Pid, _MFA}} ->
+            Head = #fun_info{
+              id=Id, 
+              _='_'},
+            Body =  ['$_'],
+            Constraints = [],
+            ets:select(fun_info, [{Head, Constraints, Body}]);
+        Unhandled ->
+	    io:format("select_query_funs, unhandled: ~p~n", [Unhandled]),
+	    []
+    end.            
 
 % Options:
 % {ts_min, timestamp()}
@@ -952,21 +965,276 @@ add_ancestors(ProcessTree, As) ->
      end
       ||{Parent, Children} <- ProcessTree].
 
+   
+mfarity({M, F, Args}) when is_list(Args) ->
+    {M, F, length(Args)};
+mfarity(MFA) ->
+    MFA.
 
-update_information_call(Pid, MFA, Ts) ->
-    case lists:lookup(fun_info, MFA) of 
-        [] ->
-            NewInfo=#fun_info{mfa=MFA, 
-                              started=[{Pid, MFA, Ts}]},
-            ets:insert(fun_info, NewInfo);
-        [FunInfo] ->
-            ets:upate_element(fun_info, MFA, [{Pid, MFA, Ts}|FunInfo#fun_info.started])
-    end.
 
-update_information_return_from(_Pid, _MFA, _Ts) ->
+trace_call(Pid, Func, TS, CP) ->
+    Stack = get_stack(Pid),
+    ?dbg(0, "trace_call(~p, ~p, ~p, ~p)~n~p~n", 
+	 [Pid, Func, TS, CP, Stack]),
+    trace_call_1(Pid, Func, TS, CP, Stack).
+    
+
+trace_call_1(Pid, Func, TS, CP, Stack) ->
+    case Stack of
+	[] ->
+            ?dbg(0, "empty stack\n", []),
+	    OldStack = 
+		if CP =:= undefined ->
+			Stack;
+		   true ->
+			[[{CP, TS}]]
+		end,
+	    put(Pid, trace_call_push(Func, TS, OldStack));
+        [[{suspend, _} | _] | _] ->
+      	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+                   [Pid, Func, TS, CP, Stack]});
+	[[{garbage_collect, _} | _] | _] ->
+	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+                   [Pid, Func, TS, CP, Stack]});
+        [[{Func0, FirstInTS}]] ->
+            OldStack = [[{CP, FirstInTS}]],
+            put(Pid, trace_call_push(Func, TS, OldStack));
+	[[{CP, _} | _], [{CP, _} | _] | _] ->
+            put(Pid, trace_call_shove(Func, TS, Stack));
+	[[{CP, _} | _] | _] ->
+            ?dbg(0, "Current function becomes new stack top.\n", []),
+            put(Pid, trace_call_push(Func, TS, Stack));
+      	[_, [{CP, _} | _] | _] ->
+            ?dbg(0, "Stack top unchanged, no push.\n", []),
+            put(Pid, trace_call_shove(Func, TS, Stack));
+        [[{Func0, _} | _], [{Func0, _} | _], [{CP, _} | _] | _] ->
+             put(Pid, 
+                 trace_call_shove(Func, TS,
+                                  trace_return_to_1(Pid, Func0, TS,
+                                                    Stack)));
+        [_ | _] ->
+            put(Pid, [[{Func, TS}], [{CP, TS}, dummy]|Stack])
+    end,
     ok.
+
+%% Normal stack push
+trace_call_push(Func, TS, Stack) ->
+    [[{Func, TS}] | Stack].
+ 
+%% Tail recursive stack push
+trace_call_shove(Func, TS, Stack) ->
+    [[_ | NewLevel0] | NewStack1] = 
+	case Stack of
+	    [] ->
+		[[{Func, TS}]];
+	    [Level0 | Stack1] ->
+		[trace_call_collapse([{Func, TS} | Level0]) | Stack1]
+	end,
+    [[{Func, TS} | NewLevel0] | NewStack1].
+ 
+%% Collapse tail recursive call stack cycles to prevent them from
+%% growing to infinite length.
+trace_call_collapse([]) ->
+    [];
+trace_call_collapse([_] = Stack) ->
+    Stack;
+trace_call_collapse([_, _] = Stack) ->
+    Stack;
+trace_call_collapse([_ | Stack1] = Stack) ->
+    ?dbg(0, "collapse_tace_state(~p)~n", [Stack]),
+    Res=trace_call_collapse_1(Stack, Stack1, 1),
+    ?dbg(0, "collapse_tace_state_result:~p~n", [Res]),
+    Res.
         
 
+%% Find some other instance of the current function in the call stack
+%% and try if that instance may be used as stack top instead.
+trace_call_collapse_1(Stack, [], _) ->
+    Stack;
+trace_call_collapse_1([{Func0, _} | _] = Stack, [{Func0, _} | S1] = S, N) ->
+    case trace_call_collapse_2(Stack, S, N) of
+	true ->
+	    S;
+	false ->
+	    trace_call_collapse_1(Stack, S1, N+1)
+    end;
+trace_call_collapse_1(Stack, [_ | S1], N) ->
+    trace_call_collapse_1(Stack, S1, N+1).
+
+%% Check if all caller/called pairs in the perhaps to be collapsed
+%% stack segment (at the front) are present in the rest of the stack, 
+%% and also in the same order.
+trace_call_collapse_2(_, _, 0) ->
+    true;
+trace_call_collapse_2([{Func1, _} | [{Func2, _} | _] = Stack2],
+	   [{Func1, _} | [{Func2, _} | _] = S2],
+	   N) ->
+    trace_call_collapse_2(Stack2, S2, N-1);
+trace_call_collapse_2([{Func1, _} | _], [{Func1, _} | _], _N) ->
+    false;
+trace_call_collapse_2(_Stack, [_], _N) ->
+    false;
+trace_call_collapse_2(Stack, [_ | S], N) ->
+    trace_call_collapse_2(Stack, S, N);
+trace_call_collapse_2(_Stack, [], _N) ->
+    false.
+
+
+trace_return_to(Pid, Caller, TS) ->
+    Stack = get_stack(Pid),
+    ?dbg(0, "trace_return_to(~p, ~p, ~p)~n~p~n", 
+	 [Pid, Caller, TS, Stack]),
+    case Stack of
+	[[{suspend, _} | _] | _] ->
+	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+		  [Pid, Caller, TS, Stack]});
+	[[{garbage_collect, _} | _] | _] ->
+	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+		  [Pid, Caller, TS, Stack]});
+	[_ | _] ->
+            NewStack = trace_return_to_1(Pid, Caller, TS, Stack),
+            put(Pid, NewStack);
+	[] ->
+	    NewStack = trace_return_to_1(Pid, Caller, TS, Stack),
+            put(Pid, NewStack)
+    end.
+   
+trace_return_to_1(_, undefined, _, []) ->
+    [];
+trace_return_to_1(Pid, Func, TS, []) ->
+    [[{Func, TS}]];
+trace_return_to_1(Pid, Func, TS, [[] | Stack1]) ->
+    trace_return_to_1(Pid, Func, TS, Stack1);
+trace_return_to_1(_Pid, Func, TS, [[{Func, _}|Level0]|Stack1] = Stack)->
+    Stack;
+trace_return_to_1(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
+    case Func0 of 
+         {_, _, _} ->
+            ets:insert(funcall_info, #funcall_info{id={Pid, TS1}, func=Func0, end_ts=TS}),
+            {Caller, CallerStartTs}= case Level1 of 
+                                         [{Func1, TS2}|_] ->
+                                             {Func1, TS2};
+                                         _ -> case Stack1 of 
+                                                  [[{Func1, TS2}, dummy]|_] ->
+                                                      {Func1, TS2};
+                                                  [[{Func1, TS2}|_]|_]->
+                                                      {Func1, TS2};
+                                                  [] ->
+                                                      io:format("Info1:\n~p\n", [{Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]}]),
+                                                      {Func, TS1}
+                                              end
+                                     end,
+            %% io:format("Callers:\n~p\n", [{Caller, CallerStartTs}]),
+            %% io:format("Info1:\n~p\n", [{Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]}]),
+            update_fun_info(Pid, {Func0, TS1, TS}, {Caller, CallerStartTs});
+        _ -> ok  %% garbage collect or suspend.
+    end,
+    if Level1 ==[dummy] ->
+            trace_return_to_1(Pid, Func, TS, Stack1);
+       true ->
+             trace_return_to_1(Pid, Func, TS, [Level1|Stack1])
+    end.
+
+update_fun_info(Pid, {Callee,StartTS, EndTs}, {Caller, CallerStartTs}) ->
+    case ets:lookup(fun_info, {Pid, Callee}) of
+        [] ->
+            ets:insert(fun_info,
+                       #fun_info{id={Pid, Callee},
+                                 callers=[{Caller, 1}],
+                                 start_ts = StartTS,
+                                 end_ts = EndTs});
+        [F=#fun_info{callers=Callers}] ->
+            ets:insert(fun_info,
+                       F#fun_info{callers=update_counter(Callers,Caller),
+                                  end_ts = EndTs})
+    end,
+    case ets:lookup(fun_info, {Pid, Caller}) of
+        [] ->
+            ets:insert(fun_info,
+                       #fun_info{id={Pid, Caller},
+                                 called=[{Callee, 1}],
+                                 start_ts=CallerStartTs});
+        [F1=#fun_info{called=Called, start_ts=undefined}] ->
+            ets:insert(fun_info,
+                       F1#fun_info{called=update_counter(Called,Callee),
+                                   start_ts=CallerStartTs});
+        [F1=#fun_info{called=Called}] ->
+            ets:insert(fun_info,
+                       F1#fun_info{called=update_counter(Called,Callee)})
+    end.
+
+update_counter(FunCounterList, Func) ->
+    case lists:keyfind(Func, 1, FunCounterList) of
+        {Func, Count} ->
+            lists:keyreplace(Func, 1, FunCounterList, {Func, Count+1});
+        _ ->
+            FunCounterList++[{Func, 1}]
+    end.
+
+get_stack(Id) ->
+    case get(Id) of
+	undefined ->
+	    [];
+	Stack ->
+	    Stack
+    end.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                            %%
+%%  Generate function call tree from the trace.               %%
+%%                                                            %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+gen_call_tree() ->
+    List = ets:tab2list(fun_info),
+    gen_call_tree_1(List).
+
+gen_call_tree_1([]) ->
+    [];
+gen_call_tree_1([F|Tail]) ->
+    {Pid,_} = F#fun_info.id,
+    {Fs, NewTail} = lists:splitwith(fun(E)->
+                                            element(1,E#fun_info.id)==Pid
+                                    end, Tail),
+    CallTree=[case Entry#fun_info.id of 
+                  {_, undefined} ->
+                      case Children of 
+                          [_] -> hd(Children);
+                          _ -> T
+                      end;
+                  _ ->T
+              end||T={Entry, Children}<-gen_call_tree_2([F|Fs])]
+        ++gen_call_tree_1(NewTail),    
+    lists:sort(fun({T1,_}, {T2, _}) ->
+                       T1#fun_info.start_ts=< T2#fun_info.start_ts
+               end, CallTree).
+
+gen_call_tree_2(Fs) ->
+    case  [F||F<-Fs,F#fun_info.callers==[]] of 
+        [Entry] ->
+            gen_call_tree_3([Entry], Fs--[Entry], []);
+        Others ->
+            []
+    end.
+
+gen_call_tree_3([], _, Out)->
+    lists:reverse(Out);
+gen_call_tree_3([CurFun|Fs], Others, Out)->
+    {Callees,_} = lists:unzip(CurFun#fun_info.called),
+    {CalleeFuns,Funs1} = lists:partition(
+                           fun(E)->
+                                   FunName=element(2, E#fun_info.id),
+                                   lists:member(FunName, Callees)
+                           end, Others),
+    NewCallees=gen_call_tree_3(CalleeFuns, Funs1, []),
+    gen_call_tree_3(Fs, Others, [{CurFun, NewCallees}|Out]).
+ 
+
+
+
+%% fprof:apply(refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]). 
 %% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
 
 %% percept_profile:start({file, "sim_code_v0.dat"}, {refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
@@ -984,3 +1252,8 @@ update_information_return_from(_Pid, _MFA, _Ts) ->
 
 
 %% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/percept/test"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/percept/test"], 8]}, [])  
+
+%%percept_profile:start({file, "sim_code_v0.dat"}, {refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo/c.erl"], 5, 40, 2, 4, 0.8, [], 8]}, [refac_sim_code_par_v0],[])
+
+
+%% percept_profile:start({file, "foo3.dat"}, {foo,a1, [1]}, [foo], []).

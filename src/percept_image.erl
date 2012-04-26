@@ -17,12 +17,13 @@
 %% %CopyrightEnd%
 
 -module(percept_image).
--export([	proc_lifetime/5,
-		percentage/3,
-		graph/3, 
-		graph/4, 
-		activities/3, 
-		activities/4]).
+-export([proc_lifetime/5,
+         percentage/3,
+         query_fun_time/4,
+         graph/3, 
+         graph/4, 
+         activities/3, 
+         activities/4]).
 -record(graph_area, {x = 0, y = 0, width, height}).
 -compile(inline).
 
@@ -314,3 +315,51 @@ load_font() ->
     
 text(Image, {X,Y}, Font, Text, Color) ->
     egd:text(Image, {X,Y-2}, Font, Text, Color).
+
+
+query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
+    Im = egd:create(round(Width), round(Height)),
+    Black = egd:color(Im, {0, 0, 0}),
+    Green = egd:color(Im, {0, 255, 0}),
+    SeaGreen = egd:color(Im, {195, 253, 184}),
+    Grey = egd:color(Im, {128, 128, 128}),
+    % Ratio and coordinates
+    Start = lists:min([QueryStart, FunStart]),
+    End = lists:max([QueryEnd,FunEnd]),
+    TimePeriod= End-Start,
+    DX = (Width-1)/TimePeriod,
+    X1 = round(DX*(QueryStart-Start)),
+    X2 = round(DX*(QueryEnd-Start)),
+    X3 = round(DX*(FunStart-Start)),
+    X4 = round(DX*(FunEnd-Start)),
+    egd:rectangle(Im, {0,0}, {Width-1, Height-1}, Black),
+     if QueryStart > FunStart andalso QueryEnd < FunEnd -> 
+            egd:filledRectangle(Im, {X1, 0}, {X2, Height- 1}, Green),
+            if X2>X1+1 ->
+                    egd:rectangle(Im, {X1, 0}, {X2, Height - 1}, Black);
+               true ->
+                    ok 
+            end;
+       QueryStart =< FunStart andalso QueryEnd >= FunEnd ->
+            egd:filledRectangle(Im, {0, 0}, {X2, Height - 1}, Green),
+            egd:filledRectangle(Im, {X3, 0}, {X4, Height - 1}, Grey),
+            egd:rectangle(Im, {X3, 0}, {X4, Height-1}, Black);
+       QueryStart =<FunStart andalso QueryEnd <FunEnd ->
+            egd:filledRectangle(Im, {0, 0}, {X3, Height - 1}, Green),
+            egd:filledRectangle(Im, {X3, 0}, {X2, Height - 1}, SeaGreen),
+            egd:filledRectangle(Im, {X2, 0}, {X4, Height - 1}, Grey),
+            egd:rectangle(Im, {0, 0}, {X2, Height-1}, Black),
+            egd:rectangle(Im, {X3, 0}, {X4, Height-1}, Black);
+       QueryStart >FunStart andalso QueryEnd >= FunEnd ->
+            egd:filledRectangle(Im, {0, 0}, {X1, Height - 1}, Grey),
+            egd:filledRectangle(Im, {X1, 0}, {X4, Height - 1}, SeaGreen),
+            egd:filledRectangle(Im, {X4, 0}, {X2, Height - 1}, Green),
+            egd:rectangle(Im, {0, 0}, {X4, Height-1}, Black),
+            egd:rectangle(Im, {X1, 0}, {X2, Height-1}, Black);
+       true ->
+            io:format("Unhanled case in percept_image:query_fun_time.\n")
+                
+    end,
+    Binary = egd:render(Im, png),
+    egd:destroy(Im),
+    Binary.

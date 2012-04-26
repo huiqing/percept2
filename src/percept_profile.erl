@@ -26,10 +26,9 @@
 
 -module(percept_profile).
 -export([
-	start/1, 
-	start/2, 
-	start/3,
-	stop/0
+         start/2, 
+         start/4,
+         stop/0
 	]).
 
 -include("percept.hrl").
@@ -53,18 +52,10 @@
 %%
 %%==========================================================================
 
--spec start(Type :: {file, file:filename()}|{ip,port_number()}) ->
+-spec start(Type :: {file, file:filename()}|{ip, node(),port_number()}, Options::[percept_option()]) ->
             {'ok', port()} | {'already_started', port()}.
-
-start(Type) ->
-    start_profile(Type, [procs]).
-
--spec start(Type :: {file, file:filename()}|{ip,port_number()},
-	    Options :: [percept_option()]) ->
-	{'ok', port()} | {'already_started', port()}.
-
 start(Type, Options) ->
-    start_profile(Type, Options). 
+    start_profile(Type,Options). 
 
 %% @spec start(string(), MFA::mfa(), [percept_option()]) -> ok | {already_started, Port} | {error, not_started}
 %%	Port = port()
@@ -75,20 +66,23 @@ start(Type, Options) ->
 
 -spec start(Type :: {file, file:filename()}|{ip, port_number()},
 	    Entry :: {atom(), atom(), list()},
-	    Options :: [percept_option()]) ->
+            Mods ::[atom()],
+            Options :: [percept_option()]) ->
 	'ok' | {'already_started', port()} | {'error', 'not_started'}.
 
-start(Type, {Module, Function, Args}, Options) ->
+start(Type, {Module, Function, Args}, Mods, Options) ->
     case whereis(percept_port) of
 	undefined ->
-	    start_profile(Type, Options),
-            erlang:trace_pattern({Module, '_', '_'}, 
-                                 [{'_',[],[{return_trace}]}],[global]),
-	    erlang:apply(Module, Function, Args),
-	    stop();
+	    start_profile(Type,Options),
+            MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
+            [erlang:trace_pattern({M, '_', '_'},  MatchSpec, [local])||M<-Mods],
+            Res=erlang:apply(Module, Function, Args),
+            io:format("Res:\n~p\n", [Res]),
+            stop();
 	Port ->
 	    {already_started, Port}
     end.
+
 
 deliver_all_trace() -> 
     Tracee = self(),
@@ -97,7 +91,7 @@ deliver_all_trace() ->
     	Ref = erlang:trace_delivered(Tracee),
 	receive {trace_delivered, Tracee, Ref} -> Tracee ! {self(), ok} end
     end),
-    erlang:trace(Tracee, true, [procs, {tracer, Tracer}]),
+    %%erlang:trace(Tracee, true, [procs, {tracer, Tracer}]),
     Tracer ! {Tracee, start},
     receive {Tracer, ok} -> ok end,
     erlang:trace(Tracee, false, [procs]),
@@ -111,7 +105,8 @@ deliver_all_trace() ->
 stop() ->
     erlang:system_profile(undefined, [runnable_ports, runnable_procs]),
     erlang:trace(all, false, [procs, ports, timestamp]),
-  %%  deliver_all_trace(),  %%Need to put this back!
+    erlang:trace_pattern({'_', '_', '_'}, false, [local]),
+    deliver_all_trace(),  %%Need to put this back!
     case whereis(percept_port) of
     	undefined -> 
 	    {error, not_started};
@@ -129,7 +124,10 @@ stop() ->
 %%
 %%==========================================================================
 
-start_profile(Type, Opts) ->
+start_profile(Opts) ->
+    start_profile({ip, 'hl2@hl-lt', 4711}, Opts).
+
+start_profile(Type,Opts) ->
     case whereis(percept_port) of 
 	undefined ->
 	    io:format("Starting profiling.~n", []),
@@ -138,9 +136,9 @@ start_profile(Type, Opts) ->
                        {file, FileName} -> 
                            P=(dbg:trace_port(file, FileName))(),
                            P;
-                       {ip, Number}->
+                       {ip, Node, Number}->
                            P=(dbg:trace_port(ip, {Number, 50000}))(),
-                           {trace_client, 'hl2@hl-lt'} ! {self(), {start_profile, Number}},
+                           {trace_client, Node} ! {self(), {start_profile, Number}},
                            receive 
                                {trace_client, started} -> 
                                    ok
@@ -164,7 +162,8 @@ start_profile(Type, Opts) ->
 set_tracer(Port, Opts) ->
     {TOpts, POpts} = parse_profile_options(Opts),
     %% DO not change 'all' to 'new' here!!!
-    erlang:trace(all, true, [procs, {tracer, Port},  send, 'receive', call,
+    erlang:trace(all, true, [procs, {tracer, Port}, call, return_to, arity, 
+                             garbage_collection,set_on_spawn, %% send, 'receive'
                               timestamp,running, scheduler_id| TOpts]),
     erlang:system_profile(Port, [runnable_ports, runnable_procs,scheduler|POpts]).
 

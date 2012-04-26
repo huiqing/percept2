@@ -261,6 +261,7 @@ trace_parser(end_of_trace, {Count, Pid}) ->
 	    ok
     end;
 trace_parser(Trace, {Count, Pid}) ->
+    %%io:format("Trace:\n~p\n", [Trace]),
     percept_db:insert(Trace),
     {Count + 1,  Pid}.
 

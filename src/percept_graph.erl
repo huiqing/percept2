@@ -23,6 +23,8 @@
 -module(percept_graph).
 -export([proc_lifetime/3, graph/3, scheduler_graph/3, activity/3, percentage/3]).
 
+-export([query_fun_time/3]).
+
 -include("percept.hrl").
 -include_lib("kernel/include/file.hrl").
 
@@ -49,6 +51,10 @@ proc_lifetime(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(proc_lifetime(Env, Input))).
 
+query_fun_time(SessionID, Env, Input) ->
+    mod_esi:deliver(SessionID, header()),
+    mod_esi:deliver(SessionID, binary_to_list(query_fun_time(Env, Input))).
+   
 percentage(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(percentage(Env,Input))).
@@ -84,7 +90,6 @@ graph(_Env, Input) ->
     percept_image:graph(Width, Height,Counts).
 
 scheduler_graph(_Env, Input) -> 
-    io:format("Input:\n~p\n", [Input]),
     Query    = httpd:parse_query(Input),
     RangeMin = percept_html:get_option_value("range_min", Query),
     RangeMax = percept_html:get_option_value("range_max", Query),
@@ -124,9 +129,23 @@ proc_lifetime(_Env, Input) ->
     Height = percept_html:get_option_value("height", Query),
     percept_image:proc_lifetime(round(Width), round(Height), float(Start), float(End), float(ProfileTime)).
 
+
+query_fun_time(_Env, Input) ->
+    Query = httpd:parse_query(Input),
+    QueryStart = percept_html:get_option_value("query_start", Query),
+    FunStart = percept_html:get_option_value("fun_start", Query),
+    QueryEnd = percept_html:get_option_value("query_end", Query),
+    FunEnd = percept_html:get_option_value("fun_end", Query),
+    Width = percept_html:get_option_value("width", Query),
+    Height = percept_html:get_option_value("height", Query),
+    percept_image:query_fun_time(
+       round(Width), round(Height), {float(QueryStart),float(FunStart)},
+       {float(QueryEnd), float(FunEnd)}).
+    
+
 percentage(_Env, Input) ->
     Query = httpd:parse_query(Input),
-    Width = percept_html:get_option_value("width", Query),
+    Width = percept_html:get_optionvalue("width", Query),
     Height = percept_html:get_option_value("height", Query),
     Percentage = percept_html:get_option_value("percentage", Query),
     percept_image:percentage(round(Width), round(Height), float(Percentage)).
