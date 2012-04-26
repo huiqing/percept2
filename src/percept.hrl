@@ -54,7 +54,28 @@
         msgs_sent     ={0, 0, 0, 0} %::{integer(), integer(), integer(), integer()}
 	}).
  
+-record(funcall_info, {
+          id,   %%{pid, start_ts}
+          func,
+          end_ts}).
+                 
 -record(fun_info, {
-          mfa::mfa(),
-          start_ended=[], %::[{timestamp(), timestamp()}],
-          started=[]}).   %::[{pid(), timestamp()}]}).
+          id,  %%{pid, func}. 
+          callers = [],
+          called =[],
+          start_ts = undefined,
+          end_ts = undefined
+         }).
+
+-define(debug, 9).
+%%-define(debug, 0).
+-ifdef(debug).
+dbg(Level, F, A) when Level >= ?debug ->
+    io:format(F, A),
+    ok;
+dbg(_, _, _) ->
+    ok.
+-define(dbg(Level, F, A), dbg((Level), (F), (A))).
+-else.
+-define(dbg(Level, F, A), ok).
+-endif.
