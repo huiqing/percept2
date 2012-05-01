@@ -8,30 +8,18 @@
 -export([create_file_slow/2]).
 
 a1(X) -> 
-   spawn(fun()->b() end).
+   spawn(fun()->b(X) end).
 
-%% a1(X) -> 
-%%   b().
+b(X) ->
+    [foo(lists:seq(1,10))|| Y<-lists:seq(1, X)].
+   
 
+c(Y) ->
+    [X+1||X<-lists:seq(1, Y)].
+ 
 
-foo() ->
-     if true  ->
-             1;
-        true, 1>0 -> 9
-     end.
-
-b() ->
-    c(),
-    d(),
-    d().
-c() -> ok.
-d() ->
-    e(),
-    c().   
-e() ->
-    f(). 
-f() -> ok.
-
+e(Z) ->
+     ok.
 
 test() ->
     spawn(foo, create_file_slow, [junk, 260]).
@@ -54,3 +42,24 @@ create_file_slow(FD, M, M) ->
 create_file_slow(FD, M, N) ->
     ok = file:write(FD, <<M:32/unsigned>>),
     create_file_slow(FD, M+1, N).
+
+
+fac(0)->1;
+fac(N)-> N * fac(N-1). 
+
+
+fib(0) -> 0;
+fib(1) -> 1; 
+fib(N) -> fib(N-1) ++ fib(N-1).
+
+
+foo(Fs) ->
+    foo(Fs, []).
+foo([], Out) ->
+    lists:reverse(Out);
+foo([F|Fs], Out) ->
+    NewF = bar(F),
+    foo(Fs, [NewF|Out]) ++ [].
+
+bar(X) ->
+    X+2.

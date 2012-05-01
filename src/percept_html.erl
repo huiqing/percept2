@@ -68,16 +68,15 @@ processes_page(SessionID, _Env, Input) ->
 
 functions_page(SessionID, Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
-    Query   = httpd:parse_query(Input),
-    Min     = get_option_value("range_min", Query),
-    Max     = get_option_value("range_max", Query),
-    StartTs = percept_db:select({system, start_ts}),
-    TsMin   = percept_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept_analyzer:seconds2ts(Max, StartTs),
-    FunCallTree = percept_db:gen_call_tree(),
-    mod_esi:deliver(SessionID, header(mk_fun_display_style(FunCallTree))),
+    %% Query   = httpd:parse_query(Input),
+    %% Min     = get_option_value("range_min", Query),
+    %% Max     = get_option_value("range_max", Query),
+    %% StartTs = percept_db:select({system, start_ts}),
+    %% TsMin   = percept_analyzer:seconds2ts(Min, StartTs),
+    %% TsMax   = percept_analyzer:seconds2ts(Max, StartTs),
+    mod_esi:deliver(SessionID, header(mk_fun_display_style(ets:tab2list(fun_info)))),
     mod_esi:deliver(SessionID, menu(Input)), 
-    mod_esi:deliver(SessionID, functions_content(Env,{TsMin, TsMax})),
+    mod_esi:deliver(SessionID, functions_content(Env,{0, 0})),
     mod_esi:deliver(SessionID, footer()).
 
 concurrency_page(SessionID, Env, Input) ->
@@ -308,7 +307,7 @@ function_info_content(_Env, Input) ->
     io:format("F:\n~p\n", [F]),
     CallersTable = html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                   [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
-                                      {C, Count}<-F#fun_info.callers]),
+                                      {C, Count}<-F#fun_info.called]), %%callers
     CalledTable= html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                   [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
                                       {C, Count}<-F#fun_info.called]),
@@ -317,7 +316,7 @@ function_info_content(_Env, Input) ->
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
                             [{th, "M:F/A"},       mfa2html_with_link({Pid, MFA})],
                             [{th, "Call count"},  term2html(lists:sum([element(2, Caller)||
-                                                                          Caller<-F#fun_info.callers]))],
+                                                                          Caller<-F#fun_info.called]))], %%callers
                             [{th, "Callers"},     CallersTable], 
                             [{th, "Called"},      CalledTable]
                            ]),
@@ -511,7 +510,7 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
       end, [], ProcessTree).
 
 functions_content(_Env, _Input) ->
-    FunCallTree= percept_db:gen_call_tree(),
+    FunCallTree= ets:tab2list(fun_info),
     FunsHtml=mk_funs_html(FunCallTree),
     Table=if length(FunsHtml) >0 ->
                   "<table border=1 cellspacing=10 cellpadding=2>
@@ -530,19 +529,13 @@ functions_content(_Env, _Input) ->
         Table ++ 
         "</div>".
 
-mk_funs_html(FunCallTree) ->
-    mk_funs_html_1(undefined, FunCallTree).
-
-mk_funs_html_1(Parent, Children) ->
+mk_funs_html(Children) ->
     lists:foldl(
-      fun({F, FChildren}, Out) ->
-              Id={Pid, _MFA} = F#fun_info.id,
-              case lists:keyfind(Parent, 1, F#fun_info.callers) of 
-                  {Parent, CNT} -> CNT;
-                  false ->
-                      CNT = 1,
-                      CNT
-              end,
+      fun(F, Out) ->
+              Id={Pid, _MFA, _Caller} = F#fun_info.id,
+              FChildren = lists:reverse(F#fun_info.called),
+              %% io:format("FChildren:\n~p\n",[FChildren]),
+              CNT = F#fun_info.cnt,
               Prepare = 
                   table_line([pid2value(Pid),
                               fun_expand_or_collapse(FChildren, Id),
@@ -554,17 +547,18 @@ mk_funs_html_1(Parent, Children) ->
 
 fun_sub_table(_Id, []) ->
     "";
-fun_sub_table(Id={_Pid, Func},Children) ->
-    SubHtml = mk_funs_html_1(Func, Children),
+fun_sub_table(Id={_Pid, _Fun, _Caller},Children) ->
+    SubHtml = mk_funs_html(Children),
     "<tr><td colspan=\"10\"> <table cellspacing=10  cellpadding=2 border=1 "
         "id=\""++mk_fun_table_id(Id)++"\", style=\"margin-left:60px;\">" ++
         SubHtml ++ "</table></td></tr>".
      %% "<tr><td colspan=\"10\"> <table width=450 cellspacing=10 "
      
-id_to_list({Pid, undefined}) ->pid_to_list(Pid)++"undefined";
-id_to_list({Pid, {M,F,A}}) ->
-    pid_to_list(Pid)++atom_to_list(M)++atom_to_list(F)++integer_to_list(A).
+id_to_list({Pid, Func, Caller}) ->pid_to_list(Pid)++mfa_to_list(Func) ++ mfa_to_list(Caller).
 
+mfa_to_list({M, F, A}) when is_atom(M) andalso is_atom(F)->
+    atom_to_list(M)++atom_to_list(F)++integer_to_list(A);
+mfa_to_list(_) -> "undefined".
 
 mk_fun_table_id(Id) ->
     "t"++[C||C<-id_to_list(Id), 
@@ -631,14 +625,14 @@ parent_funs(FunCallTree) ->
 parent_funs([], Out) ->
     Out;
 parent_funs([F|Fs], Out) ->
-    case F of 
-        {_, []} ->
-            parent_funs(Fs, Out);
-        {Fun, Children} ->
+    Id=F#fun_info.id,
+    case F#fun_info.called of 
+        [] -> parent_funs(Fs, Out);
+        Children ->
             if Out==[] ->
-                    parent_funs(Children++Fs, Out++"#"++mk_fun_table_id(Fun#fun_info.id));
+                    parent_funs(Children++Fs, Out++"#"++mk_fun_table_id(Id));
                true ->
-                    parent_funs(Children++Fs, Out++",#"++mk_fun_table_id(Fun#fun_info.id))
+                    parent_funs(Children++Fs, Out++",#"++mk_fun_table_id(Id))
             end
     end.
 
@@ -853,13 +847,13 @@ mfa2html(_) ->
     "undefined".
 
 
--spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
+%% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
 
-mfa2html_with_link({Pid, {Module, Function, Arguments}}) when is_list(Arguments) ->
+mfa2html_with_link({Pid, {Module, Function, Arguments},_}) when is_list(Arguments) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, length(Arguments)])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, length(Arguments)])),
     "<a href=\"/cgi-bin/percept_html/function_info_page?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++MFAString++"</a>";    
-mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_integer(Arity) ->
+mfa2html_with_link({Pid, {Module, Function, Arity}, _}) when is_integer(Arity) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
     "<a href=\"/cgi-bin/percept_html/function_info_page?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++MFAString++"</a>"; 
