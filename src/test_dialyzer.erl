@@ -11,7 +11,7 @@ test() ->
  %% dilyzer_callgraph,
  %%                           dialyzer_dataflow, dialyzer_typesig,
  %%                           dialyzer_analysis_callgraph],[]).
-
+ 
 test(Dir) -> 
     {ok, Files} = list_dir(Dir, ".erl",false),
     try dialyzer:run([{files, Files},{from, src_code},

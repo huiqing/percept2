@@ -76,8 +76,8 @@ start(Type, {Module, Function, Args}, Mods, Options) ->
 	    start_profile(Type,Options),
             MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
             [erlang:trace_pattern({M, '_', '_'}, MatchSpec, [local])||M<-Mods],
-            erlang:trace_pattern({lists, foreach, 2}, MatchSpec),
-            erlang:trace_pattern({timer, tc, 3}, MatchSpec),
+            %% erlang:trace_pattern({lists, foreach, 2}, MatchSpec),
+            %% erlang:trace_pattern({timer, tc, 3}, MatchSpec),
             Res=erlang:apply(Module, Function, Args),
             io:format("Res:\n~p\n", [Res]),
             stop();
