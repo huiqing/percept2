@@ -20,8 +20,7 @@
 %% @doc Percept database.
 %%	
 %% 
-
--module(percept_db).
+-module(percept2_db).
 
 -export([
 	start/0,
@@ -32,13 +31,15 @@
 	consolidate/0
 	]).
 
--export([gen_process_tree/0]).
-        
--compile(export_all).
-
--include("percept.hrl").
+-export([gen_process_tree/0,
+         gen_fun_info/0,
+         gen_callgraph_img/1]).
+         
+-include("../include/percept2.hrl").
 
 -define(STOP_TIMEOUT, 1000).
+
+-compile(export_all).
 
 %%==========================================================================
 %%
@@ -64,9 +65,6 @@
 
 %% @type information_option() =
 %%	all | procs | ports | pid() | port()
-
-
-
 
 %%==========================================================================
 %%
@@ -215,8 +213,10 @@ init_percept_db() ->
     %functions
     ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, ordered_set]),
 
-    ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, ordered_set]),
-  
+    ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, ordered_set]),
+    
+    ets:new(fun_info, [named_table, public, {keypos, #fun_calltree.id}, ordered_set]),
+    
     put(debug, 0),
     loop_percept_db().
 
@@ -261,7 +261,7 @@ clean_trace_1(Trace) when is_pid(Trace) ->
 clean_trace_1(Trace) -> Trace.
 
 insert_trace(Trace) ->
-    case Trace of
+     case Trace of
 	{profile_start, Ts} ->
 	    update_system_start_ts(Ts),
 	    ok;
@@ -325,7 +325,7 @@ insert_trace(Trace) ->
             update_information(
               #information{id = Pid, start = TS, 
                            parent = Parent, entry = InformativeMfa}),
-	    update_information_child(Parent, Pid),
+            update_information_child(Parent, Pid),
 	    ok;
 	{trace_ts, Pid, exit, _Reason, TS} ->
             update_information(#information{id = Pid, stop = TS}),
@@ -349,9 +349,17 @@ insert_trace(Trace) ->
 	{trace_ts, Pid, unlink, _Id, _Ts} when is_pid(Pid) ->
 	    % Update id_information
 	    ok;
-        {trace_ts, Pid, in, Rq,  _MFA, _Ts} when is_pid(Pid) ->
-           update_information_rq(Pid, Rq);
-        {trace_ts, Pid, out, _Rq,  _MFA, _Ts} when is_pid(Pid) ->
+        {trace_ts, Pid, in, Rq,  _MFA, Ts} when is_pid(Pid) ->
+            %% erlang:put(Pid, Ts),
+            update_information_rq(Pid, Rq);
+        {trace_ts, Pid, out, _Rq,  _MFA, Ts} when is_pid(Pid) ->
+            %% case erlang:get(Pid) of 
+            %%     undefined -> io:format("No In time\n");
+            %%     InTime ->
+            %%         Elapsed = elapsed(InTime, Ts),
+            %%         erlang:erase(Pid),
+            %%         ets:update_counter(pdb_info, Pid, {13, Elapsed})
+            %% end;
             ok;
         {trace_ts, Pid, 'receive', MsgSize, _Ts} when is_pid(Pid)->
             update_information_received(Pid, erlang:external_size(MsgSize));
@@ -372,20 +380,16 @@ insert_trace(Trace) ->
 	    ok;
 
          %%function call/returns.
+         %%% ----------------------------
         {trace_ts, Pid, call, MFA,{cp, CP}, TS} ->
-           %% io:format("Trace:\n~p\n", [Trace]),
             Func = mfarity(MFA),
             trace_call(Pid, Func, TS, CP);
-        {trace_ts, Pid, return_to, undefined, TS}->
-           %% io:format("Trace:\n~p\n", [Trace]),
-            trace_return_to(Pid, undefined, TS);
         {trace_ts, Pid, return_to, MFA, TS} ->
-           %% io:format("Trace:\n~p\n", [Trace]),
             Func = mfarity(MFA),
             trace_return_to(Pid, Func, TS);
         _Unhandled ->
-           %% io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
-          ok
+            %% io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
+            ok
     end.
 
 mfa2informative({erlang, apply, [M, F, Args]})  -> mfa2informative({M, F,Args});
@@ -410,7 +414,6 @@ mfa2informative(Mfa) -> Mfa.
 %% Purpose:
 %%	Check start/stop time
 %%	Activity consistency
-
 consolidate_db() ->
     io:format("Consolidating...~n"),
     % Check start/stop timestamps
@@ -486,21 +489,19 @@ get_runnable_count(Type, State) ->
 check_activity_consistency(Id, State) ->
     case get({previous_state, Id}) of
 	State ->
-          %%  io:format("check_activity_consistency, state flow invalid.~n"),
-	    invalid_state;
+      	    invalid_state;
 	undefined when State == inactive -> 
 	    invalid_state;
 	_ ->
 	    put({previous_state, Id}, State),
 	    ok
     end.
+
 %%%
 %%% select_query
 %%% In:
 %%%	Query = {Table, Option}
 %%%	Table = system | activity | scheduler | information
-
-
 select_query(Query) ->
     case Query of
 	{system, _ } -> 
@@ -532,7 +533,7 @@ select_query_information(Query) ->
 		}]);
 	{information, procs} ->
 	    ets:select(pdb_info, [{
-		#information{ id = '$1', _ = '_'},
+		#information{id = '$1', _ = '_'},
 		[{is_pid, '$1'}],
 		['$_']
 		}]);
@@ -575,7 +576,6 @@ select_query_scheduler(Query) ->
 
 
 %%% select_query_system
-
 select_query_system(Query) ->
     case Query of
     	{system, start_ts} ->
@@ -688,15 +688,19 @@ select_query_code(Query) ->
                
       
 select_query_funs(Query) ->
+    case ets:info(fun_info, size) of 
+        0 -> gen_fun_info();
+        _ -> ok
+    end,
     case Query of 
         {funs, Options} when Options==[] ->
             Head = #fun_info{
-              id={'$1', '$2', '$3'}, 
+              id={'$1', '$2'}, 
               _='_'},
             Body =  ['$_'],
             Constraints = [],
             ets:select(fun_info, [{Head, Constraints, Body}]);
-        {funs, Id={_Pid, _MFA, _StartTs}} ->
+        {funs, Id={_Pid, _MFA}} ->
             Head = #fun_info{
               id=Id, 
               _='_'},
@@ -789,7 +793,6 @@ update_information(#information{id = Id} = NewInfo) ->
 	[Info] ->
 	    % Remake NewInfo and Info to lists then substitute
 	    % old values for new values that are not undefined or empty lists.
-	    
 	    {_, Result} = lists:foldl(
 	    	fun (InfoElem, {[NewInfoElem | Tail], Out}) ->
 		    case NewInfoElem of
@@ -801,6 +804,8 @@ update_information(#information{id = Id} = NewInfo) ->
                              {Tail, [InfoElem | Out]};
                         {0,0} ->
                             {Tail, [InfoElem | Out]};
+                        0 ->
+                            {Tail, [InfoElem|Out]};
                         _ ->
 			    {Tail, [NewInfoElem | Out]}
 		    end
@@ -886,7 +891,7 @@ update_information_received(Pid, MsgSize) ->
                                {11, {No+1, Size+MsgSize}})
     end.
     
-            
+          
 
 %%%
 %%% update_activity
@@ -930,7 +935,7 @@ update_system_stop_ts(TS) ->
     end.
 	  
 gen_process_tree() ->
-    List = lists:keysort(2, ets:tab2list(pdb_info)),
+    List = lists:keysort(2,select_query({information, procs})),
     gen_process_tree(List, []).
 
 gen_process_tree([], Out) ->
@@ -1001,23 +1006,15 @@ trace_call_1(Pid, Func, TS, CP, Stack) ->
 		   true ->
 			[[{CP, TS}]]
 		end,
-	  %%  OldStack = [[{CP, TS}]],
-	    put(Pid, trace_call_push(Func, TS, OldStack));
+            put(Pid, trace_call_push(Func, TS, OldStack));
         [[{suspend, _} | _] | _] ->
       	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
 	[[{garbage_collect, _} | _] | _] ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
-        [[{Func, FirstInTS}]] ->
-            %% OldStack = 
-	    %%     if CP =:= undefined ->
-	    %%     	[];
-	    %%        true ->
-	    %%     	[[{CP, FirstInTS}]]
-	    %%     end,
-          %%  OldStack = [[{CP, FirstInTS}]],
-            put(Pid, Stack); %%trace_call_push(Func, FirstInTS, OldStack));
+        [[{Func, _FirstInTS}]] ->
+            put(Pid, Stack);
        	[[{CP, _} | _], [{CP, _} | _] | _] ->
             put(Pid, trace_call_shove(Pid,Func, TS, Stack));
         [[{CP, _} | _] | _] when Func==CP ->
@@ -1044,22 +1041,20 @@ trace_call_push(Func, TS, Stack) ->
     [[{Func, TS}] | Stack].
  
 %% Tail recursive stack push
-trace_call_shove(Pid, Func, TS, Stack) ->
-    case Stack of 
-        [] ->
-            [[{Func, TS}]];
-        [Level0|Stack1] ->
-            [[{Func1,TS1}| NewLevel0] | NewStack1] = 
-                [trace_call_collapse([{Func, TS} | Level0]) | Stack1],
-            case Level0 -- [{Func1,TS1}| NewLevel0] of 
-                [] -> ok;
-                Funs ->
-                    {Caller1, Caller1StartTs}= hd(NewLevel0),
-                    [update_fun_info(Pid, {Func2, TS2, TS}, {Caller1, Caller1StartTs})||
-                        {Func2, TS2}<-Funs]
-            end,
-            [[{Func, TS1} | NewLevel0] | NewStack1]
-    end.
+trace_call_shove(_Pid, Func, TS, []) ->
+    [[{Func, TS}]];
+trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
+    [[{Func1,TS1}| NewLevel0] | NewStack1] = 
+        [trace_call_collapse([{Func, TS} | Level0]) | Stack1],
+    case Level0 -- [{Func1,TS1}| NewLevel0] of 
+        [] -> ok;
+        Funs ->
+            {Caller1, Caller1StartTs}= hd(NewLevel0),
+            [update_fun_info(Pid, {Func2, TS2, TS}, {Caller1, Caller1StartTs})||
+                {Func2, TS2}<-Funs]
+    end,
+    [[{Func, TS1} | NewLevel0] | NewStack1].
+    
  
 %% Collapse tail recursive call stack cycles to prevent them from
 %% growing to infinite length.
@@ -1070,11 +1065,9 @@ trace_call_collapse([_] = Stack) ->
 trace_call_collapse([_, _] = Stack) ->
      Stack;
 trace_call_collapse([_ | Stack1] = Stack) ->
-  %%  ?dbg(0, "collapse_trace_state(~p)~n", [Stack]),
+    ?dbg(0, "collapse_trace_state(~p)~n", [Stack]),
     trace_call_collapse_1(Stack, Stack1, 1).
-    %% ?dbg(0, "collapse_trace_state_result:~p~n", [Res]),
-    %% Res.
-        
+
 
 %% Find some other instance of the current function in the call stack
 %% and try if that instance may be used as stack top instead.
@@ -1152,13 +1145,13 @@ trace_return_to_0(Pid, Caller, TS, Stack)->
 
 trace_return_to_1(_, undefined, _, []) ->
     [];
-trace_return_to_1(Pid, Func, TS, []) ->
+trace_return_to_1(_Pid, Func, TS, []) ->
     [[{Func, TS}]];
 trace_return_to_1(Pid, Func, TS, [[] | Stack1]) ->
     trace_return_to_1(Pid, Func, TS, Stack1);
-trace_return_to_1(_Pid, Func, TS, [[{Func, _}|Level0]|Stack1] = Stack)->
+trace_return_to_1(_Pid, Func, _TS, [[{Func, _}|_Level0]|_Stack1] = Stack)->
     Stack;
-trace_return_to_1(Pid, Func, TS, Stack=[[{Func0, TS1} | Level1] | Stack1]) ->
+trace_return_to_1(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
     case Func0 of 
          {_, _, _} ->
             ets:insert(funcall_info, #funcall_info{id={Pid, TS1}, func=Func0, end_ts=TS}),
@@ -1182,211 +1175,122 @@ trace_return_to_1(Pid, Func, TS, Stack=[[{Func0, TS1} | Level1] | Stack1]) ->
        true ->
             trace_return_to_1(Pid, Func, TS, [Level1|Stack1])
     end.
-
-update_fun_info(Pid, {Callee,StartTS, EndTs}, {Caller, CallerStartTs}) ->
-   %% io:format("Update Info:\n~p\n", [{{Callee,StartTS, EndTs}, {Caller, CallerStartTs}}]),
-    update_fun_info_1(Pid, {Callee,StartTS, EndTs}, {Caller, CallerStartTs}).
    
-   
-%% TODO: do the changes through the percept_db process!!!
-update_fun_info_1(Pid, {Callee,StartTS0, EndTs}, {Caller, CallerStartTs0}) ->
-    CallerStartTs = case is_list_comp(Caller) of 
+%%TODO: do the changes through the percept_db process!
+update_fun_info(Pid, {Callee,StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
+    %%io:format("Update Info:\n~p\n", [{{Callee,StartTS, EndTS}, {Caller, CallerStartTS}}]),
+    CallerStartTS = case is_list_comp(Caller) of 
                        true -> undefined;
-                       _ -> CallerStartTs0
+                       _ -> CallerStartTS0
                    end,
     StartTS = case is_list_comp(Callee) of 
                    true -> undefined;
                    _ -> StartTS0
                end,
-  %%  io:format("Ts:\n~p\n", [{CallerStartTs,StartTS}]),
-    case ets:lookup(fun_info, {Pid, Callee, StartTS}) of
+    case ets:lookup(fun_calltree, {Pid, Callee, StartTS}) of
         [] ->
-            CalleeInfo = #fun_info{id={Pid, Callee, Caller},
-                                   called = [],
-                                   start_ts = StartTS,
-                                   end_ts = EndTs},
-          %%  io:format("CalleeInfo:\n~p\n", [CalleeInfo]),
-            case ets:lookup(fun_info, {Pid, Caller, CallerStartTs}) of
-                [] ->
-                    CallerInfo = #fun_info{id = {Pid, Caller, CallerStartTs},
-                                           called = [CalleeInfo],
-                                           start_ts=CallerStartTs
-                                          },
-                   %%io:format("CallerInfo:\n~p\n", [CallerInfo]),
-                    ets:insert(fun_info, CallerInfo);           
-                [C] ->
-                    NewC = C#fun_info{called=add_new_callee(CalleeInfo, C#fun_info.called)},
-                 %%   io:format("NewC1:\n~p\n", [NewC]),
-                    ets:insert(fun_info, NewC)
-                end;
+            add_new_callee_caller(Pid, {Callee, StartTS, EndTS},
+                                  {Caller, CallerStartTS});
         [F] -> 
-            %% io:format("F:\n~p\n", [F]),
-            NewF = case {Callee, StartTS} == {Caller, CallerStartTs} of 
-                       true ->
-                            #fun_info{id={Pid, Callee, Caller},
-                                      called = [],
-                                      start_ts = StartTS,
-                                      end_ts = EndTs};
-                       false ->
-                           F#fun_info{id=setelement(3, F#fun_info.id, Caller),
-                                       start_ts =StartTS,
-                                      end_ts=EndTs}
-                   end,
-            %% io:format("NewF:\n~p\n", [NewF]),
-            case ets:lookup(fun_info, {Pid, Caller, CallerStartTs}) of 
+            NewF =F#fun_calltree{id=setelement(3, F#fun_calltree.id, Caller),
+                             start_ts =StartTS,
+                             end_ts=EndTS},                  
+            case ets:lookup(fun_calltree, {Pid, Caller, CallerStartTS}) of 
                 [] ->
-                    CallerInfo = #fun_info{id = {Pid, Caller, CallerStartTs},
-                                           start_ts=CallerStartTs,
-                                           called = [NewF]
-                                          }, 
-                    %% io:format("CallerInfo:\n~p\n", [CallerInfo]),
-                    ets:delete_object(fun_info, F),
+                    CallerInfo = #fun_calltree{id = {Pid, Caller, CallerStartTS},
+                                           start_ts=CallerStartTS,
+                                           called = [NewF]}, 
+                    ets:delete_object(fun_calltree, F),
                     NewCallerInfo = collapse_call_tree(CallerInfo, Callee),
-                    %% io:format("NewCallerInfo:\n~p\n", [NewCallerInfo]),
-                    ets:insert(fun_info, NewCallerInfo);
+                    ets:insert(fun_calltree, NewCallerInfo);
                 [C] ->
-                    %% io:format("C:\n~p\n", [C]),
-                    ets:delete_object(fun_info, F),
-                    NewC = C#fun_info{called=add_new_callee(NewF, C#fun_info.called)},
-                    %% io:format("NewC:\n~p\n", [NewC]),
+                    ets:delete_object(fun_calltree, F),
+                    NewC = C#fun_calltree{called=add_new_callee(NewF, C#fun_calltree.called)},
                     NewC1 = collapse_call_tree(NewC, Callee),
-                    %% io:format("NewC1:\n~p\n", [NewC1]),
-                    ets:insert(fun_info, NewC1)                  
+                    ets:insert(fun_calltree, NewC1)                  
             end
     end.
-      
-collapse_call_tree(CallTree, Callee) ->
-    {_Pid, Caller,_TS} = CallTree#fun_info.id,
-    Children=CallTree#fun_info.called,
-    {NewChildren, ChildrenToMerge} =
-        collect_children_to_merge(Children, {Caller, Callee}),
-    case ChildrenToMerge of 
-        [] ->
-            CallTree;
-        _ ->
-           NewChildren1 = lists:foldl(fun(C, Acc)->
-                                              add_new_callee(C, Acc)
-                                      end, NewChildren, ChildrenToMerge),
-            CallTree#fun_info{called=NewChildren1}
+
+add_new_callee_caller(Pid, {Callee, StartTS, EndTS},{Caller, CallerStartTS}) ->
+    CalleeInfo = #fun_calltree{id={Pid, Callee, Caller},
+                           called = [],
+                           start_ts = StartTS,
+                           end_ts = EndTS},
+    case ets:lookup(fun_calltree, {Pid, Caller, CallerStartTS}) of
+         [] ->
+             CallerInfo = #fun_calltree{id = {Pid, Caller, CallerStartTS},
+                                   called = [CalleeInfo],
+                                    start_ts=CallerStartTS},
+            ets:insert(fun_calltree, CallerInfo);
+        [C] ->
+            NewC = C#fun_calltree{called=add_new_callee(CalleeInfo, C#fun_calltree.called)},
+            ets:insert(fun_calltree, NewC)
     end.
-    
+
+
+%% collapse recursive call chains to which Callee is an element of 
+%% recursion.      
+%% TOTest: is this accurate enough?
+collapse_call_tree(CallTree, Callee) ->
+    {_Pid, Caller,_TS} = CallTree#fun_calltree.id,
+    Children=CallTree#fun_calltree.called,
+    case collect_children_to_merge(Children, {Caller, Callee}) of 
+        {_, []} ->
+            CallTree;
+        {ToRemain, ToMerge} ->
+            NewCalled = lists:foldl(fun(C, Acc) ->
+                                             add_new_callee(C, Acc)
+                                    end, ToRemain, ToMerge),
+            CallTree#fun_calltree{called=NewCalled}
+    end.
 
 collect_children_to_merge([], _) ->       
     {[], []};
-collect_children_to_merge(Children, {Caller, Callee}) ->
-    {NewChildren, ToMerge}=lists:unzip([collect_children_to_merge_1(C,{Caller,Callee})
-                                        ||C<-Children]),
-    {NewChildren, lists:append(ToMerge)}.
-collect_children_to_merge_1(C, {Caller, Callee}) ->
-    {_Pid, MFA, _TS}=C#fun_info.id,
+collect_children_to_merge(CallTrees, {Caller, Callee}) ->
+    {ToRemain, ToMerge}=lists:unzip(
+                          [collect_children_to_merge_1(CallTree,{Caller,Callee})
+                           ||CallTree <- CallTrees]),
+    {ToRemain, lists:append(ToMerge)}.
+
+collect_children_to_merge_1(CallTree, {Caller, Callee}) ->
+    {_Pid, MFA, _TS}=CallTree#fun_calltree.id,
     case MFA of 
         Caller ->
-            Called = C#fun_info.called,
-            ToMerge = [F||F<-Called, element(2, F#fun_info.id)==Callee],
-            NewCalled = [F||F<-Called, element(2, F#fun_info.id)=/=Callee],
-            {C#fun_info{called=NewCalled}, ToMerge};
+            Called = CallTree#fun_calltree.called,
+            {ToMerge, ToRemain}=lists:partition(
+                                  fun(F)->
+                                          element(2, F#fun_calltree.id)==Callee
+                                  end, Called),
+            {CallTree#fun_calltree{called=ToRemain}, ToMerge};
         _ ->
-            {NewCalled, ToMerge}=collect_children_to_merge(C#fun_info.called, {Caller, Callee}),
-            {C#fun_info{called=NewCalled}, ToMerge}
+            {ToRemain, ToMerge}=collect_children_to_merge(
+                                  CallTree#fun_calltree.called, {Caller, Callee}),
+            {CallTree#fun_calltree{called=ToRemain}, ToMerge}
     end.
-            
-                                     
-               
 
-% TODO: do the changes through the percept_db process!!!
-update_fun_info_2(Pid, {Callee,StartTS0, EndTs}, {Caller, CallerStartTs0}) ->
-    CallerStartTs = case is_list_comp(Caller) of 
-                       true -> undefined;
-                       _ -> CallerStartTs0
-                   end,
-    StartTS = case is_list_comp(Callee) of 
-                   true -> undefined;
-                   _ -> StartTS0
-               end,
-    case ets:lookup(fun_info, {Pid, Callee, StartTS}) of
-        [] ->
-            CalleeInfo = #fun_info{id={Pid, Callee, Caller},
-                                   called = [],
-                                   start_ts = StartTS,
-                                   end_ts = EndTs},
-            case ets:lookup(fun_info, {Pid, Caller, CallerStartTs}) of
-                [] ->
-                    CallerInfo = #fun_info{id = {Pid, Caller, CallerStartTs},
-                                           called = [CalleeInfo],
-                                           start_ts=CallerStartTs
-                                          },
-                    ets:insert(fun_info, CallerInfo);           
-                [C] ->
-                    NewC = C#fun_info{called=add_new_callee(CalleeInfo, C#fun_info.called)},
-                    ets:insert(fun_info, NewC)
-            end;
-        [F] ->
-            NewF = case {Callee, StartTS} == {Caller, CallerStartTs} of 
-                       true ->
-                            #fun_info{id={Pid, Callee, Caller},
-                                      called = [],
-                                      start_ts = StartTS,
-                                      end_ts = EndTs};
-                       false ->
-                           F#fun_info{id=setelement(3, F#fun_info.id, Caller),
-                                      start_ts =StartTS,
-                                      end_ts=EndTs}
-                   end,
-            case ets:lookup(fun_info, {Pid, Caller, CallerStartTs}) of 
-                [] ->
-                    CallerInfo = #fun_info{id = {Pid, Caller, CallerStartTs},
-                                           start_ts=CallerStartTs,
-                                           called = [NewF]
-                                          }, 
-                    ets:delete_object(fun_info, F),
-                    ets:insert(fun_info, CallerInfo);
-                [C] ->
-                    ets:delete_object(fun_info, F),
-                    NewC = C#fun_info{called=add_new_callee(NewF, C#fun_info.called)},
-                    ets:insert(fun_info, NewC)
-            end
-    end.
-      
 add_new_callee(CalleeInfo, CalleeList) ->
-   %% io:format("CalleeInfo:\n~p\n", [CalleeInfo]),
-    Id = CalleeInfo#fun_info.id,
-    %% io:format("Id:\n~p\n", [Id]),
-    %% io:format("CalleeList:\n~p\n", [CalleeList]),
-       case lists:keyfind(Id, 2, CalleeList) of
+    Id = CalleeInfo#fun_calltree.id,
+    case lists:keyfind(Id, 2, CalleeList) of
         false ->
             [CalleeInfo|CalleeList];
         C ->
-           %% io:format("C:\n~p\n", [C]),
             NewC=combine_fun_info(C, CalleeInfo),
-           %% io:format("NewC:\n~p\n", [NewC]),
-            Res=lists:keyreplace(CalleeInfo#fun_info.id, 2, CalleeList, NewC),
-          %%  io:format("Res:\n~p\n", [Res]),
-            Res
-                
+            lists:keyreplace(Id, 2, CalleeList, NewC)
     end.
 
-combine_fun_info(FunInfo1=#fun_info{id=Id, called=Callees1, 
+combine_fun_info(FunInfo1=#fun_calltree{id=Id, called=Callees1, 
                                     start_ts=StartTS1,end_ts= _EndTS1,
                                     cnt=CNT1}, 
-                 _FunInfo2=#fun_info{id=Id, called=Callees2, 
+                 _FunInfo2=#fun_calltree{id=Id, called=Callees2, 
                                      start_ts=_StartTS2, end_ts=EndTS2,
                                      cnt=CNT2}) ->
     NewCallees=lists:foldl(fun(C, Callees) ->
                                   add_new_callee(C, Callees)
                            end, Callees1, Callees2),
-    FunInfo1#fun_info{id=Id, called=NewCallees, 
+    FunInfo1#fun_calltree{id=Id, called=NewCallees, 
                       start_ts=StartTS1, end_ts=EndTS2,
                       cnt = CNT1 + CNT2}.
                       
-    
-
-update_counter(FunCounterList, Func) ->
-    case lists:keyfind(Func, 1, FunCounterList) of
-        {Func, Count} ->
-            lists:keyreplace(Func, 1, FunCounterList, {Func, Count+1});
-        _ ->
-            FunCounterList++[{Func, 1}]
-    end.
 get_stack(Id) ->
     case get(Id) of
 	undefined ->
@@ -1395,90 +1299,227 @@ get_stack(Id) ->
 	    Stack
     end.
 
-
 is_list_comp({_M, F, _A}) ->
     re:run(atom_to_list(F), ".*-lc.*", []) /=nomatch;
 is_list_comp(_) ->
     false.
-                
-is_implicit_fun({_M, F, _A}) ->
-    re:run(atom_to_list(F), ".*-fun.*", []) /=nomatch;
-is_implicit_fun(_) ->
-    false.
+      
+
+%% Statistic information per function.
+gen_fun_info()->         
+    CallTrees=ets:tab2list(fun_calltree),
+    [process_a_call_tree(CallTree)||CallTree<-CallTrees],
+    ok.
+
+process_a_call_tree(CallTree)->
+    {Pid, MFA, Caller}=CallTree#fun_calltree.id,
+    case MFA of 
+        undefined ->
+            Children=CallTree#fun_calltree.called,
+            [process_a_call_tree(C)||C<-Children];
+        _ ->
+            case ets:lookup(fun_info, {Pid, MFA}) of 
+                [] ->
+                    NewEntry=#fun_info{id={Pid, MFA},
+                                       callers = [{Caller, CallTree#fun_calltree.cnt}],
+                                       called = [{element(2, C#fun_calltree.id), 
+                                                  C#fun_calltree.cnt}
+                                                 ||C<-CallTree#fun_calltree.called],
+                                       start_ts= CallTree#fun_calltree.start_ts,
+                                       end_ts = CallTree#fun_calltree.end_ts},
+                    ets:insert(fun_info, NewEntry);
+                [FunInfo] ->
+                    NewFunInfo=FunInfo#fun_info{
+                                 callers=add_to([{Caller, CallTree#fun_calltree.cnt}],
+                                                FunInfo#fun_info.callers),
+                                 called = add_to([{element(2, C#fun_calltree.id), 
+                                                   C#fun_calltree.cnt}
+                                                  ||C<-CallTree#fun_calltree.called],
+                                                 FunInfo#fun_info.called),
+                                 start_ts = lists:min([FunInfo#fun_info.start_ts,
+                                                       CallTree#fun_calltree.start_ts]),
+                                 end_ts = lists:max([FunInfo#fun_info.end_ts,
+                                                     CallTree#fun_calltree.end_ts])},
+                    ets:insert(fun_info, NewFunInfo)
+            end,
+            Children=CallTree#fun_calltree.called,
+            [process_a_call_tree(C)||C<-Children]
+    end.
+
+add_to(FunCNTPairs, Acc) ->
+    lists:foldl(fun({Fun, CNT},Out) ->
+                       add_to_1({Fun, CNT}, Out)
+               end, Acc, FunCNTPairs).
+add_to_1({Fun, CNT}, Acc) ->
+    case lists:keyfind(Fun, 1, Acc) of 
+        false ->
+            [{Fun, CNT}|Acc];
+        {Fun, CNT1} ->
+            lists:keyreplace(Fun, 1, Acc, {Fun, CNT+CNT1})
+    end.
+                         
+
+elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
+    Me = (Me2 - Me1) * 1000000,
+    S  = (S2 - S1 + Me) * 1000000,
+    Mi2 - Mi1 + S.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                      %% 
+%%                Callgraph Generlisation.                              %%
+%%                                                                      %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+gen_callgraph_img(Pid) ->
+    Res=ets:select(fun_calltree, [{#fun_calltree{id = {'$1', '_','_'}, _='_'},
+                                  [{'==', '$1', Pid}],
+                                  ['$_']
+                                 }]),
+    case Res of 
+        [Tree] -> 
+            gen_callgraph_img_1(Pid, Tree);
+        _ -> 
+            error("Internal error in percept2_db:gen_callgraph_img/1")
+    end.
+
+gen_callgraph_img_1(Pid, CallTree) ->
+    String = lists:flatten(io_lib:format("~p", [Pid])),
+    PidStr=lists:sublist(String, 2, erlang:length(String)-2),
+    BaseName = "callgraph"++PidStr,
+    DotFileName = BaseName++".dot",
+    PngFileName = BaseName++".png",
+    fun_callgraph_to_dot(CallTree,DotFileName),
+    FullFilePath = filename:join([code:priv_dir(percept2),"server_root", "images", PngFileName]),
+    os:cmd("dot -Tpng "++DotFileName++" > "++FullFilePath),
+    PngFileName.
+
+fun_callgraph_to_dot(CallTree, DotFileName) ->
+    Edges=gen_callgraph_edges(CallTree),
+    MG = digraph:new(),
+  %%  io:format("Edges:\n~p\n", [Edges]),
+    digraph_add_edges(Edges, [], MG),
+    to_dot(MG,DotFileName),
+    digraph:delete(MG).
+
+gen_callgraph_edges(CallTree) ->
+    {_, CurFunc, _} = CallTree#fun_calltree.id,
+    ChildrenCallTrees = CallTree#fun_calltree.called,
+    lists:foldl(fun(Tree, Acc) ->
+                        {_, ToFunc, _} = Tree#fun_calltree.id,
+                        NewEdge = {CurFunc, ToFunc, Tree#fun_calltree.cnt},
+                        [[NewEdge|gen_callgraph_edges(Tree)]|Acc]
+                end, [], ChildrenCallTrees).
+
+digraph_add_edges([], NodeIndex, MG)-> 
+    NodeIndex;
+digraph_add_edges([Tree], NodeIndex, MG) ->
+    digraph_add_edges(Tree,NodeIndex, MG);
+digraph_add_edges(Edge={_From, _To, _CNT}, NodeIndex, MG) ->
+    digraph_add_edge(Edge, NodeIndex, MG);
+digraph_add_edges([Edge={_From, _To, _CNT}|Children], NodeIndex, MG) ->
+    NodeIndex1=digraph_add_edge(Edge, NodeIndex, MG),
+    lists:foldl(fun(Tree, IndexAcc) ->
+                        digraph_add_edges(Tree, IndexAcc, MG)
+                end, NodeIndex1, Children).
     
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%                                                            %%
-%%  Generate function call tree from the trace.               %%
-%%                                                            %%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   
+digraph_add_edge({From, To,  CNT}, IndexTab, MG) ->
+    {From1, IndexTab1}=case digraph:vertex(MG, {From,0}) of 
+                           false ->
+                               digraph:add_vertex(MG, {From,0}),
+                               {{From, 0}, [{From, 0}|IndexTab]};
+                           _ ->
+                               {From, Index}=lists:keyfind(From, 1, IndexTab),
+                               {{From, Index}, IndexTab}
+                       end,
+    {To1, IndexTab2}= case digraph:vertex(MG, {To,0}) of 
+                          false ->
+                              digraph:add_vertex(MG, {To,0}),
+                              {{To, 0}, [{To,0}|IndexTab1]};                          
+                          _ -> 
+                              {To, Index1} = lists:keyfind(To, 1,IndexTab1),
+                              case digraph:get_path(MG, {To, Index1}, From1) of 
+                                  false ->
+                                      digraph:add_vertex(MG, {To, Index1+1}),
+                                      {{To,Index1+1},lists:keyreplace(To,1, IndexTab1, {To, Index1+1})};
+                                  _ ->
+                                     {{To, Index1}, IndexTab1}
+                              end
+                      end,
+    digraph:add_edge(MG, From1, To1, CNT),
+    IndexTab2.
+   
 
-%% gen_call_tree() ->
-%%     List = ets:tab2list(fun_info),
-%%     gen_call_tree_1(List).
+to_dot(MG, File) ->
+    Edges = [digraph:edge(MG, X) || X <- digraph:edges(MG)],
+   %% io:format("EdgeList:\n~p\n", [Edges]),
+    EdgeList=[{X, Y, Label} || {_, X, Y, Label} <- Edges],
+    edge_list_to_dot(EdgeList, File, "CallGraph").
+    					
+    
+edge_list_to_dot(Edges, OutFileName, GraphName) ->
+   %% io:format("Edges:\n~p\n", [Edges]),
+    {NodeList1, NodeList2, _} = lists:unzip3(Edges),
+    NodeList = NodeList1 ++ NodeList2,
+    NodeSet = ordsets:from_list(NodeList),
+    Start = ["digraph ",GraphName ," {"],
+    VertexList = [node_format(V) ||V <- NodeSet],
+    End = ["graph [", GraphName, "=", GraphName, "]}"],
+    EdgeList = [edge_format(X, Y, Label) || {X,Y,Label} <- Edges],
+    String = [Start, VertexList, EdgeList, End],
+    ok = file:write_file(OutFileName, list_to_binary(String)).
 
-%% gen_call_tree_1([]) ->
-%%     [];
-%% gen_call_tree_1([F|Tail]) ->
-%%     {Pid,_} = F#fun_info.id,
-%%     {Fs, NewTail} = lists:splitwith(fun(E)->
-%%                                             element(1,E#fun_info.id)==Pid
-%%                                     end, Tail),
-%%     CallTree=[case Entry#fun_info.id of 
-%%                   {_, undefined} ->
-%%                       case Children of 
-%%                           [_] -> hd(Children);
-%%                           _ -> T
-%%                       end;
-%%                   _ ->T
-%%               end||T={Entry, Children}<-gen_call_tree_2([F|Fs])]
-%%         ++gen_call_tree_1(NewTail),    
-%%     lists:sort(fun({T1,_}, {T2, _}) ->
-%%                        T1#fun_info.start_ts=< T2#fun_info.start_ts
-%%                end, CallTree).
+node_format(V) ->
+    String = format_vertex(V),
+    {Width, Heigth} = calc_dim(String),
+    W = (Width div 7 + 1) * 0.55,
+    H = Heigth * 0.4,
+    SL = io_lib:format("~f", [W]),
+    SH = io_lib:format("~f", [H]),
+    ["\"", String, "\"", " [width=", SL, " heigth=", SH, " ", "", "];\n"].
 
-%% gen_call_tree_2(Fs) ->
-%%     case  [F||F<-Fs,F#fun_info.callers==[]] of 
-%%         [Entry] ->
-%%             gen_call_tree_3([Entry], Fs--[Entry], []);
-%%         Others ->
-%%             []
-%%     end.
+format_vertex(undefined) ->
+    "undefined";
+format_vertex({M,F,A}) ->
+    io_lib:format("~p:~p/~p", [M,F,A]);
+format_vertex({undefined, _}) ->
+    "undefined";
+format_vertex({{M,F,A},C}) ->
+    io_lib:format("~p:~p/~p(~p)", [M,F,A, C]).
 
-%% gen_call_tree_3([], _, Out)->
-%%     lists:reverse(Out);
-%% gen_call_tree_3([CurFun|Fs], Others, Out)->
-%%     {Callees,_} = lists:unzip(CurFun#fun_info.called),
-%%     {CalleeFuns,Funs1} = lists:partition(
-%%                            fun(E)->
-%%                                    FunName=element(2, E#fun_info.id),
-%%                                    lists:member(FunName, Callees)
-%%                            end, Others),
-%%     NewCallees=gen_call_tree_3(CalleeFuns, Funs1, []),
-%%     gen_call_tree_3(Fs, Others, [{CurFun, NewCallees}|Out]).
- 
+calc_dim(String) ->
+  calc_dim(String, 1, 0, 0).
+
+calc_dim("\\n" ++ T, H, TmpW, MaxW) ->
+    calc_dim(T, H + 1, 0, wrangler_misc:max(TmpW, MaxW));
+calc_dim([_| T], H, TmpW, MaxW) ->
+    calc_dim(T, H, TmpW+1, MaxW);
+calc_dim([], H, TmpW, MaxW) ->
+    {wrangler_misc:max(TmpW, MaxW), H}.
+
+edge_format(V1, V2, Label) ->
+    String = ["\"",format_vertex(V1),"\"", " -> ",
+	      "\"", format_vertex(V2), "\""],
+    [String, " [", "label=", "\"", format_label(Label),  "\"",  "fontsize=20 fontname=\"Verdana\"", "];\n"].
 
 
+format_label(Label) when is_integer(Label) ->
+    io_lib:format("~p", [Label]);
+format_label(_Label) -> "".
 
+    
 %% fprof:apply(refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]). 
-%% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
-
-%% percept_profile:start({file, "sim_code_v0.dat"}, {refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
-
-%% percept_profile:start({file, "sim_code_v1.dat"}, {refac_sim_code_par_v1,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, []).
-
-
-%% percept_profile:start({file, "sim_code_v2.dat"}, {refac_sim_code_par_v2,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, []).
-
-
-%% percept_profile:start({file, "sim_code_v3.dat"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, []).
-
-
-%% percept_profile:start({file, "sim_code_v4.dat"}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]}, [])
-
 
 %% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/percept/test"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/percept/test"], 8]}, [])  
 
 %%percept_profile:start({file, "sim_code_v0.dat"}, {refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo/c.erl"], 5, 40, 2, 4, 0.8, [], 8]}, [refac_sim_code_par_v0],[])
-
-
 %% percept_profile:start({file, "foo3.dat"}, {foo,a1, [1]}, [foo], []).
+
+
+%% percept2_db:gen_callgraph_img(list_to_pid("<0.1132.0>")).
+
+%% percept2:profile({file, "mergesort.dat"}, {mergesort, msort_lte,[lists:reverse(lists:seq(1,2000))]}, [message, process_scheduling, concurreny,garbagage_collection,{function, [{mergesort, '_','_'}]}]).
+
+%% percept2:analyze("mergesort.dat").
+
+%% percept2:profile({file, "sim_code_v3.dat"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurreny,{function, [{refac_sim_code_par_v0, '_','_'}]}]).

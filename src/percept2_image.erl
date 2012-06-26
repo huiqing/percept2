@@ -16,7 +16,7 @@
 %% 
 %% %CopyrightEnd%
 
--module(percept_image).
+-module(percept2_image).
 -export([proc_lifetime/5,
          percentage/3,
          query_fun_time/4,
@@ -35,7 +35,7 @@
 
 graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
-    MinMax = percept_analyzer:minmax(Data2),
+    MinMax = percept2_analyzer:minmax(Data2),
     {Xmin, Ymin, Xmax, Ymax} = MinMax, 
     graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
     				lists:min([RYmin, Ymin]),
@@ -55,7 +55,7 @@ graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
 
 graph(Width, Height, Data) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
-    Bounds = percept_analyzer:minmax(Data2),
+    Bounds = percept2_analyzer:minmax(Data2),
     graf1(Width, Height, Bounds, Data).
 
 graf1(Width, Height, {Xmin, Ymin, Xmax, Ymax}, Data) ->
@@ -310,7 +310,7 @@ percentage(Width, Height, Percentage) ->
 
 
 load_font() ->
-    Filename = filename:join([code:priv_dir(percept),"fonts", "6x11_latin1.wingsfont"]),
+    Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
     egd_font:load(Filename).
     
 text(Image, {X,Y}, Font, Text, Color) ->
@@ -321,7 +321,7 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     Im = egd:create(round(Width), round(Height)),
     Black = egd:color(Im, {0, 0, 0}),
     Green = egd:color(Im, {0, 255, 0}),
-    SeaGreen = egd:color(Im, {195, 253, 184}),
+    PaleGreen = egd:color(Im, {143,188,143}),
     Grey = egd:color(Im, {128, 128, 128}),
     % Ratio and coordinates
     Start = lists:min([QueryStart, FunStart]),
@@ -346,13 +346,13 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
             egd:rectangle(Im, {X3, 0}, {X4, Height-1}, Black);
        QueryStart =<FunStart andalso QueryEnd <FunEnd ->
             egd:filledRectangle(Im, {0, 0}, {X3, Height - 1}, Green),
-            egd:filledRectangle(Im, {X3, 0}, {X2, Height - 1}, SeaGreen),
+            egd:filledRectangle(Im, {X3, 0}, {X2, Height - 1}, PaleGreen),
             egd:filledRectangle(Im, {X2, 0}, {X4, Height - 1}, Grey),
             egd:rectangle(Im, {0, 0}, {X2, Height-1}, Black),
             egd:rectangle(Im, {X3, 0}, {X4, Height-1}, Black);
        QueryStart >FunStart andalso QueryEnd >= FunEnd ->
             egd:filledRectangle(Im, {0, 0}, {X1, Height - 1}, Grey),
-            egd:filledRectangle(Im, {X1, 0}, {X4, Height - 1}, SeaGreen),
+            egd:filledRectangle(Im, {X1, 0}, {X4, Height - 1}, PaleGreen),
             egd:filledRectangle(Im, {X4, 0}, {X2, Height - 1}, Green),
             egd:rectangle(Im, {0, 0}, {X4, Height-1}, Black),
             egd:rectangle(Im, {X1, 0}, {X2, Height-1}, Black);

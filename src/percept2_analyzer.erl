@@ -19,7 +19,7 @@
 %% @doc Utility functions to operate on percept data. These functions should
 %%	be considered experimental. Behaviour may change in future releases.
 
--module(percept_analyzer).
+-module(percept2_analyzer).
 -export([	
 	minmax/1,
 	waiting_activities/1,
@@ -34,7 +34,7 @@
 	mean/1
 	]).
 
--include("percept.hrl").
+-include("../include/percept2.hrl").
 
 -define(ts(EndTs,StartTs), timer:now_diff(EndTs, StartTs)).
 
@@ -224,18 +224,18 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
 	    % it is given via the next activity
 	    case Activities of
 	    	[] -> 
-                    [Info] = percept_db:select(information, Pid),
-                    case Info#information.stop of
-			undefined ->
-			% get profile end time
-			    Waited = ?seconds(percept_db:select({system,stop_ts}),Time);
-			Time2 ->
-			    Waited = ?seconds(Time2, Time)
-		    end,
-		    case get({waiting_mfa, MFA}) of 
-			undefined ->
-                            put({waiting_mfa, MFA}, {Waited, [Waited]}),
-			    [MFA | ListedMfas];
+                        [Info] = percept2_db:select(information, Pid),
+                        case Info#information.stop of
+			    undefined ->
+			        % get profile end time
+			        Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
+			    Time2 ->
+			        Waited = ?seconds(Time2, Time)
+		        end,
+		        case get({waiting_mfa, MFA}) of
+			    undefined ->
+                                put({waiting_mfa, MFA}, {Waited, [Waited]}),
+			        [MFA | ListedMfas];
 		    	{Total, TimedMfa} ->
                             put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
 			    ListedMfas

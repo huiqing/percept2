@@ -18,16 +18,17 @@
 
 -module(percept_html).
 -export([
-	page/3, 
-	codelocation_page/3, 
-        code_page/3,
-	databases_page/3, 
-	load_database_page/3, 
-	processes_page/3, 
-        functions_page/3,
-	concurrency_page/3,
-	process_info_page/3,
-        function_info_page/3
+         page/3, 
+         codelocation_page/3, 
+         code_page/3,
+         databases_page/3, 
+         load_database_page/3, 
+         processes_page/3, 
+         functions_page/3,
+         concurrency_page/3,
+         process_info_page/3,
+         function_info_page/3,
+         visual_callgraph/3
 	]).
 
 -export([
@@ -39,7 +40,7 @@
 
 -compile(export_all).
 
--include("percept.hrl").
+-include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
 
 -compile(export_all).
@@ -52,31 +53,25 @@ page(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, footer()).
 
 processes_page(SessionID, _Env, Input) ->
-    io:format("Input:\n~p\n", [Input]),
+    %% io:format("Input:\n~p\n", [Input]),
     Query   = httpd:parse_query(Input),
-    io:format("Query:\n~p\n", [Query]),
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
-    StartTs = percept_db:select({system, start_ts}),
-    TsMin   = percept_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept_analyzer:seconds2ts(Max, StartTs),
-    ProcessTree = percept_db:gen_process_tree(),
+    StartTs = percept2_db:select({system, start_ts}),
+    TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
+    TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
+    ProcessTree = percept2_db:gen_process_tree(),
     mod_esi:deliver(SessionID, header(mk_display_style(ProcessTree))),
     mod_esi:deliver(SessionID, menu(Input)), 
     mod_esi:deliver(SessionID, processes_content(ProcessTree, {TsMin, TsMax})),
     mod_esi:deliver(SessionID, footer()).
 
-functions_page(SessionID, Env, Input) ->
+functions_page(SessionID, _Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
-    %% Query   = httpd:parse_query(Input),
-    %% Min     = get_option_value("range_min", Query),
-    %% Max     = get_option_value("range_max", Query),
-    %% StartTs = percept_db:select({system, start_ts}),
-    %% TsMin   = percept_analyzer:seconds2ts(Min, StartTs),
-    %% TsMax   = percept_analyzer:seconds2ts(Max, StartTs),
-    mod_esi:deliver(SessionID, header(mk_fun_display_style(ets:tab2list(fun_info)))),
+    CallTree = ets:tab2list(fun_calltree),
+    mod_esi:deliver(SessionID, header(mk_fun_display_style(CallTree))),
     mod_esi:deliver(SessionID, menu(Input)), 
-    mod_esi:deliver(SessionID, functions_content(Env,{0, 0})),
+    mod_esi:deliver(SessionID, functions_content(CallTree)),
     mod_esi:deliver(SessionID, footer()).
 
 concurrency_page(SessionID, Env, Input) ->
@@ -128,16 +123,15 @@ load_database_page(SessionID, Env, Input) ->
 %%% --------------------------- %%%
 
 overview_content(_Env, Input) ->
-    io:format("Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Min = get_option_value("range_min", Query),
     Max = get_option_value("range_max", Query),
     Width  = 1200,
     Height = 600,
-    TotalProfileTime = ?seconds( percept_db:select({system, stop_ts}), 
-    				 percept_db:select({system, start_ts})),
-    RegisteredProcs = length(percept_db:select({information, procs})),
-    RegisteredPorts = length(percept_db:select({information, ports})), 
+    TotalProfileTime = ?seconds((percept2_db:select({system, stop_ts})),
+                                    (percept2_db:select({system, start_ts}))),
+    RegisteredProcs = length(percept2_db:select({information, procs})),
+    RegisteredPorts = length(percept2_db:select({information, ports})),
     
     InformationTable = 
 	"<table>" ++
@@ -165,18 +159,16 @@ overview_content(_Env, Input) ->
 	    "<select name=\"graph_select\" onChange=\"select_image()\">
 	      	<option value=\""++ url_graph(Width, Height, Min, Max, []) ++"\" />Ports & Processes
                 <option value=\""++ url_sched_graph(Width, Height, Min, Max, []) ++"\" />Schedulers
+                <option value=\""++ url_memory_graph(Width, Height, Min, Max, []) ++"\" />Memory
              </select>",
 	    "<input type=submit value=Update>"
 	    ]) ++
 	table_line([
 	    "Max:", 
 	    "<input name=range_max value=" ++ term2html(float(Max)) ++">",
-	  %%  "",
 	    "<a href=/cgi-bin/percept_html/codelocation_page?range_min=" ++
-	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Code location </a>",
-            "<a href=/cgi-bin/percept_html/code_page?range_min=" ++
-	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Code execution</a>"
-	    ]) ++
+	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Code location </a>"
+            ]) ++
     	"</table>",
    
  
@@ -233,12 +225,17 @@ url_sched_graph(W, H, Min, Max, []) ->
 	++ "&width=" ++ term2html(float(W))
 	++ "&height=" ++ term2html(float(H)).
 
+url_memory_graph(W, H, Min, Max, []) ->
+    "/cgi-bin/percept_graph/memory_graph?range_min=" ++ term2html(float(Min)) 
+    	++ "&range_max=" ++ term2html(float(Max))
+	++ "&width=" ++ term2html(float(W))
+	++ "&height=" ++ term2html(float(H)).
 %%% process_info_content
 
 process_info_content(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
-    [I] = percept_db:select({information, Pid}),
+    [I] = percept2_db:select({information, Pid}),
     ArgumentString = case I#information.entry of
     	{_, _, Arguments} -> lists:flatten( [term2html(Arg) ++ "<br>" || Arg <- Arguments]);
 	_                 -> ""
@@ -269,8 +266,8 @@ process_info_content(_Env, Input) ->
                             [{th, "{#msg_sent, <br> #msg_sent_to_same_RQ, <br> #msg_sent_to_another_RQ,<br> avg_msg_size}"},  term2html(info_msg_sent(I))]
                            ]),
 
-    PidActivities = percept_db:select({activity, [{id, Pid}]}),
-    WaitingMfas   = percept_analyzer:waiting_activities(PidActivities),
+    PidActivities = percept2_db:select({activity, [{id, Pid}]}),
+    WaitingMfas   = percept2_analyzer:waiting_activities(PidActivities),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
     MfaTable = html_table([
         [{th, "percentage"},
@@ -278,13 +275,12 @@ process_info_content(_Env, Input) ->
          {th, "mean"},
          {th, "stddev"},
          {th, "#recv"},
-         {th, "module:function/arity"}]] ++  [
-	[{td, image_string(percentage, [{width, 100}, {height, 10}, {percentage, Time/TotalWaitTime}])},
-	 {td, term2html(Time)},
-	 {td, term2html(Mean)},
-	 {td, term2html(StdDev)},
-	 {td, term2html(N)}, 
-	 {td, mfa2html(MFA)} ] || {Time, MFA, {Mean, StdDev, N}} <- WaitingMfas]),
+         {th, "module:function/arity"}]] ++ [[{td, image_string(percentage, [{width, 100}, {height, 10}, {percentage, Time / TotalWaitTime}])},
+	                                      {td, term2html(Time)},
+	                                      {td, term2html(Mean)},
+	                                      {td, term2html(StdDev)},
+	                                      {td, term2html(N)},
+	                                      {td, mfa2html(MFA)}] || {Time, MFA, {Mean, StdDev, N}} <- WaitingMfas]),
    
     "<div id=\"content\">" ++
     InfoTable ++ "<br>" ++
@@ -295,19 +291,17 @@ process_info_content(_Env, Input) ->
 function_info_content(_Env, Input) ->
     io:format("Info:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
-    io:format("Query:~p\n", [Query]),
     Pid = get_option_value("pid", Query),
     MFA = get_option_value("mfa", Query),
     io:format("Pid:\n~p\n", [Pid]),
     io:format("MFA:\n~p\n", [MFA]),
-    [I] = percept_db:select({information, Pid}),
+    [I] = percept2_db:select({information, Pid}),
     io:format("I:\n~p\n", [I]),
-    io:format("Key:\n~p\n", [{funs, {Pid, MFA}}]),
-    [F] = percept_db:select({funs, {Pid, MFA}}),
+    [F] = percept2_db:select({funs, {Pid, MFA}}),
     io:format("F:\n~p\n", [F]),
     CallersTable = html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                   [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
-                                      {C, Count}<-F#fun_info.called]), %%callers
+                                      {C, Count}<-F#fun_info.callers]), 
     CalledTable= html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                   [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
                                       {C, Count}<-F#fun_info.called]),
@@ -316,7 +310,7 @@ function_info_content(_Env, Input) ->
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
                             [{th, "M:F/A"},       mfa2html_with_link({Pid, MFA})],
                             [{th, "Call count"},  term2html(lists:sum([element(2, Caller)||
-                                                                          Caller<-F#fun_info.called]))], %%callers
+                                                                          Caller<-F#fun_info.called]))], 
                             [{th, "Callers"},     CallersTable], 
                             [{th, "Called"},      CalledTable]
                            ]),
@@ -337,10 +331,10 @@ concurrency_content(_Env, Input) ->
     % FIXME: A lot of extra work here, redo
 
     %% Analyze activities and calculate area bounds
-    Activities = percept_db:select({activity, IDs}),
-    StartTs = percept_db:select({system, start_ts}), 
-    Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept_analyzer:activities2count2(Activities, StartTs)],
-    {T00,_,T10,_} = percept_analyzer:minmax(Counts),
+    Activities = percept2_db:select({activity, IDs}),
+    StartTs = percept2_db:select({system, start_ts}),
+    Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept2_analyzer:activities2count2(Activities, StartTs)],
+    {T00,_,T10,_} = percept2_analyzer:minmax(Counts),
     T0 = T00/1000000,
     T1 = T10/1000000, 
     % FIXME: End
@@ -375,11 +369,11 @@ concurrency_content(_Env, Input) ->
     "</table></div>\n".
 
 processes_content(ProcessTree, {TsMin, TsMax}) ->
-    Ports = percept_db:select({information, ports}),
-    SystemStartTS = percept_db:select({system, start_ts}),
-    SystemStopTS = percept_db:select({system, stop_ts}),
+    Ports = percept2_db:select({information, ports}),
+    SystemStartTS = percept2_db:select({system, start_ts}),
+    SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
-    Acts = percept_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
+    Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
     ActiveProcsInfo=lists:append([ets:lookup(pdb_info, Pid)||Pid <- ActivePids]),
     ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo),
@@ -460,7 +454,7 @@ processes_content(ProcessTree, {TsMin, TsMax}) ->
 	    </td></tr>";
 	true ->
 	    PortsHtmlResult = ""
-     end,
+    end,
 
     Right = "<div>"
     ++ Selector ++ 
@@ -469,7 +463,7 @@ processes_content(ProcessTree, {TsMin, TsMax}) ->
     Middle = "<div id=\"content\">
     <table>" ++
     ProcsHtmlResult ++
-    PortsHtmlResult ++ 
+  %%  PortsHtmlResult ++ 
     "</table>" ++
     Right ++ 
     "</div>\n",
@@ -509,16 +503,16 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
               [Prepare, SubTable|Out]
       end, [], ProcessTree).
 
-functions_content(_Env, _Input) ->
-    FunCallTree= ets:tab2list(fun_info),
+functions_content(FunCallTree) ->
     FunsHtml=mk_funs_html(FunCallTree),
     Table=if length(FunsHtml) >0 ->
-                  "<table border=1 cellspacing=10 cellpadding=2>
+                  "<table border=1 cellspacing=10 cellpadding=2 bgcolor=\"#FFFFFF\">
                   <tr>
 	          <td align=left width=80><b> Pid </b></td>
                   <td align=left width=80><b> [+/-] </b></td>
 		  <td align=right width=160><b> module:function/arity </b></td>
-	          <td align=right width=80><b> call count </b></td>                  
+	          <td align=right width=80><b> call count </b></td>   
+                  <td align=right width=80><b> graph visualisation </b></td>    
 	          </tr>" ++
                       lists:flatten(FunsHtml) ++ 
                       "</table>" ;
@@ -532,15 +526,15 @@ functions_content(_Env, _Input) ->
 mk_funs_html(Children) ->
     lists:foldl(
       fun(F, Out) ->
-              Id={Pid, _MFA, _Caller} = F#fun_info.id,
-              FChildren = lists:reverse(F#fun_info.called),
-              %% io:format("FChildren:\n~p\n",[FChildren]),
-              CNT = F#fun_info.cnt,
+              Id={Pid, _MFA, _Caller} = F#fun_calltree.id,
+              FChildren = lists:reverse(F#fun_calltree.called),
+              CNT = F#fun_calltree.cnt,
               Prepare = 
                   table_line([pid2value(Pid),
                               fun_expand_or_collapse(FChildren, Id),
                               mfa2html_with_link(Id),
-                              term2html(CNT)]),
+                              term2html(CNT),
+                              visual_link(Id)]),
               SubTable = fun_sub_table(Id, FChildren),
               [Prepare, SubTable|Out]
       end, [], lists:reverse(Children)).
@@ -625,8 +619,8 @@ parent_funs(FunCallTree) ->
 parent_funs([], Out) ->
     Out;
 parent_funs([F|Fs], Out) ->
-    Id=F#fun_info.id,
-    case F#fun_info.called of 
+    Id=F#fun_calltree.id,
+    case F#fun_calltree.called of 
         [] -> parent_funs(Fs, Out);
         Children ->
             if Out==[] ->
@@ -666,14 +660,14 @@ is_parent(I, ActiveProcsInfo) ->
 procstarttime(TS) ->
     case TS of
     	undefined -> 0.0;
-	TS -> ?seconds(TS,percept_db:select({system, start_ts}))
+	    TS -> ?seconds(TS,(percept2_db:select({system, start_ts})))
     end.
 
 procstoptime(TS) ->
     case TS of
-    	undefined -> ?seconds(percept_db:select({system, stop_ts}), 
-                              percept_db:select({system, start_ts}));
-	TS -> ?seconds(TS, percept_db:select({system, start_ts}))
+            undefined -> ?seconds((percept2_db:select({system, stop_ts})),
+                              (percept2_db:select({system, start_ts})));
+	    TS -> ?seconds(TS, (percept2_db:select({system, start_ts})))
     end.
 
 databases_content() ->
@@ -686,7 +680,7 @@ databases_content() ->
 	</table>
 	</center>
 	</form>
-	</div>".
+	</div>". 
 
 load_database_content(SessionId, _Env, Input) ->
     Query = httpd:parse_query(Input),
@@ -702,13 +696,13 @@ load_database_content(SessionId, _Env, Input) ->
     	    Parsing: " ++ Filename ++ "<br>
     	    </center>",
 	    mod_esi:deliver(SessionId, Content),
-	    case percept:analyze(Filename) of
-		{error, Reason} ->
-	    	    mod_esi:deliver(SessionId, error_msg("Analyze" ++ term2html(Reason)));
-		_ ->
-		    Complete = "<center><a href=\"/cgi-bin/percept_html/page\">View</a></center>",
-	    	   mod_esi:deliver(SessionId, Complete)
-	    end;
+	        case percept2:analyze(Filename) of
+		    {error, Reason} ->
+	                    mod_esi:deliver(SessionId, error_msg("Analyze" ++ term2html(Reason)));
+		    _ ->
+		        Complete = "<center><a href=\"/cgi-bin/percept_html/page\">View</a></center>",
+	                mod_esi:deliver(SessionId, Complete)
+	        end;
 	{error, Reason} ->
 	    mod_esi:deliver(SessionId, error_msg("File" ++ term2html(Reason)))
     end,
@@ -718,10 +712,10 @@ codelocation_content(_Env, Input) ->
     Query   = httpd:parse_query(Input),
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
-    StartTs = percept_db:select({system, start_ts}),
-    TsMin   = percept_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept_analyzer:seconds2ts(Max, StartTs),
-    Acts    = percept_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
+    StartTs = percept2_db:select({system, start_ts}),
+    TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
+    TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
+    Acts    = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     Secs  = [timer:now_diff(A#activity.timestamp,StartTs)/1000 || A <- Acts],
     Delta = cl_deltas(Secs),
     Zip   = lists:zip(Acts, Delta),
@@ -731,13 +725,12 @@ codelocation_content(_Env, Input) ->
 	 {th, " pid "},
 	 {th, "activity"},
 	 {th, "module:function/arity"},
-	 {th, "#runnables"}]] ++  [
-	[{td, term2html(D)},
-	 {td, term2html(timer:now_diff(A#activity.timestamp,StartTs)/1000)},
-	 {td,  pid2html(A#activity.id)},
-	 {td, term2html(A#activity.state)},
-	 {td,  mfa2html(A#activity.where)},
-	 {td, term2html(A#activity.runnable_count)}] || {A, D} <- Zip ]),
+	 {th, "#runnables"}]] ++ [[{td, term2html(D)},
+	                           {td, term2html(timer:now_diff(A#activity.timestamp,StartTs) / 1000)},
+	                           {td, pid2html(A#activity.id)},
+	                           {td, term2html(A#activity.state)},
+	                           {td, mfa2html(A#activity.where)},
+	                           {td, term2html(A#activity.runnable_count)}] || {A, D} <- Zip]),
 
     "<div id=\"content\">" ++
     Table ++ 
@@ -753,23 +746,23 @@ code_content(_Env, Input) ->
     Query   = httpd:parse_query(Input),
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
-    StartTs = percept_db:select({system, start_ts}),
-    TsMin   = percept_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept_analyzer:seconds2ts(Max, StartTs),
-    ActiveFuns  = percept_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}]}),
+    StartTs = percept2_db:select({system, start_ts}),
+    TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
+    TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
+    ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}]}),
     Table = html_table(
               [[{th, " pid "},
                 {th, "module:function/arity"},
                 {th, "activity"},
                 {th, "function start/end secs"},
                 {th, "monitor start/end secs"}]] ++
-                   [[{td, pid2html((element(1, F#funcall_info.id)))},
+                   [[{td, pid2html(element(1, F#funcall_info.id))},
                      {td, term2html(F#funcall_info.func)},
                      {td, make_image_string(F, {Min, Max})},
-                     {td, term2html({?seconds(element(2, F#funcall_info.id), StartTs),
-                                     ?seconds(F#funcall_info.end_ts, StartTs)})},
+                     {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
+                                     ?seconds((F#funcall_info.end_ts), StartTs)})},
                      {td, term2html({Min, Max})}]
-                   || F <- ActiveFuns, ?seconds(F#funcall_info.end_ts, element(2, F#funcall_info.id))>0.01]),
+                   || F <- ActiveFuns, ?seconds((F#funcall_info.end_ts), (element(2, F#funcall_info.id))) > 0.01]),
     "<div id=\"content\">" ++ 
         Table ++ 
         "</div>".
@@ -777,9 +770,9 @@ code_content(_Env, Input) ->
 
 
 make_image_string(F, {QueryStart, QueryEnd})->
-    SystemStartTS = percept_db:select({system, start_ts}),
-    FunStart = ?seconds(element(2, F#funcall_info.id), SystemStartTS),
-    FunEnd = ?seconds(F#funcall_info.end_ts,SystemStartTS),
+    SystemStartTS = percept2_db:select({system, start_ts}),
+    FunStart = ?seconds((element(2, F#funcall_info.id)), SystemStartTS),
+    FunEnd = ?seconds((F#funcall_info.end_ts),SystemStartTS),
     image_string(query_fun_time,
                  [{query_start, QueryStart},
                   {fun_start, FunStart},
@@ -849,11 +842,13 @@ mfa2html(_) ->
 
 %% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
 
-mfa2html_with_link({Pid, {Module, Function, Arguments},_}) when is_list(Arguments) ->
+mfa2html_with_link({Pid, MFA, _Caller}) ->
+    mfa2html_with_link({Pid, MFA});
+mfa2html_with_link({Pid, {Module, Function, Arguments}}) when is_list(Arguments) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, length(Arguments)])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, length(Arguments)])),
     "<a href=\"/cgi-bin/percept_html/function_info_page?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++MFAString++"</a>";    
-mfa2html_with_link({Pid, {Module, Function, Arity}, _}) when is_integer(Arity) ->
+mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_integer(Arity) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
     "<a href=\"/cgi-bin/percept_html/function_info_page?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++MFAString++"</a>"; 
@@ -863,6 +858,31 @@ mfa2html_with_link(_) ->
 mfas2html_with_link(Pid, MFAs) ->
     lists:append(["{"++mfa2html_with_link({Pid,MFA})++", "++term2html(C)++"}"||{MFA, C}<-MFAs]).
 
+
+visual_link({Pid,{M,F,A}, _})->
+     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [M, F, A])),    
+     "<a href=\"/cgi-bin/percept_html/visual_callgraph?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++"Show graph"++"</a>";
+visual_link({Pid,undefined, _})->
+     "<a href=\"/cgi-bin/percept_html/visual_callgraph?pid="++pid2value(Pid)++"&mfa="++"undefined"++"\">"++"Show graph"++"</a>".
+
+visual_callgraph(SessionID, Env, Input) ->
+    io:format("Input:\n~p\n", [Input]),
+    mod_esi:deliver(SessionID, header()),
+   %% mod_esi:deliver(SessionID, menu(Input)), 
+    mod_esi:deliver(SessionID, visual_content(Env, Input)),
+    mod_esi:deliver(SessionID, footer()).
+
+visual_content(Env, Input) ->
+    Query = httpd:parse_query(Input),
+  %%  io:format("Query:\n~p\n", [Query]),
+    Pid = get_option_value("pid", Query),
+    io:format("Pid:\n~p\n", [Pid]),
+    FileName=percept2_db:gen_callgraph_img(Pid),
+    "<div style=\"position: absolute; left: 100px; top: 80px;\">"++
+        "<img border=0 src=/images/"++FileName++" alt=callgraph width=1200 height=650 />" ++
+        "</div>".
+    
+    
 -spec pid2html(Pid :: pid() | port()) -> string().
 
 pid2html(Pid) when is_pid(Pid) ->
@@ -980,13 +1000,17 @@ get_default_option_value(Option) ->
 	"range_min" -> float(0.0);
 	"pids" -> [];
 	"range_max" ->
-	    Acts = percept_db:select({activity, []}),
-	    #activity{ timestamp = Start } = hd(Acts),
-	    #activity{ timestamp = Stop } = hd(lists:reverse(Acts)),
-	    ?seconds(Stop,Start);
-	"width" -> 800;
-	"height" -> 400;
-	_ -> {error, {undefined_default_option, Option}}
+	        Acts = percept2_db:select({activity, []}),
+                if Acts == [] ->
+                        float(0.0);
+                   true ->
+                        #activity{timestamp = Start} = hd(Acts),
+                        #activity{timestamp = Stop} = hd(lists:reverse(Acts)),
+                        ?seconds(Stop,Start)
+                end;
+	    "width" -> 800;
+	    "height" -> 400;
+	    _ -> {error, {undefined_default_option, Option}}
     end.
 
 -spec get_number_value(string()) -> number() | {'error', 'illegal_number'}.
@@ -1014,7 +1038,7 @@ header(HeaderData) ->
     "<html>
     <head>
     <meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\">
-    <title>percept</title>
+    <title>percept2</title>
     <link href=\"/css/percept.css\" rel=\"stylesheet\" type=\"text/css\">
     <script type=\"text/javascript\" src=\"/javascript/percept_error_handler.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_select_all.js\"></script>
@@ -1033,11 +1057,11 @@ header(HeaderData) ->
     " ++ HeaderData ++"
     </head>
     <body onLoad=\"load_image()\">
-    <div id=\"header\"><a href=/index.html>percept</a></div>\n".
+   <div id=\"header\"><a href=/index.html>percept2</a></div>\n".
 
 footer() ->
     "</body>
-     </html>\n".
+     </html>\n". 
 
 menu(Input) ->
     Query = httpd:parse_query(Input),
@@ -1046,8 +1070,11 @@ menu(Input) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
      	<li><a href=/cgi-bin/percept_html/databases_page>databases</a></li>
+         <li><a href=/cgi-bin/percept_html/summary_report>summary report</a></li>
+        <li><a href=/cgi-bin/percept_html/code_page?range_min=" ++
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">function activities</a></li>
         <li><a href=/cgi-bin/percept_html/functions_page?range_min=" ++
-        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">functions</a></li>
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">function callpath</a></li>
      	<li><a href=/cgi-bin/percept_html/processes_page?range_min=" ++
          term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">processes</a></li>
       	<li><a href=/cgi-bin/percept_html/page>overview</a></li>

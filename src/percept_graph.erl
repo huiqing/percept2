@@ -23,9 +23,9 @@
 -module(percept_graph).
 -export([proc_lifetime/3, graph/3, scheduler_graph/3, activity/3, percentage/3]).
 
--export([query_fun_time/3]).
+-export([query_fun_time/3, memory_graph/3]).
 
--include("percept.hrl").
+-include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
 
 %% API
@@ -63,6 +63,11 @@ scheduler_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(scheduler_graph(Env, Input))).
 
+memory_graph(SessionID, Env, Input) ->
+    mod_esi:deliver(SessionID, header()),
+    mod_esi:deliver(SessionID, binary_to_list(memory_graph(Env, Input))).
+
+
 graph(_Env, Input) ->
     Query    = httpd:parse_query(Input),
     RangeMin = percept_html:get_option_value("range_min", Query),
@@ -75,19 +80,19 @@ graph(_Env, Input) ->
     IDs      = [ {id, ID} || ID <- Pids],
 
     % seconds2ts
-    StartTs  = percept_db:select({system, start_ts}),
-    TsMin    = percept_analyzer:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept_analyzer:seconds2ts(RangeMax, StartTs),
+    StartTs  = percept2_db:select({system, start_ts}),
+    TsMin    = percept2_analyzer:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
     
     Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
     
-    Acts     = percept_db:select({activity, Options}),
+    Acts     = percept2_db:select({activity, Options}),
     Counts   = case IDs of
-	[] -> percept_analyzer:activities2count(Acts, StartTs);
-	_  -> percept_analyzer:activities2count2(Acts, StartTs)
-    end,
+	[] -> percept2_analyzer:activities2count(Acts, StartTs);
+	_ -> percept2_analyzer:activities2count2(Acts, StartTs)
+               end,
 
-    percept_image:graph(Width, Height,Counts).
+    percept2_image:graph(Width, Height, Counts).
 
 scheduler_graph(_Env, Input) -> 
     Query    = httpd:parse_query(Input),
@@ -96,15 +101,32 @@ scheduler_graph(_Env, Input) ->
     Width    = percept_html:get_option_value("width", Query),
     Height   = percept_html:get_option_value("height", Query),
     
-    StartTs  = percept_db:select({system, start_ts}),
-    TsMin    = percept_analyzer:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept_analyzer:seconds2ts(RangeMax, StartTs),
+    StartTs  = percept2_db:select({system, start_ts}),
+    TsMin    = percept2_analyzer:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
     
 
-    Acts     = percept_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
+    Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
     %% io:format("Acts:\n~p\n", [Acts]),
     Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #activity{where = Scheds, timestamp = Ts} <- Acts],
-    percept_image:graph(Width, Height, Counts).
+    percept2_image:graph(Width, Height, Counts).
+
+memory_graph(_Env, Input) ->
+    Query    = httpd:parse_query(Input),
+    RangeMin = percept_html:get_option_value("range_min", Query),
+    RangeMax = percept_html:get_option_value("range_max", Query),
+    Width    = percept_html:get_option_value("width", Query),
+    Height   = percept_html:get_option_value("height", Query),
+    
+    StartTs  = percept2_db:select({system, start_ts}),
+    TsMin    = percept2_analyzer:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
+    
+
+    Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
+    %% io:format("Acts:\n~p\n", [Acts]),
+    Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #activity{where = Scheds, timestamp = Ts} <- Acts],
+    percept2_image:graph(Width, Height, Counts).
 
 activity_bar(_Env, Input) ->
     Query  = httpd:parse_query(Input),
@@ -114,11 +136,11 @@ activity_bar(_Env, Input) ->
     Width  = percept_html:get_option_value("width", Query),
     Height = percept_html:get_option_value("height", Query),
     
-    Data    = percept_db:select({activity, [{id, Pid}]}),
-    StartTs = percept_db:select({system, start_ts}),
+    Data    = percept2_db:select({activity, [{id, Pid}]}),
+    StartTs = percept2_db:select({system, start_ts}),
     Activities = [{?seconds(Ts, StartTs), State} || #activity{timestamp = Ts, state = State} <- Data],
     
-    percept_image:activities(Width, Height, {Min,Max},Activities).
+    percept2_image:activities(Width, Height, {Min,Max}, Activities).
 
 proc_lifetime(_Env, Input) ->
     Query = httpd:parse_query(Input),
@@ -127,7 +149,7 @@ proc_lifetime(_Env, Input) ->
     End = percept_html:get_option_value("end", Query),
     Width = percept_html:get_option_value("width", Query),
     Height = percept_html:get_option_value("height", Query),
-    percept_image:proc_lifetime(round(Width), round(Height), float(Start), float(End), float(ProfileTime)).
+    percept2_image:proc_lifetime(round(Width), round(Height), float(Start), float(End), float(ProfileTime)).
 
 
 query_fun_time(_Env, Input) ->
@@ -138,9 +160,9 @@ query_fun_time(_Env, Input) ->
     FunEnd = percept_html:get_option_value("fun_end", Query),
     Width = percept_html:get_option_value("width", Query),
     Height = percept_html:get_option_value("height", Query),
-    percept_image:query_fun_time(
-       round(Width), round(Height), {float(QueryStart),float(FunStart)},
-       {float(QueryEnd), float(FunEnd)}).
+    percept2_image:query_fun_time(
+        round(Width), round(Height), {float(QueryStart),float(FunStart)},
+        {float(QueryEnd), float(FunEnd)}).
     
 
 percentage(_Env, Input) ->
@@ -148,7 +170,7 @@ percentage(_Env, Input) ->
     Width = percept_html:get_optionvalue("width", Query),
     Height = percept_html:get_option_value("height", Query),
     Percentage = percept_html:get_option_value("percentage", Query),
-    percept_image:percentage(round(Width), round(Height), float(Percentage)).
+    percept2_image:percentage(round(Width), round(Height), float(Percentage)).
 
 header() ->
     "Content-Type: image/png\r\n\r\n".

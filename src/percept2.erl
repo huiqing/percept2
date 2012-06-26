@@ -23,37 +23,27 @@
 %%	This module provides the user interface for the application.
 %% 
 
--module(percept).
+-module(percept2).
 -behaviour(application).
 -export([
 	profile/1, 
 	profile/2, 
 	profile/3,
-	stop_profile/0, 
+        stop_profile/0, 
+
 	start_webserver/0, 
 	start_webserver/1, 
 	stop_webserver/0, 
 	stop_webserver/1, 
+
 	analyze/1,
 	% Application behaviour
 	start/2, 
 	stop/1]).
 
--compile(export_all).
+-include("../include/percept2.hrl").
 
--include("percept.hrl").
-
-%%==========================================================================
-%%
-%% 		Type definitions 
-%%
-%%==========================================================================
-
-%% @type percept_option() = procs | ports | exclusive
-
--type percept_option() :: 'procs' | 'ports' | 'exclusive' | 'scheduler'.
-
-%%==========================================================================
+%%========================================================================
 %%
 %% 		Application callback functions
 %%
@@ -90,47 +80,41 @@ stop(_State) ->
 	{'ok', port()} | {'already_started', port()}.
 
 profile(Filename) ->
-    percept_profile:start(Filename, [procs]).
+    percept2_profile:start(Filename, [concurrency]).
 
 %% @spec profile(Filename::string(), [percept_option()]) -> {ok, Port} | {already_started, Port}
 %% @see percept_profile
-
 -spec profile(Filename :: file:filename(),
 	      Options :: [percept_option()]) ->
-	{'ok', port()} | {'already_started', port()}.
-
+                     {'ok', port()} | {'already_started', port()}.
 profile(Filename, Options) ->
-    percept_profile:start(Filename, Options). 
+    percept2_profile:start(Filename, Options). 
 
-%% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) -> ok | {already_started, Port} | {error, not_started}
+%% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) ->
+%%     ok | {already_started, Port} | {error, not_started}
 %% @see percept_profile
-
 -spec profile(Type :: {file, file:filename()}|{ip,integer()},
 	      Entry :: {atom(), atom(), list()},
 	      Options :: [percept_option()]) ->
 	'ok' | {'already_started', port()} | {'error', 'not_started'}.
 
 profile(Type, MFA, Options) ->
-    percept_profile:start(Type, MFA, Options).
-
+    percept2_profile:start(Type, MFA, Options).
 
 
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
-
 %% @spec stop_profile() -> ok | {'error', 'not_started'}
 %% @see percept_profile
-
 stop_profile() ->
-    percept_profile:stop().
+    percept2_profile:stop().
 
 %% @spec analyze(string()) -> ok | {error, Reason} 
 %% @doc Analyze file.
 
 -spec analyze(Filename :: file:filename()) ->
 	'ok' | {'error', any()}.
-
 analyze(Filename) ->
-    case percept_db:start() of 
+    case percept2_db:start() of
 	{started, DB} ->
 	    parse_and_insert(Filename,DB);
 	{restarted, DB} ->
@@ -142,10 +126,8 @@ analyze(Filename) ->
 %%	Port = integer()
 %%	Reason = term() 
 %% @doc Starts webserver.
-
 -spec start_webserver() ->
 	{'started', string(), pos_integer()} | {'error', any()}.
-
 start_webserver() ->
     start_webserver(0).
 
@@ -155,12 +137,10 @@ start_webserver() ->
 %%	Reason = term() 
 %% @doc Starts webserver. If port number is 0, an available port number will 
 %%	be assigned by inets.
-
 -spec start_webserver(Port :: non_neg_integer()) ->
 	{'started', string(), pos_integer()} | {'error', any()}.
-
 start_webserver(Port) when is_integer(Port) ->
-    application:load(percept),
+    application:load(percept2),
     case whereis(percept_httpd) of
 	undefined ->
 	    {ok, Config} = get_webserver_config("percept", Port),
@@ -182,7 +162,6 @@ start_webserver(Port) when is_integer(Port) ->
 
 %% @spec stop_webserver() -> ok | {error, not_started}  
 %% @doc Stops webserver.
-
 stop_webserver() ->
     case whereis(percept_httpd) of
     	undefined -> 
@@ -243,9 +222,9 @@ parse_and_insert_loop(Filename, Pid, Ref, DB, T0) ->
 	    DB ! {action, consolidate},
 	    T1 = erlang:now(),
 	    io:format("Parsed ~p entries in ~p s.~n", [Count, ?seconds(T1, T0)]),
-    	    io:format("    ~p created processes.~n", [length(percept_db:select({information, procs}))]),
-     	    io:format("    ~p opened ports.~n", [length(percept_db:select({information, ports}))]),
-	    ok;
+            io:format("    ~p created processes.~n", [length(percept2_db:select({information, procs}))]),
+            io:format("    ~p opened ports.~n", [length(percept2_db:select({information, ports}))]),
+            ok;
 	{'DOWN',Ref, process, Pid, normal} -> parse_and_insert_loop(Filename, Pid, Ref, DB, T0);
 	{'DOWN',Ref, process, Pid, Reason} -> {error, Reason}
     end.
@@ -261,8 +240,7 @@ trace_parser(end_of_trace, {Count, Pid}) ->
 	    ok
     end;
 trace_parser(Trace, {Count, Pid}) ->
-    %%io:format("Trace:\n~p\n", [Trace]),
-    percept_db:insert(Trace),
+    percept2_db:insert(Trace),
     {Count + 1,  Pid}.
 
 find_service_pid_from_port([], _) ->
@@ -307,7 +285,7 @@ service_memory({Pid, Port, Host}) ->
 % Create config data for the webserver 
 
 get_webserver_config(Servername, Port) when is_list(Servername), is_integer(Port) ->
-    Path = code:priv_dir(percept),
+    Path = code:priv_dir(percept2),
     Root = filename:join([Path, "server_root"]),
     MimeTypesFile = filename:join([Root,"conf","mime.types"]),
     {ok, MimeTypes} = httpd_conf:load_mime_types(MimeTypesFile),

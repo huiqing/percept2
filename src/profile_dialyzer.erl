@@ -1,19 +1,21 @@
--module(test_dialyzer).
+-module(profile_dialyzer).
 
--export([test/1, test/0]).
+-export([run_dialyzer/1, percept_profile/1, sample_profile/1]).
 
 -include_lib("kernel/include/file.hrl").
 
-test() ->
-    percept_profile:start({file, "dialyzer.dat"}, {test_dialyzer, test, ["c:/cygwin/home/hl/git_repos/percept/test_dialyzer"]},
-                          [dialyzer_succ_typings], []).
+percept_profile(Dir) ->
+    percept2:profile({file, "dialyzer.dat"}, {profile_dialyzer, run_dialyzer, [Dir]},
+                     [message, process_scheduling, concurreny,{function, [{dialyzer_succ_typings, '_','_'}]}]).
 
- %% dilyzer_callgraph,
- %%                           dialyzer_dataflow, dialyzer_typesig,
- %%                           dialyzer_analysis_callgraph],[]).
- 
-test(Dir) -> 
-    {ok, Files} = list_dir(Dir, ".erl",false),
+sample_profile(Dir)->
+    percept_sampling:sample(['run_queue','run_queues','scheduler_utilisation',
+                             'process_count', 'schedulers_online','mem_info'],
+                            {profile_dialyzer, run_dialyzer, [Dir]}).
+
+run_dialyzer(Dir) ->
+    {ok, Files} = list_dir(Dir, ".erl",true),
+    
     try dialyzer:run([{files, Files},{from, src_code},
                       {check_plt, false}])
     catch E1:{dialyzer_error,E2} -> 
@@ -41,7 +43,6 @@ list_dir(Dir, Extension, Dirs) ->
 -spec file_type(file:filename()) ->
 		       {ok, 'device' | 'directory' | 'regular' | 'other'} |
 		       {error, any()}.
-
 file_type(Filename) ->
     case file:read_file_info(Filename) of
 	{ok, FI} -> {ok, FI#file_info.type};
