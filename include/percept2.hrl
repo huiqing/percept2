@@ -80,10 +80,12 @@
 
 -record(fun_info, {
           id,
-          callers,
-          called,
-          start_ts,
-          end_ts}).
+          callers =[],
+          called =[],
+          start_ts =0,
+          end_ts =0,
+          call_count =0,
+          acc_time =0}).
 
 -define(debug, 9).
 %%-define(debug, 0). 
