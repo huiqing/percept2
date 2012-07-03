@@ -20,7 +20,7 @@
 function size_image(img, src) {
 	percept_content = document.getElementById("content");
 	var width  = percept_content.offsetWidth - 120;
-        var imgfile = "/cgi-bin/percept_graph/" + src + "&width=" + width;
+        var imgfile = "/cgi-bin/percept2_graph/" + src + "&width=" + width;
 	img.src = imgfile;
 	img.onload = '';
 }
@@ -34,7 +34,7 @@ function load_image() {
 		var rmin   = document.form_area.data_min.value;
 		var rmax   = document.form_area.data_max.value;
 
-		percept_graph.style.backgroundImage = "url('/cgi-bin/percept_graph/graph" +
+		percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/graph" +
 			"?range_min=" + rmin + 
 			"&range_max=" + rmax +
 			"&width=" + width + 
@@ -45,7 +45,7 @@ function load_image() {
 }
 
 function select_image() {
-	var Graph = document.getElementById("percept_graph");
+	var Graph = document.getElementById("percept2_graph");
 	if (Graph) {
 	    var GraphIndex = document.form_area.graph_select.selectedIndex;
 	    var GraphSelectValue = document.form_area.graph_select.options[GraphIndex].value;
