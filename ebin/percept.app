@@ -20,7 +20,7 @@
 {application,percept,
 	[{description, 	"PERCEPT Erlang Concurrency Profiling Tool"},
 	 {vsn,		"0.8.6"},
-	 {modules,	[percept,percept_db,percept_html,percept_graph,percept_analyzer]},
+	 {modules,	[percept2,percept2_db,percept2_html,percept2_graph,percept2_analyzer]},
 	 {registered,	[percept_db,percept_port]},
 	 {applications,	[kernel,stdlib]},
 	 {env,		[]}
