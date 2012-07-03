@@ -456,6 +456,7 @@ video/vnd.nokia.interleaved-multimedia
 video/vnd.vivo
 video/x-msvideo			avi
 video/x-sgi-movie		movie
+image/svg+xml           svg svgz
 x-conference/x-cooltalk		ice
 
 
