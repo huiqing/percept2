@@ -31,7 +31,7 @@ c:
 ebin/%.beam: src/%.erl
 	$(ERLC) -pa ebin -I include -W -o ebin +debug_info $<
 
-ebin/%.beam: src/percept.hrl 
+ebin/%.beam: include/percept2.hrl 
 
 ########################################
 
@@ -43,7 +43,7 @@ distclean: clean
 
 
 install: default
-	@echo "* Installing Percept"
+	@echo "* Installing Percept2"
 	install -m 775 -d $(LIB_DIR)/ebin
 	install -m 775 ebin/*.beam $(LIB_DIR)/ebin
 	install -m 775 ebin/*.app $(LIB_DIR)/ebin
@@ -54,10 +54,17 @@ install: default
 	install -m 775 -d $(LIB_DIR)/priv
 	install -m 775 -d $(LIB_DIR)/priv/fonts	
 	install -m 775 -d $(LIB_DIR)/priv/logs	
-	install -m 775 -d $(LIB_DIR)/priv/server_root	
+	install -m 775 -d $(LIB_DIR)/priv/server_root/conf	
+	install -m 775 -d $(LIB_DIR)/priv/server_root/css
+	install -m 775 -d $(LIB_DIR)/priv/server_root/htdocs
+	install -m 775 -d $(LIB_DIR)/priv/server_root/images
+	install -m 775 -d $(LIB_DIR)/priv/server_root/scripts
 	install -m 775 priv/fonts/* $(LIB_DIR)/priv/fonts
-	install -m 775 priv/fonts/* $(LIB_DIR)/priv/logs
-	install -m 775 priv/fonts/* $(LIB_DIR)/priv/server_root		
+	install -m 755 priv/server_root/conf/* $(LIB_DIR)/priv/server_root/conf
+	install -m 755 priv/server_root/css/* $(LIB_DIR)/priv/server_root/css
+	install -m 755 priv/server_root/htdocs/* $(LIB_DIR)/priv/server_root/htdocs
+	install -m 755 priv/server_root/images/* $(LIB_DIR)/priv/server_root/images
+	install -m 755 priv/server_root/scripts/* $(LIB_DIR)/priv/server_root/scripts
 	@echo
 	@echo "*** Successfully installed."
 	@echo
