@@ -19,6 +19,7 @@
 -module(percept2_image).
 -export([proc_lifetime/5,
          percentage/3,
+         calltime_percentage/4,
          query_fun_time/4,
          graph/3, 
          graph/4, 
@@ -309,6 +310,29 @@ percentage(Width, Height, Percentage) ->
     Binary.
 
 
+calltime_percentage(Width, Height, CallTime, Percentage) ->
+    Im = egd:create(round(Width), round(Height)),
+    Font = load_font(),
+    Black = egd:color(Im, {0, 0, 0}),
+    Green = egd:color(Im, {0, 255, 0}),
+
+    % Ratio and coordinates
+    X = round(Percentage*(Width - 1)),
+    egd:filledRectangle(Im, {0, 0}, {X-1, Height - 1}, Green),
+    {FontW, _} = egd_font:size(Font), 
+    String = lists:flatten(io_lib:format("~p", [CallTime])),
+    text(	Im, 
+		{round(Width/2 - (FontW*length(String)/2)), 0}, 
+    		Font,
+		String,
+		Black),
+    egd:rectangle(Im, {0, 0}, {X-1, Height - 1}, Black),
+    
+    Binary = egd:render(Im, png),
+    egd:destroy(Im),
+    Binary.
+
+
 load_font() ->
     Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
     egd_font:load(Filename).
@@ -363,3 +387,4 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     Binary = egd:render(Im, png),
     egd:destroy(Im),
     Binary.
+

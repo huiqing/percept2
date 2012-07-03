@@ -4,10 +4,14 @@
 
 -include_lib("kernel/include/file.hrl").
 
+
 percept_profile(Dir) ->
     percept2:profile({file, "dialyzer.dat"}, {profile_dialyzer, run_dialyzer, [Dir]},
                      [message, process_scheduling, concurreny,{function, [{dialyzer_succ_typings, '_','_'}]}]).
 
+%%sample:
+%% profile:dialyzer:sample_profile(["/proj/wrangler"]).
+%% profile:dialyzer:percept_profile(["/proj/wrangler"]).
 sample_profile(Dir)->
     percept_sampling:sample(['run_queue','run_queues','scheduler_utilisation',
                              'process_count', 'schedulers_online','mem_info'],

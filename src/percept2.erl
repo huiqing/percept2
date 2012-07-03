@@ -42,7 +42,7 @@
 	stop/1]).
 
 -include("../include/percept2.hrl").
-
+-compile(export_all).
 %%========================================================================
 %%
 %% 		Application callback functions
@@ -152,6 +152,7 @@ start_webserver(Port) when is_integer(Port) ->
 		    %% workaround until inets can get me a service from a name.
 		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
 		    register(percept_httpd, Mem),
+                    rm_temp_files(),
 		    {started, Host, AssignedPort};
 		{error, Reason} ->
 		    {error, {inets, Reason}}
@@ -187,6 +188,7 @@ do_stop(Port, Pid)->
             {error, not_started};
         Pid2 ->
             Pid ! quit,
+            rm_temp_files(),
             inets:stop(httpd, Pid2)
     end.
 
@@ -197,6 +199,16 @@ do_stop(Port, Pid)->
 stop_webserver(Port) ->
     do_stop(Port,[]).
 
+rm_temp_files() ->
+    Dir =filename:join([code:priv_dir(percept2),"server_root", "images"]),
+    case file:list_dir(Dir) of 
+        {error, Error} ->
+            {error, Error};
+        {ok, FileNames} ->
+            [file:delete(filename:join(Dir, F))
+             ||F<-FileNames,
+               lists:prefix("callgraph", F)]
+    end.
 %%==========================================================================
 %%
 %% 		Auxiliary functions 
@@ -296,7 +308,7 @@ get_webserver_config(Servername, Port) when is_list(Servername), is_integer(Port
 	
 	% Aliases
 	{eval_script_alias,{"/eval",[io]}},
-	{erl_script_alias,{"/cgi-bin",[percept_graph,percept_html,io]}},
+        {erl_script_alias,{"/cgi-bin",[percept2_graph,percept2_html,io]}},
 	{script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
 	{alias,{"/javascript/",filename:join([Root, "scripts"]) ++ "/"}},
 	{alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
