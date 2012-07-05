@@ -230,8 +230,8 @@ parse_and_insert_loop(Filename, Pid, Ref, DB, T0) ->
 	    io:format("Incorrect file or malformed trace file: ~p~n", [Filename]),
 	    {error, file};
     	{parse_complete, {Pid, Count}} ->
-	    receive {'DOWN', Ref, process, Pid, normal} -> ok after 0 -> ok end,
-	    DB ! {action, consolidate},
+            receive {'DOWN', Ref, process, Pid, normal} -> ok after 0 -> ok end,
+	    percept2_db:consolidate(),
 	    T1 = erlang:now(),
 	    io:format("Parsed ~p entries in ~p s.~n", [Count, ?seconds(T1, T0)]),
             io:format("    ~p created processes.~n", [length(percept2_db:select({information, procs}))]),
