@@ -377,7 +377,7 @@ processes_content(ProcessTree, {TsMin, TsMax}) ->
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
     Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
-    ActiveProcsInfo=lists:append([ets:lookup(pdb_info, Pid)||Pid <- ActivePids]),
+    ActiveProcsInfo=lists:append([percept2_db:select({information, Pid})||Pid <- ActivePids]),
     ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo),
     PortsHtml = lists:foldl(
     	fun (I, Out) -> 
