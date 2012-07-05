@@ -279,151 +279,144 @@ clean_trace_1(Trace) when is_pid(Trace) ->
     erlang:list_to_pid("<0." ++ P2 ++ "." ++ P3 ++ ">");
 clean_trace_1(Trace) -> Trace.
 
-insert_trace_1(Trace)->
+insert_trace(Trace)->
     case element(1, Trace) of
         trace_ts -> 
             Type=element(3, Trace),
             FunName = list_to_atom("trace_"++atom_to_list(Type)),
-            try FunName(Trace) 
-            catch
-                _E1:_E2 ->
-                     io:format("insert_trace, unhandled: ~p~n", [Trace]),
-                    ok
-            end
-    end.
-                    
+            ?MODULE:FunName(Trace); 
+        _ ->
+            insert_profile_trace(Trace)
+    end.                  
 
-insert_trace(Trace) ->
-    case Trace of
-	{profile_start, Ts} ->
-             update_system_start_ts(Ts),
-	    ok;
-        {profile_stop, Ts} ->
-	    update_system_stop_ts(Ts),
-	    ok; 
-        %%% erlang:system_profile, option: runnable_procs
-    	%%% ---------------------------------------------
-    	{profile, Id, State, Mfa, TS} when is_pid(Id) ->
-	    % Update runnable count in activity and db
-	    case check_activity_consistency(Id, State) of
-		invalid_state -> 
-		    ignored;
-		ok ->
-		    Rc = get_runnable_count(procs, State),
-		    % Update registered procs
-		    % insert proc activity
-		    update_activity(#activity{
-		    	id = Id, 
-			state = State, 
-			timestamp = TS, 
-			runnable_count = Rc,
-			where = Mfa}),
-		    ok
-            end;
-	%%% erlang:system_profile, option: runnable_ports
-    	%%% ---------------------------------------------
-	{profile, Id, State, Mfa, TS} when is_port(Id) ->
-	    case check_activity_consistency(Id, State) of
-		invalid_state -> 
-		    ignored;
-		ok ->
-		    % Update runnable count in activity and db
-		    Rc = get_runnable_count(ports, State),
-	    
-		    % Update registered ports
-		    % insert port activity
-		    update_activity(#activity{
-		    	id = Id, 
-			state = State, 
-			timestamp = TS, 
-			runnable_count = Rc,
-			where = Mfa}),
-
-		    ok
-	    end;
-	%%% erlang:system_profile, option: scheduler
-	{profile, scheduler, Id, State, NoScheds, Ts} ->
+insert_profile_trace(Trace) ->
+     case Trace of
+         {profile_start, Ts} ->
+             update_system_start_ts(Ts);
+         {profile_stop, Ts} ->
+	    update_system_stop_ts(Ts);
+         %%% erlang:system_profile, option: runnable_procs
+    	 {profile, Id, State, Mfa, TS} when is_pid(Id) ->
+             insert_profile_trace_1(Id,State,Mfa,TS,procs);
+         {profile, Id, State, Mfa, TS} when is_port(Id) ->
+             insert_profile_trace_1(Id, State, Mfa, TS, ports);
+         {profile, scheduler, Id, State, NoScheds, Ts} ->
             % insert scheduler activity
-            update_scheduler(#activity{
-	    	id = {scheduler, Id}, 
-		state = State, 
-		timestamp = Ts, 
-		where = NoScheds});
-         %%% erlang:trace, option: procs
-         %%% ---------------------------
-        {trace_ts, Parent, spawn, Pid, Mfa, TS} ->
-            InformativeMfa = mfa2informative(Mfa),
-            update_information(
-              #information{id = Pid, start = TS, 
-                           parent = Parent, entry = InformativeMfa}),
-            update_information_child(Parent, Pid),
-	    ok;
-	{trace_ts, Pid, exit, _Reason, TS} ->
-            update_information(#information{id = Pid, stop = TS}),
-            ok;
-	{trace_ts, Pid, register, Name, _Ts} when is_pid(Pid) ->
-	    % Update id_information
-	    update_information(#information{id = Pid, name = Name}),
-	    ok;
-	{trace_ts, _Pid, unregister, _Name, _Ts} -> 
-	    % Not implemented
-	    ok;
-	{trace_ts, Pid, getting_unlinked, _Id, _Ts} when is_pid(Pid) ->
-	    % Update id_information
-	    ok;
-	{trace_ts, Pid, getting_linked, _Id, _Ts} when is_pid(Pid)->
-	    % Update id_information
-	    ok;
-	{trace_ts, Pid, link, _Id, _Ts} when is_pid(Pid)->
-	    % Update id_information
-	    ok;
-	{trace_ts, Pid, unlink, _Id, _Ts} when is_pid(Pid) ->
-	    % Update id_information
-	    ok;
-        {trace_ts, Pid, in, Rq,  _MFA, Ts} when is_pid(Pid) ->
-            %% erlang:put(Pid, Ts),
-             update_information_rq(Pid, Rq);
-        {trace_ts, Pid, out, _Rq,  _MFA, Ts} when is_pid(Pid) ->
-            %% case erlang:get(Pid) of 
-            %%     undefined -> io:format("No In time\n");
-            %%     InTime ->
-            %%         Elapsed = elapsed(InTime, Ts),
-            %%         erlang:erase(Pid),
-            %%         ets:update_counter(pdb_info, Pid, {13, Elapsed})
-            %% end;
-            ok;
-        {trace_ts, Pid, 'receive', MsgSize, _Ts} when is_pid(Pid)->
-            update_information_received(Pid, erlang:external_size(MsgSize));
-        {trace_ts, Pid, send, MsgSize, To, _Ts} when is_pid(Pid) ->
-            update_information_sent(Pid, erlang:external_size(MsgSize), To);
-        {trace_ts, Pid, send_to_non_existing_process, Msg, _To, _Ts} when is_pid(Pid) ->
-            update_information_sent(Pid, erlang:external_size(Msg), none);
-      	%%erlang:trace, option: ports
-	%%% ----------------------------
-	{trace_ts, Caller, open, Port, Driver, TS} ->
-	    % Update id_information
-	    update_information(#information{
-	    	id = Port, entry = Driver, start = TS, parent = Caller}),
-	    ok;
-	{trace_ts, Port, closed, _Reason, Ts} ->
-	    % Update id_information
-	    update_information(#information{id = Port, stop = Ts}),
-	    ok;
+             update_scheduler(#activity{
+                                 id = {scheduler, Id},
+		                  state = State,
+                                 timestamp = Ts,
+                                 where = NoScheds});
+         _Unhandled ->
+             io:format("unhandled trace: ~p~n", [_Unhandled])
+     end.
 
-         %%function call/returns.
-         %%% ----------------------------
-        {trace_ts, Pid, call, MFA,{cp, CP}, TS} ->
-            Func = mfarity(MFA),
-            trace_call(Pid, Func, TS, CP);
-        {trace_ts, Pid, return_to, MFA, TS} ->
-            Func = mfarity(MFA),
-            trace_return_to(Pid, Func, TS);
-        _Unhandled ->
-            %% io:format("insert_trace, unhandled: ~p~n", [_Unhandled]),
+insert_profile_trace_1(Id,State,Mfa,TS,Type) ->
+    case check_activity_consistency(Id, State) of
+        invalid_state ->
+            ok;  %% ingnored.
+        ok ->
+            % Update registered procs;insert proc activity
+            Rc = get_runnable_count(Type, State),
+            update_activity(#activity{
+                               id = Id,
+                               state = State,
+                               timestamp = TS,
+                               runnable_count = Rc,
+                               where = Mfa})
+    end.
+
+trace_spawn(_Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) ->
+    InformativeMfa = mfa2informative(Mfa),
+    update_information(
+      #information{id = Pid, start = TS,
+                   parent = Parent, entry = InformativeMfa}),
+    update_information_child(Parent, Pid).
+
+trace_exit(_Trace= {trace_ts, Pid, exit, _Reason, TS})->
+    update_information(#information{id = Pid, stop = TS}).
+
+trace_register(_Trace={trace_ts, Pid, register, Name, _Ts})->
+    case is_pid(Pid) of 
+        true ->
+            update_information(#information{id = Pid, name = Name});
+        _ -> ok
+    end.
+
+trace_unregister(_Trace)->
+    ok.  % Not implemented.
+
+trace_getting_unlinked(_Trace) ->
+    ok.
+
+trace_getting_linked(_Trace) ->
+    ok.
+trace_link(_Trace) ->
+    ok.
+
+trace_unlink(_Trace) ->
+    ok.
+
+trace_in(_Trace={trace_ts, Pid, in, Rq,  _MFA, Ts})->
+    if is_pid(Pid) ->
+            update_information_rq(Pid, Rq);
+       true -> ok
+    end;
+trace_in(_Trace={trace_ts, Pid, in, _MFA, Ts}) ->
+    ok.
+
+             
+trace_out(_Trace={trace_ts, Pid, out, _Rq,  _MFA, Ts}) when is_pid(Pid) ->
+    %% case erlang:get(Pid) of 
+    %%     undefined -> io:format("No In time\n");
+    %%     InTime ->
+    %%         Elapsed = elapsed(InTime, Ts),
+    %%         erlang:erase(Pid),
+    %%         ets:update_counter(pdb_info, Pid, {13, Elapsed})
+    %% end;
+    ok;
+trace_out(_Trace={trace_ts, Pid, out, _MFA, Ts}) when is_pid(Pid) ->
+    ok;
+trace_out(_) ->
+    ok.
+
+trace_out_exited(_Trace={trace_ts, Pid, out_exited, _, _Ts}) ->
+    ok.
+
+trace_receive(_Trace={trace_ts, Pid, 'receive', MsgSize, _Ts}) ->
+    if is_pid(Pid) ->
+            update_information_received(Pid, erlang:external_size(MsgSize));
+       true ->
             ok
     end.
 
+trace_send(_Trace= {trace_ts, Pid, send, MsgSize, To, _Ts}) ->
+    if is_pid(Pid) ->
+            update_information_sent(Pid, erlang:external_size(MsgSize), To);
+       true ->
+            ok
+    end.
 
+trace_send_to_non_existing_process(
+  _Trace={trace_ts, Pid, send_to_non_existing_process, Msg, _To, _Ts})->
+    if is_pid(Pid) ->
+            update_information_sent(Pid, erlang:external_size(Msg), none);
+       true ->
+            ok
+    end.
+
+trace_open(_Trace={trace_ts, Caller, open, Port, Driver, TS})->
+    update_information(#information{
+                          id = Port, entry = Driver, start = TS, parent = Caller}).
+
+trace_closed(_Trace={trace_ts, Port, closed, _Reason, Ts})->
+    update_information(#information{id = Port, stop = Ts}).
+
+trace_call(_Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
+    trace_call(Pid, MFA, TS, CP).
+
+trace_return_to(_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
+    trace_return_to(Pid, MFA, TS).
 
 mfarity({M, F, Args}) when is_list(Args) ->
     {M, F, length(Args)};
@@ -1185,17 +1178,17 @@ add_ancestors(ProcessTree, As) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init_pdb_func(Parent) ->
     register(pdb_func, self()),
-    ets:new(funcall_info, [named_table, private, {keypos, #funcall_info.id}, ordered_set]),
-    ets:new(fun_calltree, [named_table, private, {keypos, #fun_calltree.id}, ordered_set]),
-    ets:new(fun_info, [named_table, private, {keypos, #fun_info.id}, ordered_set]),
+    ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, ordered_set]),
+    ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, ordered_set]),
+    ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, ordered_set]),
     Parent !{pdb_func, started},
     pdb_func_loop().
 
 trace_call(Pid, Func, TS, CP) ->
     pdb_func ! {trace_call, {Pid, Func, TS, CP}}.
 
-trace_return_to(Pid, Caller, TS) ->
-    pdb_func !{trace_return_to, {Pid, Caller, TS}}.
+trace_return_to(Pid, MFA, TS) ->
+    pdb_func !{trace_return_to, {Pid, MFA, TS}}.
 
 consolidate_calltree()->    
     pdb_func!{consolidate_calltree, self()},
@@ -1277,7 +1270,8 @@ select_query_func_1(Query) ->
 	    []
     end.        
 
-trace_call_1(Pid, Func, TS, CP) -> 
+trace_call_1(Pid, MFA, TS, CP) -> 
+    Func = mfarity(MFA),
     Stack = get_stack(Pid),
     ?dbg(0, "trace_call(~p, ~p, ~p, ~p)~n~p~n", 
 	 [Pid, Func, TS, CP, Stack]),
@@ -1401,7 +1395,8 @@ trace_call_collapse_2(_Stack, [], _N) ->
     false.
 
 
-trace_return_to_1(Pid, Caller, TS) ->
+trace_return_to_1(Pid, MFA, TS) ->
+    Caller = mfarity(MFA),
     Stack = get_stack(Pid),
     ?dbg(0, "trace_return_to(~p, ~p, ~p)~n~p~n", 
 	 [Pid, Caller, TS, Stack]),
