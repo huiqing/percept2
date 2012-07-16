@@ -186,10 +186,9 @@ insert(Trace) ->
 %% </p>
 
 select(Query) -> 
-    %% io:format("Query:\n~p\n", [Query]),
-    %% io:format("whereis percept_db:\n~p\n", [whereis(percept_db)]),
     percept_db ! {select, self(), Query},
     receive {result, Match} -> Match end.
+        
 
 %% @spec select(atom(), list()) -> Result
 %% @equiv select({Table,Options}) 
@@ -237,7 +236,7 @@ loop_percept_db() ->
             insert_trace(clean_trace(Trace)),
             loop_percept_db();
 	{select, Pid, Query} ->
-            %% io:format("recevied query:\n~p\n", [Query]),
+            io:format("recevied query:\n~p\n", [Query]),
 	    Pid ! {result, select_query(Query)},
 	    loop_percept_db();
 	{action, stop} -> 
@@ -294,6 +293,7 @@ insert_profile_trace(Trace) ->
          {profile_start, Ts} ->
              update_system_start_ts(Ts);
          {profile_stop, Ts} ->
+             io:format("Stop Time:\n~p\n", [Ts]),
 	    update_system_stop_ts(Ts);
          %%% erlang:system_profile, option: runnable_procs
     	 {profile, Id, State, Mfa, TS} when is_pid(Id) ->
@@ -357,16 +357,16 @@ trace_link(_Trace) ->
 trace_unlink(_Trace) ->
     ok.
 
-trace_in(_Trace={trace_ts, Pid, in, Rq,  _MFA, Ts})->
+trace_in(_Trace={trace_ts, Pid, in, Rq,  _MFA, _Ts})->
     if is_pid(Pid) ->
             update_information_rq(Pid, Rq);
        true -> ok
     end;
-trace_in(_Trace={trace_ts, Pid, in, _MFA, Ts}) ->
+trace_in(_Trace={trace_ts, _Pid, in, _MFA, _Ts}) ->
     ok.
 
              
-trace_out(_Trace={trace_ts, Pid, out, _Rq,  _MFA, Ts}) when is_pid(Pid) ->
+trace_out(_Trace={trace_ts, Pid, out, _Rq,  _MFA, _Ts}) when is_pid(Pid) ->
     %% case erlang:get(Pid) of 
     %%     undefined -> io:format("No In time\n");
     %%     InTime ->
@@ -375,12 +375,18 @@ trace_out(_Trace={trace_ts, Pid, out, _Rq,  _MFA, Ts}) when is_pid(Pid) ->
     %%         ets:update_counter(pdb_info, Pid, {13, Elapsed})
     %% end;
     ok;
-trace_out(_Trace={trace_ts, Pid, out, _MFA, Ts}) when is_pid(Pid) ->
+trace_out(_Trace={trace_ts, Pid, out, _MFA, _Ts}) when is_pid(Pid) ->
     ok;
 trace_out(_) ->
     ok.
 
-trace_out_exited(_Trace={trace_ts, Pid, out_exited, _, _Ts}) ->
+trace_out_exited(_Trace={trace_ts, _Pid, out_exited, _, _Ts}) ->
+    ok.
+
+trace_out_exiting(_Trace={trace_ts, _Pid, out_exiting, _, _Ts}) ->
+    ok.
+
+trace_in_exiting(_Trace={trace_ts, _Pid, in_exiting, _, _Ts}) ->
     ok.
 
 trace_receive(_Trace={trace_ts, Pid, 'receive', MsgSize, _Ts}) ->
@@ -526,7 +532,7 @@ check_activity_consistency(Id, State) ->
 %%%	Query = {Table, Option}
 %%%	Table = system | activity | scheduler | information
 select_query(Query) ->
-  %%  io:format("Query1:\n~p\n", [Query]),
+   io:format("Query1:\n~p\n", [Query]),
     case Query of
 	{system, _ } -> 
 	    select_query_system(Query);
@@ -539,6 +545,8 @@ select_query(Query) ->
         {code, _} ->
             select_query_func(Query);
         {funs, _} ->
+            select_query_func(Query);
+        {calltime, _} ->
             select_query_func(Query);
         Unhandled ->
 	    io:format("select_query, unhandled: ~p~n", [Unhandled]),
@@ -633,7 +641,7 @@ start_child_process(Name, Fun) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init_pdb_warnings(Parent) ->
     register(pdb_warnings, self()),
-    ets:new(pdb_warnings, [named_table, private, {keypos, 1}, ordered_set]),
+    ets:new(pdb_warnings, [named_table, protected, {keypos, 1}, ordered_set]),
     Parent !{pdb_warnings, started},
     pdb_warnings_loop().
 
@@ -650,7 +658,7 @@ pdb_warnings_loop()->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init_pdb_activity(Parent) ->
     register(pdb_activity, self()),
-    ets:new(pdb_activity, [named_table, private, {keypos, #activity.timestamp}, ordered_set]),
+    ets:new(pdb_activity, [named_table, protected, {keypos, #activity.timestamp}, ordered_set]),
     Parent !{pdb_activity, started},
     pdb_activity_loop().
 
@@ -788,7 +796,7 @@ lists_filter([D|Ds], Options) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init_pdb_scheduler(Parent) ->
     register(pdb_scheduler, self()),
-    ets:new(pdb_scheduler, [named_table, private, {keypos, #activity.timestamp}, ordered_set]),
+    ets:new(pdb_scheduler, [named_table, protected, {keypos, #activity.timestamp}, ordered_set]),
     Parent !{pdb_scheduler, started},
     pdb_scheduler_loop().
     
@@ -844,7 +852,7 @@ select_query_scheduler_1(Query) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init_pdb_info(Parent)->  
     register(pdb_info, self()),
-    ets:new(pdb_info, [named_table, private, {keypos, #information.id}, set]),
+    ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set]),
     Parent ! {pdb_info, started},
     pdb_info_loop().
 
@@ -877,7 +885,7 @@ select_query_information(Query) ->
 
 pdb_info_loop()->
     receive
-        {update_information, #information{id=Id}=NewInfo} ->
+        {update_information, #information{id=_Id}=NewInfo} ->
             update_information_1(NewInfo),
             pdb_info_loop();
         {update_information_child, {Id, Child}} ->
@@ -1049,7 +1057,7 @@ select_query_information_1(Query) ->
            
 init_pdb_system(Parent)->  
     register(pdb_system, self()),
-    ets:new(pdb_system, [named_table, private, {keypos, 1}, set]),
+    ets:new(pdb_system, [named_table, protected, {keypos, 1}, set]),
     Parent ! {pdb_system, started},
     pdb_system_loop().
 
@@ -1178,9 +1186,12 @@ add_ancestors(ProcessTree, As) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init_pdb_func(Parent) ->
     register(pdb_func, self()),
-    ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, ordered_set]),
-    ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, ordered_set]),
-    ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, ordered_set]),
+    ets:new(funcall_info, [named_table, protected, {keypos, #funcall_info.id}, ordered_set,
+                          {read_concurrency,true}]),
+    ets:new(fun_calltree, [named_table, protected, {keypos, #fun_calltree.id}, ordered_set,
+                          {read_concurrency,true}]),
+    ets:new(fun_info, [named_table, protected, {keypos, #fun_info.id}, ordered_set,
+                       {read_concurrency,true}]),
     Parent !{pdb_func, started},
     pdb_func_loop().
 
@@ -1228,6 +1239,7 @@ pdb_func_loop()->
             From !{pdb_func, gen_fun_info_done},
             pdb_func_loop();
         {query_pdb_func, From, Query} ->
+            io:format("Query pdb func:~p\n", [Query]),
             Res = select_query_func_1(Query),
             From !{pdb_func, Res},
             pdb_func_loop();
@@ -1235,40 +1247,6 @@ pdb_func_loop()->
             ok 
     end.
 
-
-select_query_func_1(Query) ->
-    io:format("Querycode::\n~p\n", [Query]),
-    case Query of 
-        {code, Options} when is_list(Options) ->
-            Head = #funcall_info{
-              id={'$1', '$2'}, 
-              end_ts='$3',
-              _='_'},
-            Body =  ['$_'],
-            MinTs = proplists:get_value(ts_min, Options, undefined),
-            MaxTs = proplists:get_value(ts_max, Options, undefined),
-            Constraints = [{'not', {'orelse', {'>=',{const, MinTs},'$3'},{'>=', '$2', {const,MaxTs}}}}],
-            %% Constraints = [{'>=', {const, MinTs}, '$2'}, {'>=', '$3', {const, MaxTs}}],
-            io:format("Info:\n~p\n", [{Head, Constraints, Body}]),
-            ets:select(funcall_info, [{Head, Constraints, Body}]);
-        {funs, Options} when Options==[] ->
-            Head = #fun_info{
-              id={'$1', '$2'}, 
-              _='_'},
-            Body =  ['$_'],
-            Constraints = [],
-            ets:select(fun_info, [{Head, Constraints, Body}]);
-        {funs, Id={_Pid, _MFA}} ->
-            Head = #fun_info{
-              id=Id, 
-              _='_'},
-            Body =  ['$_'],
-            Constraints = [],
-            ets:select(fun_info, [{Head, Constraints, Body}]);
-        Unhandled ->
-	    io:format("select_query_func, unhandled: ~p~n", [Unhandled]),
-	    []
-    end.        
 
 trace_call_1(Pid, MFA, TS, CP) -> 
     Func = mfarity(MFA),
@@ -1283,7 +1261,7 @@ trace_call_1(Pid, MFA, TS, CP) ->
                                            _ ->
                                                {Func1, TS1}
                                      end,
-            update_fun_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
+            update_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
             trace_call_1(Pid, Func, TS, CP, Stack1);
         _ ->
             trace_call_1(Pid, Func, TS, CP, Stack)
@@ -1343,8 +1321,8 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
         [] -> ok;
         Funs ->
             {Caller1, Caller1StartTs}= hd(NewLevel0),
-            [update_fun_calltree_info(Pid, {Func2, TS2, TS}, {Caller1, Caller1StartTs})||
-                         {Func2, TS2} <- Funs]
+            [update_calltree_info(Pid, {Func2, TS2, TS}, {Caller1, Caller1StartTs})||
+                     {Func2, TS2} <- Funs]
     end,
     [[{Func, TS1} | NewLevel0] | NewStack1].
     
@@ -1417,7 +1395,7 @@ trace_return_to_1(Pid, MFA, TS) ->
                                            _ ->
                                                {Func1, TS1}
                                        end,
-            update_fun_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
+            update_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
             NewStack=trace_return_to_2(Pid, Caller, TS, Stack),
             put(Pid, NewStack);
         _ when Caller == undefined ->
@@ -1461,8 +1439,8 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
                                               end
                                      end,
             ets:insert(funcall_info, #funcall_info{id={Pid, TS1}, func=Func0, end_ts=TS}),
-            update_fun_info({Pid, Func0}, {TS1, TS}),
-            update_fun_calltree_info(Pid, {Func0, TS1, TS}, {Caller, CallerStartTs});
+            update_func_call_count_time({Pid, Func0}, {TS1, TS}),
+            update_calltree_info(Pid, {Func0, TS1, TS}, {Caller, CallerStartTs});
          _ -> ok  %% garbage collect or suspend.
     end,
     if Level1 ==[dummy] ->
@@ -1471,17 +1449,8 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
             trace_return_to_2(Pid, Func, TS, [Level1|Stack1])
     end.
    
-update_fun_info({Pid, Func}, {StartTs, EndTs}) ->
-    Time = ?seconds(EndTs, StartTs),
-    case ets:lookup(fun_info, {Pid, Func}) of 
-        [] ->
-            ets:insert(fun_info, #fun_info{id={Pid, Func}, call_count=1, acc_time=Time});
-        [FunInfo] ->
-            ets:update_element(fun_info, {Pid, Func}, [{7, FunInfo#fun_info.call_count+1},
-                                                       {8, FunInfo#fun_info.acc_time+Time}])
-    end.
-         
-update_fun_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
+        
+update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
     CallerStartTS = case is_list_comp(Caller) of 
                        true -> undefined;
                        _ -> CallerStartTS0
@@ -1546,7 +1515,6 @@ add_new_callee_caller(Pid, {Callee, StartTS, EndTS},{Caller, CallerStartTS}) ->
 %% recursion.      
 %% TOTest: is this accurate enough?
 collapse_call_tree(CallTree, Callee) ->
-   %% io:format("Collapse recursive calls\n"),
     {_Pid, Caller,_TS} = CallTree#fun_calltree.id,
     Children=CallTree#fun_calltree.called,
     case collect_children_to_merge(Children, {Caller, Callee}) of 
@@ -1554,12 +1522,9 @@ collapse_call_tree(CallTree, Callee) ->
          %%   io:format("Nothing to merge\n"),
             CallTree;
         {ToRemain, ToMerge} ->
-           %% io:format("Something to merge\n"),
             NewCalled = lists:foldl(fun(C, Acc) ->
                                              add_new_callee(C, Acc)
                                     end, ToRemain, ToMerge),
-          %%  io:format("OldCalled:\n~p\n", [Children]),
-         %%   io:format("NewChilren:\n~p\n", [NewCalled]),
             CallTree#fun_calltree{called=NewCalled}
             
     end.
@@ -1653,47 +1618,110 @@ consolidate_calltree_3(Pid) ->
     ets:update_element(fun_calltree, Key, {4, Others++Tree#fun_calltree.called}),
     lists:foreach(fun(T)-> ets:delete_object(fun_calltree, T) end, Others).
                           
-
-
-%% Statistic information per function.
-gen_fun_info_1()->         
-    CallTrees=ets:tab2list(fun_calltree),
-    [process_a_call_tree(CallTree)||CallTree<-CallTrees],
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                       %%
+%%  Generate statistic information about each function.  %%
+%%                                                       %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+gen_fun_info_1()->        
+    Ids=ets:select(fun_calltree, 
+                   [{#fun_calltree{id = '$1', _='_'},
+                     [], ['$1']}]),
+    percept2_utils:pforeach(fun(Id) -> process_a_call_tree(Id) end, Ids),
     ok.
 
-process_a_call_tree(CallTree)->
+process_a_call_tree(Id) ->
+    [Tree]=ets:lookup(fun_calltree, Id),
+    process_a_call_tree_1(Tree).    
+
+process_a_call_tree_1(CallTree) ->
     {Pid, MFA, Caller}=CallTree#fun_calltree.id,
     case MFA of 
         undefined ->
             Children=CallTree#fun_calltree.called,
-            [process_a_call_tree(C)||C<-Children];
+            [process_a_call_tree_1(C)||C <- Children];
         _ ->
-            case ets:lookup(fun_info, {Pid, MFA}) of 
-                [] ->
-                    NewEntry=#fun_info{id={Pid, MFA},
-                                       callers = [{Caller, CallTree#fun_calltree.cnt}],
-                                       called = [{element(2, C#fun_calltree.id), 
-                                                  C#fun_calltree.cnt}
-                                                 ||C<-CallTree#fun_calltree.called],
-                                       start_ts= CallTree#fun_calltree.start_ts,
-                                       end_ts = CallTree#fun_calltree.end_ts},
-                    ets:insert(fun_info, NewEntry);
-                [FunInfo] ->
-                    NewFunInfo=FunInfo#fun_info{
-                                 callers=add_to([{Caller, CallTree#fun_calltree.cnt}],
-                                                FunInfo#fun_info.callers),
-                                 called = add_to([{element(2, C#fun_calltree.id), 
-                                                   C#fun_calltree.cnt}
-                                                  ||C<-CallTree#fun_calltree.called],
-                                                 FunInfo#fun_info.called),
-                                 start_ts = lists:min([FunInfo#fun_info.start_ts,
-                                                       CallTree#fun_calltree.start_ts]),
-                                 end_ts = lists:max([FunInfo#fun_info.end_ts,
-                                                     CallTree#fun_calltree.end_ts])},
-                    ets:insert(fun_info, NewFunInfo)
-            end,
+            
+            update_func_info({Pid, MFA}, 
+                             {Caller, CallTree#fun_calltree.cnt},
+                             [{element(2, C#fun_calltree.id),
+                               C#fun_calltree.cnt}
+                              ||C <- CallTree#fun_calltree.called],
+                             CallTree#fun_calltree.start_ts,
+                             CallTree#fun_calltree.end_ts),                             
             Children=CallTree#fun_calltree.called,
-            [process_a_call_tree(C)||C<-Children]
+            [process_a_call_tree_1(C)||C <- Children]
+    end.
+
+select_query_func_1(Query) ->
+    io:format("Select query func: ~p\n", [Query]),
+    case Query of 
+        {code, Options} when is_list(Options) ->
+            Head = #funcall_info{
+              id={'$1', '$2'}, 
+              end_ts='$3',
+              _='_'},
+            Body =  ['$_'],
+            MinTs = proplists:get_value(ts_min, Options, undefined),
+            MaxTs = proplists:get_value(ts_max, Options, undefined),
+            Constraints = [{'not', {'orelse', {'>=',{const, MinTs},'$3'},
+                                    {'>=', '$2', {const,MaxTs}}}}],
+            ets:select(funcall_info, [{Head, Constraints, Body}]);
+        {funs, Options} when Options==[] ->
+            Head = #fun_info{
+              id={'$1', '$2'}, 
+              _='_'},
+            Body =  ['$_'],
+            Constraints = [],
+            ets:select(fun_info, [{Head, Constraints, Body}]);
+        {funs, Id={_Pid, _MFA}} ->
+            Head = #fun_info{
+              id=Id, 
+              _='_'},
+            Body =  ['$_'],
+            Constraints = [],
+            ets:select(fun_info, [{Head, Constraints, Body}]);
+        {calltime, Pid} ->
+            Head = #fun_info{id={Pid,'$1'} ,
+                             _='_', call_count='$2',
+                             acc_time='$3'},
+            Constraints = [],
+            Body =[{{{{Pid,'$3'}}, '$1', '$2'}}],
+            ets:select(fun_info, [{Head, Constraints, Body}]);
+        Unhandled ->
+	    io:format("select_query_func, unhandled: ~p~n", [Unhandled]),
+	    []
+    end.       
+update_func_call_count_time({Pid, Func}, {StartTs, EndTs}) ->
+    Time = ?seconds(EndTs, StartTs),
+    case ets:lookup(fun_info, {Pid, Func}) of 
+        [] ->
+            ets:insert(fun_info, #fun_info{id={Pid, Func}, 
+                                           call_count=1, 
+                                           acc_time=Time});
+        [FunInfo] ->
+            ets:update_element(fun_info, {Pid, Func}, 
+                               [{7, FunInfo#fun_info.call_count+1},
+                                {8, FunInfo#fun_info.acc_time+Time}])
+    end.
+
+update_func_info({Pid, MFA}, Caller, Called, StartTs, EndTs) ->
+    case ets:lookup(fun_info, {Pid, MFA}) of
+        [] ->
+            NewEntry=#fun_info{id={Pid, MFA},
+                               callers = [Caller],
+                               called = Called,
+                               start_ts= StartTs, 
+                               end_ts = EndTs},
+            ets:insert(fun_info, NewEntry);
+        [FunInfo] ->
+            NewFunInfo=FunInfo#fun_info{
+                         callers=add_to([Caller],
+                                        FunInfo#fun_info.callers),
+                         called = add_to(Called,FunInfo#fun_info.called),
+                         start_ts = lists:min([FunInfo#fun_info.start_ts,StartTs]),
+                         end_ts = lists:max([FunInfo#fun_info.end_ts,EndTs])},
+            ets:insert(fun_info, NewFunInfo)
     end.
 
 add_to(FunCNTPairs, Acc) ->
@@ -1707,6 +1735,7 @@ add_to_1({Fun, CNT}, Acc) ->
         {Fun, CNT1} ->
             lists:keyreplace(Fun, 1, Acc, {Fun, CNT+CNT1})
     end.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                          
 
 elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
@@ -1716,17 +1745,191 @@ elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                                      %% 
+%%                Process Tree Graph Generlisation.                     %%
+%%                                                                      %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%Todo: combine some nodes into one?
+gen_process_tree_img()->
+    Tree = gen_process_tree(),
+    gen_process_tree_img(Tree).
+
+gen_process_tree_img([]) ->
+    no_image;
+gen_process_tree_img(ProcessTrees) ->
+    BaseName = "processtree",
+    DotFileName = BaseName++".dot",
+    SvgFileName = filename:join(
+                    [code:priv_dir(percept2), "server_root",
+                     "images", BaseName++".svg"]),
+    ok=process_tree_to_dot(ProcessTrees,DotFileName),
+    os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
+  %%  file:delete(DotFileName),
+    ok.
+            
+process_tree_to_dot(ProcessTrees, DotFileName) ->
+    {Nodes, Edges} = gen_process_tree_nodes_edges(ProcessTrees),
+    io:format("Nodes:\n~p\n", [Nodes]),
+    io:format("Edges:\n~p\n", [Edges]),
+    MG = digraph:new(),
+    digraph_add_edges_to_process_tree({Nodes, Edges}, MG),
+    process_tree_to_dot_1(MG, DotFileName),
+    digraph:delete(MG),
+    ok.
+
+gen_process_tree_nodes_edges(Trees) ->
+    Res=[gen_process_tree_nodes_edges_1(Tree)||Tree<-Trees],
+    io:format("Res1:\~p\n", [Res]),
+    {Nodes, Edges}=lists:unzip(Res),
+    io:format("Nodes1:\n~p\n", [lists:append(Nodes)]),
+    io:format("Edges1:\n~p\n", [lists:append(Edges)]),
+    {lists:append(Nodes), lists:append(Edges)}.
+
+gen_process_tree_nodes_edges_1({Parent, []}) ->
+    Parent1={Parent#information.id, Parent#information.name,
+              clean_entry(Parent#information.entry)},
+    {[Parent1], []};
+gen_process_tree_nodes_edges_1({Parent, Children}) -> 
+    Parent1={Parent#information.id, Parent#information.name,
+             clean_entry(Parent#information.entry)},
+    Children1=[{C#information.id, C#information.name,
+                clean_entry(C#information.entry)}||{C, _}<-Children],
+    {Nodes, Edges, IgnoredPids} = group_edges(Parent1, Children1),
+    
+    RemainedChildren=[Tree||Tree={P, _}<-Children, 
+                            not lists:member(P#information.id,
+                                             IgnoredPids)],
+    {Nodes1, Edges1}=gen_process_tree_nodes_edges(RemainedChildren),
+    {Nodes++Nodes1, Edges++Edges1}.
+                      
+
+clean_entry({M, F, Args}) when is_list(Args) ->
+    {M, F, length(Args)};
+clean_entry(Entry) -> Entry.
+
+
+
+%% gen_process_tree_nodes_edges() ->
+%%     ets:foldl(fun(#information{id=Id, name=Name, entry=Entry,  
+%%                                children=Children}, {NodeAcc, EdgeAcc}) ->
+%%                       case is_pid(Id) of 
+%%                           true ->
+%%                               Entry1 = case Entry of 
+%%                                            {M, F, Args} -> {M, F, length(Args)};
+%%                                            _ -> undefined                                                       
+%%                                        end,
+%%                               Node ={Id, Name, Entry1},
+%%                               Children1 =lists:append([ets:lookup(pdb_info,ChildPid)
+%%                                                            ||ChildPid<-Children]),
+%%                               Children2=[begin
+%%                                              Entry2=case C#information.entry of 
+%%                                                         {M2, F2, Args2} -> {M2, F2, length(Args2)};
+%%                                                         _ -> undefined
+%%                                                     end,
+%%                                              {C#information.id, C#information.name, Entry2}
+%%                                          end ||C<-Children1],  
+%%                               NewEdges=group_edges(Node, Children2),
+%%                               {[Node|NodeAcc],NewEdges++EdgeAcc};
+%%                           false ->{NodeAcc, EdgeAcc}
+%%                       end
+%%               end, {[], []}, pdb_info).
+
+group_edges(Parent, Children) ->
+    io:format("Parent:\n~p\n", [Parent]),
+    io:format("Children\n~p\n", [Children]),
+    ChildrenGroupedByName = group_by(2, Children),
+    io:format("ChildrenbyName\n~p\n", [ChildrenGroupedByName]),
+    Res = [group_edges_1(Parent, ChildrenWithSameName)||
+              ChildrenWithSameName<-ChildrenGroupedByName],
+    io:format("Res:\n~p\n", [lists:append(Res)]),
+    {Nodes, Edges, Ignored}=lists:unzip3(lists:append(Res)),
+    {lists:append(Nodes), lists:append(Edges), lists:append(Ignored)}.
+  
+    
+group_edges_1(Parent, ChildrenWithSameName) ->
+    ChildrenGroupedByEntry = group_by(3, ChildrenWithSameName),
+    io:format("ChildrenbyEntry\n~p\n", [ChildrenGroupedByEntry]),
+    [group_edges_2(Parent, ChirdreWithSameNameAndEntry)||
+                      ChirdreWithSameNameAndEntry<-ChildrenGroupedByEntry].
+group_edges_2(Parent, ChildrenWithSameNameAndEntry) ->
+    [C={_Pid, Name, Entry}|Sibs] = lists:keysort(1, ChildrenWithSameNameAndEntry),
+    case Sibs of 
+        [] ->
+            Nodes = [Parent, C],
+            Edges = [{Parent, C, ""}],
+            Ignored = [],
+            {Nodes, Edges, Ignored};        
+        _ ->
+            DummyNode ={'...', Name, Entry},
+            Nodes = [Parent, C, DummyNode],
+            Edges =[{Parent, C, ""}, 
+                    {Parent, DummyNode, length(Sibs)}],
+            Ignored = [Id||{Id, _, _}<-Sibs],
+            {Nodes, Edges, Ignored}
+    end.
+         
+digraph_add_edges_to_process_tree({Nodes, Edges}, MG) ->
+    io:format("Edgestoadd:\n~p\n", [Edges]),
+    [digraph:add_vertex(MG, Node)||Node<-Nodes],
+    [digraph_add_edge_1(MG, From, To, Label)||{From, To, Label}<-Edges].
+
+digraph_add_edge_1(MG, From, To, Label) ->
+    case digraph:vertex(MG, To) of 
+        false ->
+            digraph:add_vertex(MG, To);
+        _ ->
+            ok
+    end,
+    digraph:add_edge(MG, From, To, Label).
+
+process_tree_to_dot_1(MG, OutFileName) ->
+    Edges =[digraph:edge(MG, X) || X <- digraph:edges(MG)],
+    Nodes = digraph:vertices(MG),
+    GraphName="ProcessTree",
+    Start = ["digraph ",GraphName ," {"],
+    VertexList = [format_process_tree_node(N) ||N <- Nodes],
+    End = ["graph [", GraphName, "=", GraphName, "]}"],
+    EdgeList = [format_process_tree_edge(X, Y, Label) ||{_, X, Y, Label} <- Edges],
+    io:format("EdgeList:\n~p\n", [EdgeList]),
+    String = [Start, VertexList, EdgeList, End],
+    ok = file:write_file(OutFileName, list_to_binary(String)).
+
+format_process_tree_node(V) ->
+    String = format_process_tree_vertex(V),
+    {Width, Heigth} = calc_dim(String),
+    W = (Width div 7 + 1) * 0.55,
+    H = Heigth * 0.4,
+    SL = io_lib:format("~f", [W]),
+    SH = io_lib:format("~f", [H]),
+    ["\"", String, "\"", " [width=", SL, " heigth=", SH, " ", "", "];\n"].
+            
+format_process_tree_vertex({Pid, Name, Entry}) ->
+    lists:flatten(io_lib:format("~p; ~p;\\n~p",
+                                [Pid, Name, Entry]));
+format_process_tree_vertex(Other)  ->
+     io_lib:format("~p", [Other]).
+    
+format_process_tree_edge(V1, V2, Label) ->
+    String = ["\"",format_process_tree_vertex(V1),"\"", " -> ",
+	      "\"", format_process_tree_vertex(V2), "\""],
+    [String, " [", "label=", "\"", format_label(Label),  
+     "\"",  "fontsize=20 fontname=\"Verdana\"", "];\n"].
+          
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                      %% 
 %%                Callgraph Generlisation.                              %%
 %%                                                                      %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 gen_callgraph_img(Pid) ->
-    [Tree]=ets:select(fun_calltree, 
+    Res=ets:select(fun_calltree, 
                       [{#fun_calltree{id = {'$1', '_','_'}, _='_'},
                         [{'==', '$1', Pid}],
                         ['$_']
                        }]),
-    gen_callgraph_img_1(Pid, Tree).
+    case Res of 
+        [] -> no_image;
+        [Tree] -> gen_callgraph_img_1(Pid, Tree)
+    end.
    
 gen_callgraph_img_1(Pid, CallTree) ->
     String = lists:flatten(io_lib:format("~p", [Pid])),
@@ -1738,11 +1941,8 @@ gen_callgraph_img_1(Pid, CallTree) ->
                      "images", BaseName++".svg"]),
     fun_callgraph_to_dot(CallTree,DotFileName),
     os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
-    file:delete(DotFileName).
-
-
-
-   
+    file:delete(DotFileName),
+    ok.
 
 fun_callgraph_to_dot(CallTree, DotFileName) ->
     Edges=gen_callgraph_edges(CallTree),
@@ -1761,7 +1961,7 @@ gen_callgraph_edges(CallTree) ->
                 end, [], ChildrenCallTrees).
 
 %%depth first traveral.
-digraph_add_edges([], NodeIndex, MG)-> 
+digraph_add_edges([], NodeIndex, _MG)-> 
     NodeIndex;
 digraph_add_edges(Edge={_From, _To, _CNT}, NodeIndex, MG) ->
     digraph_add_edge(Edge, NodeIndex, MG);
@@ -1771,8 +1971,8 @@ digraph_add_edges([Edge={_From, _To, _CNT}|Children], NodeIndex, MG) ->
                         digraph_add_edges(Tree, IndexAcc, MG)
                 end, NodeIndex1, Children);
 digraph_add_edges(Trees=[Tree|_Ts], NodeIndex, MG) when is_list(Tree)->
-    lists:foldl(fun(Tree, IndexAcc) ->
-                        digraph_add_edges(Tree, IndexAcc, MG)
+    lists:foldl(fun(T, IndexAcc) ->
+                        digraph_add_edges(T, IndexAcc, MG)
                 end, NodeIndex, Trees).
         
    
@@ -1870,6 +2070,20 @@ format_label(Label) when is_integer(Label) ->
 format_label(_Label) -> "".
 
     
+group_by(N, TupleList) ->
+    SortedTupleList = lists:keysort(N, lists:usort(TupleList)),
+    group_by(N, SortedTupleList, []).
+
+group_by(_N,[],Acc) -> Acc;
+group_by(N,TupleList = [T| _Ts],Acc) ->
+    E = element(N,T),
+    {TupleList1,TupleList2} = 
+	lists:partition(fun (T1) ->
+				element(N,T1) == E
+			end,
+			TupleList),
+    group_by(N,TupleList2,Acc ++ [TupleList1]).
+
 %% fprof:apply(refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]). 
 
 %% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/percept/test"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/percept/test"], 8]}, [])  

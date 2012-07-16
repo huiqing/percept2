@@ -315,12 +315,14 @@ calltime_percentage(Width, Height, CallTime, Percentage) ->
     Font = load_font(),
     Black = egd:color(Im, {0, 0, 0}),
     Green = egd:color(Im, {0, 255, 0}),
-
+    Grey = egd:color(Im, {128, 128, 128}),
     % Ratio and coordinates
     X = round(Percentage*(Width - 1)),
+    egd:filledRectangle(Im, {0,0}, {Width-1, Height-1}, Grey),
     egd:filledRectangle(Im, {0, 0}, {X-1, Height - 1}, Green),
     {FontW, _} = egd_font:size(Font), 
-    String = lists:flatten(io_lib:format("~p", [CallTime])),
+    String = lists:flatten(io_lib:format("~.3f      ~.10B%",
+                                         [float(CallTime), round(100*Percentage)])),
     text(	Im, 
 		{round(Width/2 - (FontW*length(String)/2)), 0}, 
     		Font,
