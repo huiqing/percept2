@@ -93,7 +93,7 @@ start() ->
 -spec restart(pid())-> pid().
 
 restart(PerceptDB)->
-    io:format("restart percept_db\n"),
+   %% io:format("restart percept_db\n"),
     stop_sync(PerceptDB),
     do_start().
 
@@ -203,7 +203,6 @@ select(Table, Options) ->
 
 consolidate() ->
     %% io:format("consolidate start\n"),
-    %% io:format("consolidate start\n"),
     percept_db ! {action, self(), consolidate},
     receive
         {percept_db, consolidate_done} -> ok;
@@ -236,7 +235,7 @@ loop_percept_db() ->
             insert_trace(clean_trace(Trace)),
             loop_percept_db();
 	{select, Pid, Query} ->
-            io:format("recevied query:\n~p\n", [Query]),
+         %%   io:format("recevied query:\n~p\n", [Query]),
 	    Pid ! {result, select_query(Query)},
 	    loop_percept_db();
 	{action, stop} -> 
@@ -293,15 +292,10 @@ insert_profile_trace(Trace) ->
          {profile_start, Ts} ->
              update_system_start_ts(Ts);
          {profile_stop, Ts} ->
-             io:format("Stop Time:\n~p\n", [Ts]),
+           %%  io:format("Stop Time:\n~p\n", [Ts]),
 	    update_system_stop_ts(Ts);
          %%% erlang:system_profile, option: runnable_procs)
     	 {profile, Id, State, Mfa, TS} when is_pid(Id) ->
-             case list_to_pid("<0.10455.0>") == Id of 
-                 true ->
-                     io:format("Trace:\n~p\n", [Trace]);
-                 _ -> ok
-             end,
              insert_profile_trace_1(Id,State,Mfa,TS,procs);
          {profile, Id, State, Mfa, TS} when is_port(Id) ->
              insert_profile_trace_1(Id, State, Mfa, TS, ports);
@@ -364,11 +358,6 @@ trace_unlink(_Trace) ->
     ok.
 
 trace_in(Trace={trace_ts, Pid, in, Rq,  _MFA, _Ts})->
-    case list_to_pid("<0.10455.0>") == Pid of 
-        true ->
-            io:format("Trace:\n~p\n", [Trace]);
-        _ -> ok
-     end,
     if is_pid(Pid) ->
             update_information_rq(Pid, Rq);
        true -> ok
@@ -544,7 +533,6 @@ check_activity_consistency(Id, State) ->
 %%%	Query = {Table, Option}
 %%%	Table = system | activity | scheduler | information
 select_query(Query) ->
-   io:format("Query1:\n~p\n", [Query]),
     case Query of
 	{system, _ } -> 
 	    select_query_system(Query);
@@ -1259,7 +1247,6 @@ pdb_func_loop()->
             From !{pdb_func, gen_fun_info_done},
             pdb_func_loop();
         {query_pdb_func, From, Query} ->
-            io:format("Query pdb func:~p\n", [Query]),
             Res = select_query_func_1(Query),
             From !{pdb_func, Res},
             pdb_func_loop();
@@ -2100,17 +2087,17 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 
 %% percept2_db:gen_callgraph_img(list_to_pid("<0.1132.0>")).
 
-%% percept2:profile({file, "mergesort.dat"}, {mergesort, msort_lte,[lists:reverse(lists:seq(1,2000))]}, [message, process_scheduling, concurreny,garbagage_collection,{function, [{mergesort, '_','_'}]}]).
+%% percept2:profile({file, "mergesort.dat"}, {mergesort, msort_lte,[lists:reverse(lists:seq(1,2000))]}, [message, process_scheduling, concurrency,garbagage_collection,{function, [{mergesort, '_','_'}]}]).
 
 %% percept2:analyze("mergesort.dat").
 
-%% percept2:profile({file, "sim_code_v3.dat"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurreny,{function, [{refac_sim_code_par_v0, '_','_'}]}]).
+%% percept2:profile({file, "sim_code_v3.dat"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{refac_sim_code_par_v0, '_','_'}]}]).
 
 %% To profile percept itself.
-%% percept2:profile({file, "percept.dat"}, {percept2,analyze, ["sim_code_v2.dat"]},  [message, process_scheduling, concurreny,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
+%% percept2:profile({file, "percept.dat"}, {percept2,analyze, ["sim_code_v2.dat"]},  [message, process_scheduling, concurrency,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
  %%percept2:analyze("percept.dat").
 
 
 %%percept2:analyze("dialyzer.dat").
-%% percept2:profile({file, "percept_process_img.dat"}, {percept2_db,gen_process_tree_img, []},  [message, process_scheduling, concurreny,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
+%% percept2:profile({file, "percept_process_img.dat"}, {percept2_db,gen_process_tree_img, []},  [message, process_scheduling, concurrency,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
 %%percept2:analyze("percept_process_img.dat").

@@ -198,7 +198,7 @@ error_page(SessionID) ->
 %%% 	Content pages		%%%
 %%% --------------------------- %%%
 overview_content(_Env, Input) ->
-    io:format("Input:\n~p\n", [Input]),
+  %%  io:format("Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Min = get_option_value("range_min", Query),
     Max = get_option_value("range_max", Query),
@@ -389,13 +389,12 @@ concurrency_content(_Env, Input) ->
     %% Collect selected pids and generate id tags
     Pids = [value2pid(PidValue) || {PidValue, Case} <- Query, Case == "on", PidValue /= "select_all"],
     IDs  = [{id, Pid} || Pid <- Pids],
-    io:format("IDs:\n~p\n", [IDs]),
-   %%o:format("IDs:\n~p\n", [IDs]),
+    %%o:format("IDs:\n~p\n", [IDs]),
     % FIXME: A lot of extra work here, redo
 
     %% Analyze activities and calculate area bounds
     Activities = percept2_db:select({activity, IDs}),
-    io:format("Activities:\n~p\n", [Activities]),
+    %%io:format("Activities:\n~p\n", [Activities]),
     StartTs = percept2_db:select({system, start_ts}),
     Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept2_analyzer:activities2count2(Activities, StartTs)],
     {T00,_,T10,_} = percept2_analyzer:minmax(Counts),
@@ -957,7 +956,6 @@ visual_link({Pid,{M,F,A}, _})->
 visual_link({Pid,undefined, _})->
     "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid="++pid2value(Pid)++"&mfa="++"undefined"++"\">"++"show callgraph/time"++"</a>".
 
-
 calltime_link(Pid)->
     "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid="++pid2value(Pid)++"\">"++"show ACT"++"</a>".
 
@@ -969,7 +967,7 @@ visualise_callgraph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, footer()).
 
 callgraph_time_content(_Env, Input) ->
-    io:format("Input:\n~p\n", [Input]),
+    %% io:format("Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     ImgFileName="callgraph"++pid2value(Pid)++".svg",

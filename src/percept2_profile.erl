@@ -197,7 +197,7 @@ parse_profile_options([Opt|Opts],{TOpts, POpts, Funcs}) ->
             end
     end.
 
-get_flags(concurreny) ->
+get_flags(concurrency) ->
     [procs, ports, scheduler];
 get_flags(process_scheduling)->
     [running, exiting, scheduler_id];
