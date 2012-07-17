@@ -31,13 +31,31 @@
 
 -compile(export_all).
 
+%% pmap(Fun, List) ->
+%%     Parent = self(),
+%%     [receive {Pid, Result} -> Result end ||
+%%         Pid <- [spawn_link(?MODULE, pmap_1, [Fun, Parent, X])
+%%                 || X <- List]].
+
 pmap(Fun, List) ->
     Parent = self(),
-    [receive {Pid, Result} -> Result end ||
-        Pid <- [spawn_link(?MODULE, pmap_1, [Fun, Parent, X])
-                || X <- List]].
+    Pid = spawn_link(?MODULE, pmap_0, [Parent, Fun, List]),
+    receive
+        {Pid, Res}-> Res
+    end.
 
-pmap_1(Fun, Parent, X) ->Parent ! {self(), Fun(X)}.
+pmap_0(Parent, Fun, List) ->
+    Self = self(),
+    Pids=lists:map(fun(X) ->
+                       spawn_link(?MODULE, pmap_1, [Fun, Self, X])
+                    end, List),
+    Res=[receive {Pid, Result} ->
+             Result end|| Pid<-Pids],
+    Parent!{Self, Res}.
+
+pmap_1(Fun, Parent, X) ->
+    Res = (catch Fun(X)),
+    Parent!{self(), Res}.
 
 
 pforeach(Fun, List) ->

@@ -389,12 +389,13 @@ concurrency_content(_Env, Input) ->
     %% Collect selected pids and generate id tags
     Pids = [value2pid(PidValue) || {PidValue, Case} <- Query, Case == "on", PidValue /= "select_all"],
     IDs  = [{id, Pid} || Pid <- Pids],
-
+    io:format("IDs:\n~p\n", [IDs]),
    %%o:format("IDs:\n~p\n", [IDs]),
     % FIXME: A lot of extra work here, redo
 
     %% Analyze activities and calculate area bounds
     Activities = percept2_db:select({activity, IDs}),
+    io:format("Activities:\n~p\n", [Activities]),
     StartTs = percept2_db:select({system, start_ts}),
     Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept2_analyzer:activities2count2(Activities, StartTs)],
     {T00,_,T10,_} = percept2_analyzer:minmax(Counts),

@@ -295,8 +295,13 @@ insert_profile_trace(Trace) ->
          {profile_stop, Ts} ->
              io:format("Stop Time:\n~p\n", [Ts]),
 	    update_system_stop_ts(Ts);
-         %%% erlang:system_profile, option: runnable_procs
+         %%% erlang:system_profile, option: runnable_procs)
     	 {profile, Id, State, Mfa, TS} when is_pid(Id) ->
+             case list_to_pid("<0.10455.0>") == Id of 
+                 true ->
+                     io:format("Trace:\n~p\n", [Trace]);
+                 _ -> ok
+             end,
              insert_profile_trace_1(Id,State,Mfa,TS,procs);
          {profile, Id, State, Mfa, TS} when is_port(Id) ->
              insert_profile_trace_1(Id, State, Mfa, TS, ports);
@@ -327,6 +332,7 @@ insert_profile_trace_1(Id,State,Mfa,TS,Type) ->
     end.
 
 trace_spawn(_Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) ->
+   %% io:format("trace spawn:\n~p\n", [Trace]),
     InformativeMfa = mfa2informative(Mfa),
     update_information(
       #information{id = Pid, start = TS,
@@ -357,13 +363,19 @@ trace_link(_Trace) ->
 trace_unlink(_Trace) ->
     ok.
 
-trace_in(_Trace={trace_ts, Pid, in, Rq,  _MFA, _Ts})->
+trace_in(Trace={trace_ts, Pid, in, Rq,  _MFA, _Ts})->
+    case list_to_pid("<0.10455.0>") == Pid of 
+        true ->
+            io:format("Trace:\n~p\n", [Trace]);
+        _ -> ok
+     end,
     if is_pid(Pid) ->
             update_information_rq(Pid, Rq);
        true -> ok
     end;
 trace_in(_Trace={trace_ts, _Pid, in, _MFA, _Ts}) ->
     ok.
+
 
              
 trace_out(_Trace={trace_ts, Pid, out, _Rq,  _MFA, _Ts}) when is_pid(Pid) ->
@@ -1141,33 +1153,41 @@ select_query_system_1(Query) ->
 %%   Gen process tree                               %%
 %%                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	  
+
+-type process_tree()::{#information{},[process_tree()]}.
+
+-spec gen_process_tree/0::()->[process_tree()].
 gen_process_tree() ->
-    io:format("Gen process tree\n"),
     List = lists:keysort(2,select_query({information, procs})),
     gen_process_tree(List, []).
 
+-spec gen_process_tree/2::([#information{}], [process_tree()]) 
+                          -> [process_tree()].
 gen_process_tree([], Out) ->
     add_ancestors(Out);
 gen_process_tree([Elem|Tail], Out) ->
     Children = Elem#information.children,
-    {ChildrenElems, Tail1} = lists:partition(fun(E) -> 
-                                                     lists:member(E#information.id, Children)
-                                         end, Tail),
+    {ChildrenElems, Tail1} = lists:partition(
+                               fun(E) -> 
+                                       lists:member(E#information.id, Children)
+                               end, Tail),
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
     gen_process_tree(NewTail, [{Elem, NewChildren}|Out]).
 
-
+-spec gen_process_tree_1/3::([#information{}], [#information{}],[process_tree()]) 
+                          -> {[process_tree()], [#information{}]}.
 gen_process_tree_1([], Tail, NewChildren) ->
     {NewChildren, Tail};
 gen_process_tree_1([C|Cs], Tail, Out) ->
     Children = C#information.children,
-    {ChildrenElems, Tail1} = lists:partition(fun(E) -> 
-                                                     lists:member(E#information.id, Children)
-                                             end, Tail),
+    {ChildrenElems, Tail1} = lists:partition(
+                               fun(E) -> 
+                                       lists:member(E#information.id, Children)
+                               end, Tail),
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
     gen_process_tree_1(Cs, NewTail, [{C, NewChildren}|Out]).
-      
+
+-spec add_ancestors/1::(process_tree())->process_tree().
 add_ancestors(ProcessTree) ->
     add_ancestors(ProcessTree, []).
 
@@ -1749,9 +1769,19 @@ elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
 %%                                                                      %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%Todo: combine some nodes into one?
-gen_process_tree_img()->
+gen_process_tree_img() ->
+    Pid=spawn(?MODULE, gen_process_tree_img_1, [self()]),
+    receive
+        {Pid, done, Result} ->
+            Result
+    end.
+    
+    
+gen_process_tree_img_1(Parent)->
     Tree = gen_process_tree(),
-    gen_process_tree_img(Tree).
+    Res=gen_process_tree_img(Tree),
+    Parent ! {self(), done, Res}.
+    
 
 gen_process_tree_img([]) ->
     no_image;
@@ -1768,8 +1798,6 @@ gen_process_tree_img(ProcessTrees) ->
             
 process_tree_to_dot(ProcessTrees, DotFileName) ->
     {Nodes, Edges} = gen_process_tree_nodes_edges(ProcessTrees),
-    io:format("Nodes:\n~p\n", [Nodes]),
-    io:format("Edges:\n~p\n", [Edges]),
     MG = digraph:new(),
     digraph_add_edges_to_process_tree({Nodes, Edges}, MG),
     process_tree_to_dot_1(MG, DotFileName),
@@ -1777,11 +1805,11 @@ process_tree_to_dot(ProcessTrees, DotFileName) ->
     ok.
 
 gen_process_tree_nodes_edges(Trees) ->
-    Res=[gen_process_tree_nodes_edges_1(Tree)||Tree<-Trees],
-    io:format("Res1:\~p\n", [Res]),
+    Res = percept2_utils:pmap(
+            fun(Tree) ->
+                    gen_process_tree_nodes_edges_1(Tree) 
+            end,  Trees),
     {Nodes, Edges}=lists:unzip(Res),
-    io:format("Nodes1:\n~p\n", [lists:append(Nodes)]),
-    io:format("Edges1:\n~p\n", [lists:append(Edges)]),
     {lists:append(Nodes), lists:append(Edges)}.
 
 gen_process_tree_nodes_edges_1({Parent, []}) ->
@@ -1792,66 +1820,43 @@ gen_process_tree_nodes_edges_1({Parent, Children}) ->
     Parent1={Parent#information.id, Parent#information.name,
              clean_entry(Parent#information.entry)},
     Children1=[{C#information.id, C#information.name,
-                clean_entry(C#information.entry)}||{C, _}<-Children],
+                clean_entry(C#information.entry), process_tree_size(C1)}||C1={C, _}<-Children],
     {Nodes, Edges, IgnoredPids} = group_edges(Parent1, Children1),
-    
     RemainedChildren=[Tree||Tree={P, _}<-Children, 
                             not lists:member(P#information.id,
                                              IgnoredPids)],
     {Nodes1, Edges1}=gen_process_tree_nodes_edges(RemainedChildren),
     {Nodes++Nodes1, Edges++Edges1}.
-                      
+             
+process_tree_size(Tree) ->
+    case Tree of
+        {_, []} ->
+            1;
+        {_, Ts} ->
+            1+length(Ts)+lists:sum([process_tree_size(T)||T<-Ts])
+    end.
+         
 
 clean_entry({M, F, Args}) when is_list(Args) ->
     {M, F, length(Args)};
 clean_entry(Entry) -> Entry.
 
-
-
-%% gen_process_tree_nodes_edges() ->
-%%     ets:foldl(fun(#information{id=Id, name=Name, entry=Entry,  
-%%                                children=Children}, {NodeAcc, EdgeAcc}) ->
-%%                       case is_pid(Id) of 
-%%                           true ->
-%%                               Entry1 = case Entry of 
-%%                                            {M, F, Args} -> {M, F, length(Args)};
-%%                                            _ -> undefined                                                       
-%%                                        end,
-%%                               Node ={Id, Name, Entry1},
-%%                               Children1 =lists:append([ets:lookup(pdb_info,ChildPid)
-%%                                                            ||ChildPid<-Children]),
-%%                               Children2=[begin
-%%                                              Entry2=case C#information.entry of 
-%%                                                         {M2, F2, Args2} -> {M2, F2, length(Args2)};
-%%                                                         _ -> undefined
-%%                                                     end,
-%%                                              {C#information.id, C#information.name, Entry2}
-%%                                          end ||C<-Children1],  
-%%                               NewEdges=group_edges(Node, Children2),
-%%                               {[Node|NodeAcc],NewEdges++EdgeAcc};
-%%                           false ->{NodeAcc, EdgeAcc}
-%%                       end
-%%               end, {[], []}, pdb_info).
-
 group_edges(Parent, Children) ->
-    io:format("Parent:\n~p\n", [Parent]),
-    io:format("Children\n~p\n", [Children]),
     ChildrenGroupedByName = group_by(2, Children),
-    io:format("ChildrenbyName\n~p\n", [ChildrenGroupedByName]),
     Res = [group_edges_1(Parent, ChildrenWithSameName)||
               ChildrenWithSameName<-ChildrenGroupedByName],
-    io:format("Res:\n~p\n", [lists:append(Res)]),
     {Nodes, Edges, Ignored}=lists:unzip3(lists:append(Res)),
     {lists:append(Nodes), lists:append(Edges), lists:append(Ignored)}.
   
     
 group_edges_1(Parent, ChildrenWithSameName) ->
     ChildrenGroupedByEntry = group_by(3, ChildrenWithSameName),
-    io:format("ChildrenbyEntry\n~p\n", [ChildrenGroupedByEntry]),
+   %% io:format("ChildrenbyEntry\n~p\n", [ChildrenGroupedByEntry]),
     [group_edges_2(Parent, ChirdreWithSameNameAndEntry)||
                       ChirdreWithSameNameAndEntry<-ChildrenGroupedByEntry].
 group_edges_2(Parent, ChildrenWithSameNameAndEntry) ->
-    [C={_Pid, Name, Entry}|Sibs] = lists:keysort(1, ChildrenWithSameNameAndEntry),
+    [{Pid, Name, Entry, _Size}|Sibs] = lists:reverse(lists:keysort(4, ChildrenWithSameNameAndEntry)),
+    C = {Pid, Name, Entry},
     case Sibs of 
         [] ->
             Nodes = [Parent, C],
@@ -1863,15 +1868,16 @@ group_edges_2(Parent, ChildrenWithSameNameAndEntry) ->
             Nodes = [Parent, C, DummyNode],
             Edges =[{Parent, C, ""}, 
                     {Parent, DummyNode, length(Sibs)}],
-            Ignored = [Id||{Id, _, _}<-Sibs],
+            Ignored = [Id||{Id, _, _, _}<-Sibs],
             {Nodes, Edges, Ignored}
     end.
          
 digraph_add_edges_to_process_tree({Nodes, Edges}, MG) ->
-    io:format("Edgestoadd:\n~p\n", [Edges]),
+    %% This cannot be parallelised because of side effects.
     [digraph:add_vertex(MG, Node)||Node<-Nodes],
     [digraph_add_edge_1(MG, From, To, Label)||{From, To, Label}<-Edges].
 
+%% a function with side-effect.
 digraph_add_edge_1(MG, From, To, Label) ->
     case digraph:vertex(MG, To) of 
         false ->
@@ -1889,7 +1895,7 @@ process_tree_to_dot_1(MG, OutFileName) ->
     VertexList = [format_process_tree_node(N) ||N <- Nodes],
     End = ["graph [", GraphName, "=", GraphName, "]}"],
     EdgeList = [format_process_tree_edge(X, Y, Label) ||{_, X, Y, Label} <- Edges],
-    io:format("EdgeList:\n~p\n", [EdgeList]),
+    %% io:format("EdgeList:\n~p\n", [EdgeList]),
     String = [Start, VertexList, EdgeList, End],
     ok = file:write_file(OutFileName, list_to_binary(String)).
 
@@ -2103,3 +2109,8 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 %% To profile percept itself.
 %% percept2:profile({file, "percept.dat"}, {percept2,analyze, ["sim_code_v2.dat"]},  [message, process_scheduling, concurreny,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
  %%percept2:analyze("percept.dat").
+
+
+%%percept2:analyze("dialyzer.dat").
+%% percept2:profile({file, "percept_process_img.dat"}, {percept2_db,gen_process_tree_img, []},  [message, process_scheduling, concurreny,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
+%%percept2:analyze("percept_process_img.dat").
