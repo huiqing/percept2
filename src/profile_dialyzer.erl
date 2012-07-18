@@ -7,7 +7,7 @@
 
 percept_profile(Dir) ->
     percept2:profile({file, "dialyzer.dat"}, {profile_dialyzer, run_dialyzer, [Dir]},
-                     [message, process_scheduling, concurreny,{function, [{dialyzer_succ_typings, '_','_'}]}]).
+                     [message, process_scheduling, concurrency,{function, [{dialyzer_succ_typings, '_','_'}]}]).
 
 %%sample:
 %% profile:dialyzer:sample_profile(["/proj/wrangler"]).
