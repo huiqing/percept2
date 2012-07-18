@@ -87,6 +87,10 @@
           call_count =0,
           acc_time =0}).
 
+-record(history_html, {
+          id, 
+          content}).
+
 -define(debug, 9).
 %%-define(debug, 0). 
 -ifdef(debug). 
