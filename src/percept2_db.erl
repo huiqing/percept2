@@ -106,13 +106,12 @@ restart(PerceptDB)->
 do_start()->
     Parent = self(),
     Pid =spawn_link(fun() -> init_percept_db(Parent) end),
-  %%  io:format("percept_db:\n~p\n", [Pid]),
+    percept2_utils:rm_tmp_files(),
     receive
         {percept_db, started} ->
             Pid
     end.
     
-
 %% @spec stop() -> not_started | {stopped, Pid}
 %%	Pid = pid()|regname()
 %% @doc Stops the percept database.
@@ -225,6 +224,7 @@ init_percept_db(Parent) ->
     start_child_process(pdb_activity, fun init_pdb_activity/1),
     start_child_process(pdb_func, fun init_pdb_func/1),
     start_child_process(pdb_warnings, fun init_pdb_warnings/1),
+    ets:new(history_html_tab, [named_table, public, {keypos,#history_html.id}, ordered_set]),
     put(debug, 0),
     Parent!{percept_db, started},
     loop_percept_db().
@@ -804,7 +804,7 @@ update_scheduler(Activity) ->
     pdb_scheduler ! {update_scheduler, Activity}.
 
 select_query_scheduler(Query) ->
-    pdb_scheduler ! {'query_pdb_scheduler', Query},
+    pdb_scheduler ! {'query_pdb_scheduler', self(), Query},
     receive
         {pdb_scheduler, Res} ->
             Res
@@ -816,7 +816,7 @@ pdb_scheduler_loop()->
         {update_scheduler, Activity} ->
             update_scheduler_1(Activity),
             pdb_scheduler_loop();
-        {select_query_scheduler, From, Query} ->
+        {'query_pdb_scheduler', From, Query} ->
             Res=select_query_scheduler_1(Query),
             From !{pdb_scheduler, Res},
             pdb_scheduler_loop();
@@ -1198,7 +1198,7 @@ init_pdb_func(Parent) ->
                           {read_concurrency,true}]),
     ets:new(fun_calltree, [named_table, protected, {keypos, #fun_calltree.id}, ordered_set,
                           {read_concurrency,true}]),
-    ets:new(fun_info, [named_table, protected, {keypos, #fun_info.id}, ordered_set,
+    ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, ordered_set,
                        {read_concurrency,true}]),
     Parent !{pdb_func, started},
     pdb_func_loop().
@@ -1648,7 +1648,6 @@ process_a_call_tree_1(CallTree) ->
             Children=CallTree#fun_calltree.called,
             [process_a_call_tree_1(C)||C <- Children];
         _ ->
-            
             update_func_info({Pid, MFA}, 
                              {Caller, CallTree#fun_calltree.cnt},
                              [{element(2, C#fun_calltree.id),
@@ -1661,7 +1660,6 @@ process_a_call_tree_1(CallTree) ->
     end.
 
 select_query_func_1(Query) ->
-    io:format("Select query func: ~p\n", [Query]),
     case Query of 
         {code, Options} when is_list(Options) ->
             Head = #funcall_info{

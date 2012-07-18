@@ -152,7 +152,8 @@ start_webserver(Port) when is_integer(Port) ->
 		    %% workaround until inets can get me a service from a name.
 		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
 		    register(percept_httpd, Mem),
-                    rm_temp_files(),
+                    percept2_utils:rm_tmp_files(),
+                    ets:new(history_html_tab, [named_table, public, {keypos,2}, ordered_set]),
 		    {started, Host, AssignedPort};
 		{error, Reason} ->
 		    {error, {inets, Reason}}
@@ -188,7 +189,7 @@ do_stop(Port, Pid)->
             {error, not_started};
         Pid2 ->
             Pid ! quit,
-            rm_temp_files(),
+            percept2_utils:rm_tmp_files(),
             inets:stop(httpd, Pid2)
     end.
 
@@ -198,17 +199,6 @@ do_stop(Port, Pid)->
 
 stop_webserver(Port) ->
     do_stop(Port,[]).
-
-rm_temp_files() ->
-    Dir =filename:join([code:priv_dir(percept2),"server_root", "images"]),
-    case file:list_dir(Dir) of 
-        {error, Error} ->
-            {error, Error};
-        {ok, FileNames} ->
-            [file:delete(filename:join(Dir, F))
-             ||F<-FileNames,
-               lists:prefix("callgraph", F)]
-    end.
 %%==========================================================================
 %%
 %% 		Auxiliary functions 

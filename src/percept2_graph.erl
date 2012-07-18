@@ -144,7 +144,6 @@ activity_bar(_Env, Input) ->
     Data    = percept2_db:select({activity, [{id, Pid}]}),
     StartTs = percept2_db:select({system, start_ts}),
     Activities = [{?seconds(Ts, StartTs), State} || #activity{timestamp = Ts, state = State} <- Data],
-    
     percept2_image:activities(Width, Height, {Min,Max}, Activities).
 
 proc_lifetime(_Env, Input) ->

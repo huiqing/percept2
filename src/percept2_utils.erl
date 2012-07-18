@@ -81,3 +81,15 @@ pforeach_wait(S,N) ->
     receive
         S -> pforeach_wait(S,N-1)
     end.
+
+rm_tmp_files() ->
+    Dir =filename:join([code:priv_dir(percept2),"server_root", "images"]),
+    case file:list_dir(Dir) of 
+        {error, Error} ->
+            {error, Error};
+        {ok, FileNames} ->
+            [file:delete(filename:join(Dir, F))
+             ||F<-FileNames,
+               lists:prefix("callgraph", F) orelse
+                   lists:prefix("processtree", F)]
+    end.
