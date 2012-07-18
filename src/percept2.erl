@@ -153,8 +153,7 @@ start_webserver(Port) when is_integer(Port) ->
 		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
 		    register(percept_httpd, Mem),
                     percept2_utils:rm_tmp_files(),
-                    ets:new(history_html_tab, [named_table, public, {keypos,2}, ordered_set]),
-		    {started, Host, AssignedPort};
+                    {started, Host, AssignedPort};
 		{error, Reason} ->
 		    {error, {inets, Reason}}
 	   end;
