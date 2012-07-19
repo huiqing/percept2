@@ -251,7 +251,7 @@ overview_content_1(_Env, Input) ->
     Header = "
     <div id=\"content\">
     <div>" ++ InformationTable ++ "</div>\n
-    <form name=form_area method=POST action=/cgi-bin/percept2_html/page>
+    <form name=form_area method=POST action=/cgi-bin/percept2_html/overview_page>
     <input name=data_min type=hidden value=" ++ term2html(float(Min)) ++ ">
     <input name=data_max type=hidden value=" ++ term2html(float(Max)) ++ ">\n",
     RangeTable = 
