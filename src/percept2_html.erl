@@ -529,7 +529,7 @@ load_database_content(SessionId, _Env, Input) ->
 		    {error, Reason} ->
 	                    mod_esi:deliver(SessionId, error_msg("Analyze" ++ term2html(Reason)));
 		    _ ->
-		        Complete = "<center><a href=\"/cgi-bin/percept2_html/page\">View</a></center>",
+		        Complete = "<center><a href=\"/cgi-bin/percept2_html/overview_page\">View</a></center>",
 	                mod_esi:deliver(SessionId, Complete)
 	        end;
 	{error, Reason} ->
