@@ -1143,6 +1143,9 @@ select_query_system_1(Query) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -type process_tree()::{#information{},[process_tree()]}.
+gen_compressed_process_tree()->
+    Trees = gen_process_tree(),
+    compress_process_tree(Trees).
 
 -spec gen_process_tree/0::()->[process_tree()].
 gen_process_tree() ->
@@ -1763,10 +1766,63 @@ gen_process_tree_img() ->
     
     
 gen_process_tree_img_1(Parent)->
-    Tree = gen_process_tree(),
-    Res=gen_process_tree_img(Tree),
+    Trees = gen_process_tree(),
+    CompressedTrees = compress_process_tree(Trees),
+    Res=gen_process_tree_img(CompressedTrees),
     Parent ! {self(), done, Res}.
     
+compress_process_tree(Trees) ->
+    compress_process_tree(Trees, []).
+
+compress_process_tree([], Out)->
+    Out;
+compress_process_tree([T|Ts], Out) ->
+    T1=compress_process_tree_1(T),
+    compress_process_tree(Ts, [T1|Out]).
+
+compress_process_tree_1(Tree={_Parent, []}) ->
+    Tree;
+compress_process_tree_1(_Tree={Parent, Children}) ->
+    CompressedChildren = compress_process_tree_2(Children),
+    {Parent, CompressedChildren}.
+
+compress_process_tree_2(Children) when length(Children)<3->
+    compress_process_tree(Children);
+compress_process_tree_2(Children=[C={C0,_}|Cs]) ->
+    EntryFuns=[clean_entry(C1#information.entry)||{C1, _}<-Children],
+    case lists:usort(EntryFuns) of 
+        [EntryFun] -> 
+            UnNamedProcs=[C1#information.id||{C1,_}<-Children, 
+                                            C1#information.name==undefined],
+            case length(UnNamedProcs) == length(Children) of
+                true ->
+                    Num = length(Cs),
+                    CompressedChildren=
+                        #information{id=list_to_pid("<0.0.0>"),
+                                     name=list_to_atom(integer_to_list(Num)++" procs omitted"),
+                                     parent=C0#information.parent,
+                                     entry = EntryFun,
+                                     start =lists:min([C1#information.start||{C1,_}<-Cs]),
+                                     stop = lists:max([C1#information.stop||{C1, _}<-Cs]),
+                                     msgs_received=lists:foldl(fun({P,_}, {R1Acc, R2Acc}) ->
+                                                                       {R1, R2}=P#information.msgs_received,
+                                                                       {R1+R1Acc, R2+R2Acc}
+                                                               end, {0,0}, Cs),
+                                     msgs_sent = lists:foldl(fun({P, _}, {S1Acc, S2Acc, S3Acc, S4Acc}) ->
+                                                                     {S1, S2, S3, S4} = P#information.msgs_sent,
+                                                                     {S1+S1Acc, S2+S2Acc, S3+S3Acc, S4+S4Acc}
+                                                             end, {0,0,0,0}, Cs)
+                                    },
+                    %% io:format("Compressedchildren:\n~p\n", [CompressedChildren]),
+                    [compress_process_tree_1(C), {CompressedChildren,[]}];   
+                false ->
+                    %% io:format("Children:\n~p\n",[Children]),
+                    compress_process_tree(Children)
+            end;
+        _ -> 
+            compress_process_tree(Children)
+    end.
+        
 
 gen_process_tree_img([]) ->
     no_image;
