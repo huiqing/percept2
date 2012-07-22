@@ -217,6 +217,7 @@ error_page(SessionID, _Env, _Input) ->
 overview_content(Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
     CacheKey = "overview"++integer_to_list(erlang:crc32(Input)),
+    io:format("ChacheKey:\n~p\n", [CacheKey]),
     case ets:lookup(history_html_tab, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
@@ -559,7 +560,7 @@ process_page_header_content_1(Input) ->
     StartTs = percept2_db:select({system, start_ts}),
     TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
     TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
-    ProcessTree = percept2_db:gen_process_tree(),
+    ProcessTree = percept2_db:gen_compressed_process_tree(),
     ProcessTreeHeader = mk_display_style(ProcessTree),
     Content = processes_content(ProcessTree, {TsMin, TsMax}),
     {ProcessTreeHeader, Content}.
@@ -753,9 +754,11 @@ parent_pids([T|Ts], Out) ->
             parent_pids(Ts, Out);
         {I, Children} ->
             if Out==[] ->
-                    parent_pids(Children++Ts, Out++"#"++mk_table_id(I#information.id));
+                    parent_pids(Children++Ts, Out++"#"
+                                ++mk_table_id(I#information.id));
                true ->
-                    parent_pids(Children++Ts, Out++",#"++mk_table_id(I#information.id))
+                    parent_pids(Children++Ts, Out++",#"
+                                ++mk_table_id(I#information.id))
             end
     end.
 
