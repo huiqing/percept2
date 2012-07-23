@@ -205,7 +205,7 @@ consolidate() ->
     percept_db ! {action, self(), consolidate},
     receive
         {percept_db, consolidate_done} -> ok;
-         Others -> io:format("Consoliate receive:~p\n", [Others])                  
+         Others -> io:format("Consolidate receive:~p\n", [Others])                  
     end.
     
 
