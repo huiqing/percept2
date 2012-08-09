@@ -43,13 +43,19 @@
 %%% 	API functions     	%%%
 %%% --------------------------- %%%
 overview_page(SessionID, Env, Input) ->
+    io:format("Input:\n~p\n", [{SessionID, Env, Input}]),
     try
         Menu = menu(Input),
         OverviewContent = overview_content(Env, Input),
+        io:format("Overview content created.\n"),
         mod_esi:deliver(SessionID, header()),
+        io:format("header done\n"),
         mod_esi:deliver(SessionID, Menu),
+        io:format("menu done\n"),
         mod_esi:deliver(SessionID, OverviewContent),
-        mod_esi:deliver(SessionID, footer())
+        io:format("delived overview content\n"),
+        mod_esi:deliver(SessionID, footer()),
+        io:format("delivered footer\n")
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -218,14 +224,14 @@ overview_content(Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
     CacheKey = "overview"++integer_to_list(erlang:crc32(Input)),
     io:format("ChacheKey:\n~p\n", [CacheKey]),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
             Content;
         [] ->
             io:format("Regenerated html\n"),
             Content=overview_content_1(Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=Content}),
             Content
@@ -335,14 +341,14 @@ url_memory_graph(W, H, Min, Max, []) ->
 %%% concurrency page content.
 concurrency_content(Env, Input) ->
     CacheKey = "concurrency_content"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
             Content;
         [] ->
             io:format("Regenerated html\n"),
             Content=concurrency_content_1(Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=Content}),
             Content
@@ -401,14 +407,14 @@ concurrency_content_1(_Env, Input) ->
 %%% code location content page.
 codelocation_content(Env, Input) ->
     CacheKey = "codelocation_content"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
             Content;
         [] ->
             io:format("Regenerated html\n"),
             Content=codelocation_content_1(Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=Content}),
             Content
@@ -448,14 +454,14 @@ cl_deltas([A,B|Ls], Out) -> cl_deltas([B|Ls], [B - A | Out]).
 %%% active functions content page.
 active_funcs_content(Env, Input) ->
     CacheKey = "active_funcs_content"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
             Content;
         [] ->
             io:format("Regenerated html\n"),
             Content=active_funcs_content_1(Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=Content}),
             Content
@@ -540,15 +546,16 @@ load_database_content(SessionId, _Env, Input) ->
 
 %%% process tree  page content.
 process_page_header_content(Input) ->
+    io:format("Process page input:\n~p\n", [Input]),
     CacheKey = "process_tree_page"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, HeaderAndContent}] ->
             io:format("Use chached process page\n"),
             HeaderAndContent;
         [] ->
             io:format("Regenerated html\n"),
             Res = process_page_header_content_1(Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                        #history_html{id=CacheKey,
                                      content=Res}),
             Res
@@ -565,15 +572,16 @@ process_page_header_content_1(Input) ->
     Content = processes_content(ProcessTree, {TsMin, TsMax}),
     {ProcessTreeHeader, Content}.
 
-processes_content(ProcessTree, {TsMin, TsMax}) ->
+processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     Ports = percept2_db:select({information, ports}),
     SystemStartTS = percept2_db:select({system, start_ts}),
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
-    Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
-    ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
-    ActiveProcsInfo=lists:append([percept2_db:select({information, Pid})||Pid <- ActivePids]),
-    ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo),
+    %% Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
+    %% ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
+    %% ActiveProcsInfo=lists:append([percept2_db:select({information, Pid})||Pid <- ActivePids]),
+    %% too expensive to calculate active pids in this way.
+    ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, []), %%ActiveProcsInfo),
     PortsHtml = lists:foldl(
     	fun (I, Out) -> 
 	    StartTime = procstarttime(I#information.start),
@@ -709,13 +717,22 @@ info_msg_received(I) ->
     {No, AvgSize}.
 
 
+%% info_msg_sent(I) ->
+%%     {No, SameRq, OtherRqs, Size} = I#information.msgs_sent,
+%%     AvgSize = case No of 
+%%                   0 -> 0;
+%%                   _ -> Size div No
+%%               end,
+%%     {No, SameRq, OtherRqs, AvgSize}.
+
 info_msg_sent(I) ->
-    {No, SameRq, OtherRqs, Size} = I#information.msgs_sent,
+    {No, Size} = I#information.msgs_sent,
     AvgSize = case No of 
                   0 -> 0;
                   _ -> Size div No
               end,
-    {No, SameRq, OtherRqs, AvgSize}.
+    {No, AvgSize}.
+
 
 expand_or_collapse(Children, Id) ->
     case Children of 
@@ -786,14 +803,14 @@ procstoptime(TS) ->
 %%% process_info_content
 process_info_content(Env, Input) ->
     CacheKey = "process_info"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
             Content;
         [] ->
             io:format("Regenerated html\n"),
             Content=process_info_content_1(Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=Content}),
             Content
@@ -893,14 +910,14 @@ process_tree_content(_Env, _Input) ->
 %%% function callgraph content
 func_callgraph_content(SessionID, Env, Input) ->
     CacheKey = "func_callpath"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, HeaderStyleAndContent}] ->
             io:format("Use cached html\n"),
             HeaderStyleAndContent;
         [] ->
             io:format("Regenerated html\n"),
             HeaderStyleAndContent=func_callgraph_content_1(SessionID, Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=HeaderStyleAndContent}),
             HeaderStyleAndContent
@@ -1012,14 +1029,14 @@ mfa_to_list(_) -> "undefined".
 %%%function information
 function_info_content(Env, Input) ->
     CacheKey = "function_info"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, HeaderStyleAndContent}] ->
             io:format("Use cached html\n"),
             HeaderStyleAndContent;
         [] ->
             io:format("Regenerated html\n"),
             HeaderStyleAndContent=function_info_content_1(Env, Input),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                            #history_html{id=CacheKey,
                                          content=HeaderStyleAndContent}),
             HeaderStyleAndContent
@@ -1082,14 +1099,14 @@ callgraph_time_content(_Env, Input) ->
         
 calltime_content(Pid)->
     CacheKey = "calltime"++integer_to_list(erlang:crc32(pid_to_list(Pid))),
-    case ets:lookup(history_html_tab, CacheKey) of 
+    case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
             Content;
         [] ->
             io:format("Regenerated html\n"),
             Content=calltime_content_1(Pid),
-            ets:insert(history_html_tab, 
+            ets:insert(history_html, 
                        #history_html{id=CacheKey,
                                      content=Content}),
             Content
@@ -1317,17 +1334,11 @@ get_default_option_value(Option) ->
 	"range_min" -> float(0.0);
 	"pids" -> [];
 	"range_max" ->
-	        Acts = percept2_db:select({activity, []}),
-                if Acts == [] ->
-                        float(0.0);
-                   true ->
-                        #activity{timestamp = Start} = hd(Acts),
-                        #activity{timestamp = Stop} = hd(lists:reverse(Acts)),
-                        ?seconds(Stop,Start)
-                end;
-	    "width" -> 800;
-	    "height" -> 400;
-	    _ -> {error, {undefined_default_option, Option}}
+            ?seconds((percept2_db:select({system, stop_ts})),
+                     (percept2_db:select({system, start_ts})));
+        "width" -> 800;
+        "height" -> 400;
+        _ -> {error, {undefined_default_option, Option}}
     end.
 -spec get_number_value(string()) -> number() | {'error', 'illegal_number'}.
 get_number_value(Value) ->

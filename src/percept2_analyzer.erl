@@ -87,7 +87,6 @@ mean(List)    ->
     Mean= Total/N,
     SumSquare=lists:sum([(V-Mean)*(V-Mean)||V<-List]),
     StdDev = math:sqrt(SumSquare/N),
-   %% io:format("Res:\n~p\n",  [{lists:sum(List),Mean, StdDev, N}]),
     {Total, Mean, StdDev, N}.
 
 %% mean([], {Sum, SumSquare, N}) -> 
@@ -101,6 +100,7 @@ mean(List)    ->
 
 activities2count2(Acts, StartTs) -> 
     Start = inactive_start_states(Acts),
+    io:format("Start:\n~p\n", [Start]),
     activities2count2(Acts, StartTs, Start, []).
 
 activities2count2([], _, _, Out) -> lists:reverse(Out);
@@ -127,7 +127,6 @@ activity_start_states([#activity{id = Id, state = State}|Acts], D) ->
         true  -> activity_start_states(Acts, D);
         false -> activity_start_states(Acts, dict:store(Id, State, D))
     end.
-
 
 
 

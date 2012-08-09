@@ -73,7 +73,6 @@ start(Type, _Entry={Mod, Fun, Args},Options) ->
 	    {already_started, Port}
     end.
 
-
 deliver_all_trace() -> 
     Tracee = self(),
     Tracer = spawn(fun() -> 
@@ -117,6 +116,7 @@ start_profile(Type,Opts) ->
 	    erlang:system_flag(multi_scheduling, block),
             Port = case Type of 
                        {file, FileName} -> 
+                          %% P=(dbg:trace_port(file,{FileName,wrap,".dat",50000000,12}))(),
                            P=(dbg:trace_port(file, FileName))(),
                            P;
                        {ip, Node, Number}->

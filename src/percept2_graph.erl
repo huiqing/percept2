@@ -90,13 +90,11 @@ graph(_Env, Input) ->
     TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
     
     Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
-    
     Acts     = percept2_db:select({activity, Options}),
     Counts   = case IDs of
-	[] -> percept2_analyzer:activities2count(Acts, StartTs);
-	_ -> percept2_analyzer:activities2count2(Acts, StartTs)
+                   [] -> percept2_analyzer:activities2count(Acts, StartTs);
+                   _ -> percept2_analyzer:activities2count2(Acts, StartTs)
                end,
-
     percept2_image:graph(Width, Height, Counts).
 
 scheduler_graph(_Env, Input) -> 
