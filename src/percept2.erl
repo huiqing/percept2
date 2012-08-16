@@ -42,7 +42,7 @@
 	stop/1]).
 
 -include("../include/percept2.hrl").
--compile(export_all).
+
 %%========================================================================
 %%
 %% 		Application callback functions
@@ -81,7 +81,8 @@ stop(_State) ->
 profile(Filename) ->
     percept2_profile:start(Filename, [concurrency]).
 
-%% @spec profile(Filename::string(), [percept_option()]) -> {ok, Port} | {already_started, Port}
+%% @spec profile(Filename::string(), [percept_option()]) -> 
+%%       {ok, Port} | {already_started, Port}
 %% @see percept_profile
 -spec profile(Filename :: file:filename(),
 	      Options :: [percept_option()]) ->
@@ -96,10 +97,8 @@ profile(Filename, Options) ->
 	      Entry :: {atom(), atom(), list()},
 	      Options :: [percept_option()]) ->
                      'ok' | {'already_started', port()} | {'error', 'not_started'}.
-
 profile(Type, MFA, Options) ->
     percept2_profile:start(Type, MFA, Options).
-
 
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
 %% @see percept_profile
@@ -111,23 +110,21 @@ stop_profile() ->
 analyze(FileNames) ->
     case percept2_db:start(FileNames) of
 	{started, FileNameSubDBPairs} ->
-            io:format("percept db started\n"),
-            io:format("Processes:~p\n", [processes()]),
             analyze_par_1(FileNameSubDBPairs);
         {restarted, FileNameSubDBPairs} ->
-            io:format("percept db restart\n"),
-            io:format("Processes:~p\n", [processes()]),
             analyze_par_1(FileNameSubDBPairs)
     end.
 
 analyze_par_1(FileNameSubDBPairs) ->
-    io:format("FileNameSubDBPairs:\n~p\n", [FileNameSubDBPairs]),
-    Res=percept2_utils:pmap(
-          fun({FileName, SubDBPid}) ->
-                  parse_and_insert(FileName, SubDBPid)
-          end, FileNameSubDBPairs),
-    io:format("Res:\n~p\n", [Res]),
-    percept2_db:consolidate_db(FileNameSubDBPairs).
+    _Res=percept2_utils:pmap(
+           fun({FileName, SubDBPid}) ->
+                   parse_and_insert(FileName, SubDBPid)
+           end, FileNameSubDBPairs),
+    percept2_db:consolidate_db(),
+    io:format("    ~p created processes.~n",
+              [percept2_db:select({information, procs_count})]),
+    io:format("    ~p opened ports.~n", 
+              [percept2_db:select({information, ports_count})]).
    
 
 %% @spec start_webserver() -> {started, Hostname, Port} | {error, Reason}
@@ -152,6 +149,7 @@ start_webserver(Port) when is_integer(Port) ->
     case whereis(percept_httpd) of
 	undefined ->
 	    {ok, Config} = get_webserver_config("percept", Port),
+            percept2_utils:rm_tmp_files(),
 	    inets:start(),
 	    case inets:start(httpd, Config) of
 		{ok, Pid} ->
@@ -216,31 +214,25 @@ stop_webserver(Port) ->
 
 parse_and_insert(Filename,SubDB) ->
     io:format("Parsing: ~p ~n", [Filename]),
-    io:format("SubBD:\n~p\n", [SubDB]),
     T0 = erlang:now(),
-    io:format("T0:\n~p\n", [T0]),
     Parser = mk_trace_parser(self(), SubDB),
-    io:format("Parser:\n~p\n", [Parser]),
     Pid=dbg:trace_client(file, Filename, Parser), 
-    io:format("dtrace client:~p\n", [Pid]),
     Ref = erlang:monitor(process, Pid), 
-    io:format("Ref:\n~p\n", [Ref]),
     parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0).
    
 parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0) ->
-    io:format("dddd:\n~p\n", [Pid]),
     receive
 	{'DOWN',Ref,process, Pid, noproc} ->
 	    io:format("Incorrect file or malformed trace file: ~p~n", [Filename]),
 	    {error, file};
     	{parse_complete, {Pid, Count}} ->
-            io:format("DDDDDD:~p\n", [Pid]),
-            receive {'DOWN', Ref, process, Pid, normal} -> ok after 0 -> ok end,
+            Pid ! {ack, self()},
+            receive 
+                {'DOWN', Ref, process, Pid, normal} -> 
+                    ok 
+            end,
             T1 = erlang:now(),
 	    io:format("Parsed ~p entries from ~p in ~p s.~n", [Count, Filename, ?seconds(T1, T0)]),
-            %%TODO: add this back!
-            %% io:format("    ~p created processes.~n", [length(percept2_db:select({information, procs}))]),
-            %% io:format("    ~p opened ports.~n", [length(percept2_db:select({information, ports}))]),
             ok;
 	{'DOWN',Ref, process, Pid, normal} -> parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0);
 	{'DOWN',Ref, process, Pid, Reason} -> {error, Reason};
@@ -251,14 +243,17 @@ mk_trace_parser(Parent, SubDB) ->
     {fun trace_parser/2, {0, Parent, SubDB}}.
 
 trace_parser(end_of_trace, {Count, Pid, SubDB}) -> 
-    io:format("end of trace :~p\n",[{Count, Pid,SubDB, self()}]),
-    io:format("is_process_alive:~p\n", [{Pid, is_process_alive(Pid)}]),
-    Pid ! {parse_complete, {self(),Count}},
-     receive
-         {ack, Pid} ->
-             io:format("Received ack\n"),
-             ok
-     end;
+    percept2_db:insert(SubDB, {trace_ts, self(), end_of_trace}),
+    %% synchronisation is to make sure all traces have been 
+    %% processed before consolidating the DB.
+    receive 
+        {SubDB, done} -> 
+            Pid ! {parse_complete, {self(),Count}},
+            receive
+                {ack, Pid} ->
+                    ok
+            end
+    end;
 trace_parser(Trace, {Count, Pid, SubDB}) ->
     percept2_db:insert(SubDB, Trace),
     {Count + 1,  Pid, SubDB}.
@@ -286,7 +281,6 @@ find_service_port_from_pid([{_, _, _} | Services], Pid) ->
     find_service_port_from_pid(Services, Pid).
     
 %% service memory
-
 service_memory({Pid, Port, Host}) ->
     receive
 	quit -> 
@@ -303,7 +297,6 @@ service_memory({Pid, Port, Host}) ->
     end.
 
 % Create config data for the webserver 
-
 get_webserver_config(Servername, Port) when is_list(Servername), is_integer(Port) ->
     Path = code:priv_dir(percept2),
     Root = filename:join([Path, "server_root"]),

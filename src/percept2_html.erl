@@ -47,15 +47,7 @@ overview_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         OverviewContent = overview_content(Env, Input),
-        io:format("Overview content created.\n"),
-        mod_esi:deliver(SessionID, header()),
-        io:format("header done\n"),
-        mod_esi:deliver(SessionID, Menu),
-        io:format("menu done\n"),
-        mod_esi:deliver(SessionID, OverviewContent),
-        io:format("delived overview content\n"),
-        mod_esi:deliver(SessionID, footer()),
-        io:format("delivered footer\n")
+        deliver_page(SessionID, Menu, OverviewContent)
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -66,10 +58,7 @@ concurrency_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         Content = concurrency_content(Env, Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -79,10 +68,7 @@ codelocation_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         Content = codelocation_content(Env, Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -92,10 +78,7 @@ active_funcs_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         Content = active_funcs_content(Env, Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2->
             error_page(SessionID, Env, Input)
@@ -104,10 +87,7 @@ active_funcs_page(SessionID, Env, Input) ->
 databases_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu), 
-        mod_esi:deliver(SessionID, databases_content()),
-        mod_esi:deliver(SessionID, footer())
+        deliver_page(SessionID, Menu, databases_content())
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -152,14 +132,17 @@ process_info_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         Content = process_info_content(Env, Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
+
+deliver_page(SessionID, Menu, Content) ->
+    mod_esi:deliver(SessionID, header()),
+    mod_esi:deliver(SessionID, Menu),
+    mod_esi:deliver(SessionID, Content),
+    mod_esi:deliver(SessionID, footer()).
 
 
 func_callgraph_page(SessionID, Env, Input) ->
@@ -178,10 +161,7 @@ function_info_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         Content = function_info_content(Env, Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -223,7 +203,6 @@ error_page(SessionID, _Env, _Input) ->
 overview_content(Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
     CacheKey = "overview"++integer_to_list(erlang:crc32(Input)),
-    io:format("ChacheKey:\n~p\n", [CacheKey]),
     case ets:lookup(history_html, CacheKey) of 
         [{history_html, CacheKey, Content}] ->
             io:format("Use cached html\n"),
@@ -244,14 +223,14 @@ overview_content_1(_Env, Input) ->
     Height = 600,
     TotalProfileTime = ?seconds((percept2_db:select({system, stop_ts})),
                                     (percept2_db:select({system, start_ts}))),
-    Procs = length(percept2_db:select({information, procs})),
-    Prots = length(percept2_db:select({information, ports})),
+    Procs = percept2_db:select({information, procs_count}),
+    Ports = percept2_db:select({information, ports_count}),
     InformationTable = 
 	"<table>" ++
 	table_line(["Profile time:", TotalProfileTime]) ++
         table_line(["Schedulers:", erlang:system_info(schedulers)]) ++
 	table_line(["Processes:", Procs]) ++
-        table_line(["Ports:", Prots]) ++
+        table_line(["Ports:", Ports]) ++
     	table_line(["Min. range:", Min]) ++
     	table_line(["Max. range:", Max]) ++
     	"</table>",
@@ -367,10 +346,9 @@ concurrency_content_1(_Env, Input) ->
 
     %% Analyze activities and calculate area bounds
     Activities = percept2_db:select({activity, IDs}),
-    %%io:format("Activities:\n~p\n", [Activities]),
     StartTs = percept2_db:select({system, start_ts}),
     Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept2_analyzer:activities2count2(Activities, StartTs)],
-    {T00,_,T10,_} = percept2_analyzer:minmax(Counts),
+    {T00,_,T10,_} = percept2_utils:minmax(Counts),
     T0 = T00/1000000,
     T1 = T10/1000000, 
     % FIXME: End
@@ -424,8 +402,8 @@ codelocation_content_1(_Env, Input) ->
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
+    TsMin   = percept2_utils:seconds2ts(Min, StartTs),
+    TsMax   = percept2_utils:seconds2ts(Max, StartTs),
     Acts    = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     Secs  = [timer:now_diff(A#activity.timestamp,StartTs)/1000 || A <- Acts],
     Delta = cl_deltas(Secs),
@@ -471,8 +449,8 @@ active_funcs_content_1(_Env, Input) ->
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
+    TsMin   = percept2_utils:seconds2ts(Min, StartTs),
+    TsMax   = percept2_utils:seconds2ts(Max, StartTs),
     ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}]}),
     Table = html_table(
               [[{th, " pid "},
@@ -565,8 +543,8 @@ process_page_header_content_1(Input) ->
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    TsMin   = percept2_analyzer:seconds2ts(Min, StartTs),
-    TsMax   = percept2_analyzer:seconds2ts(Max, StartTs),
+    TsMin   = percept2_utils:seconds2ts(Min, StartTs),
+    TsMax   = percept2_utils:seconds2ts(Max, StartTs),
     ProcessTree = percept2_db:gen_compressed_process_tree(),
     ProcessTreeHeader = mk_display_style(ProcessTree),
     Content = processes_content(ProcessTree, {TsMin, TsMax}),
@@ -897,7 +875,7 @@ process_tree_content(_Env, _Input) ->
             %% file already generated, so reuse.
             Content;  
         false -> 
-            case percept2_db:gen_process_tree_img() of 
+            case percept2_dot:gen_process_tree_img() of
                 ok ->
                     Content;
                 no_image ->
@@ -1086,7 +1064,7 @@ callgraph_time_content(_Env, Input) ->
     case filelib:is_regular(ImgFullFilePath) of 
         true -> Content;  %% file already generated.
         false -> 
-            case percept2_db:gen_callgraph_img(Pid) of 
+            case percept2_dot:gen_callgraph_img(Pid) of
                 ok ->
                     Content;
                 no_image ->

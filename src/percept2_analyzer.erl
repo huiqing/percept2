@@ -21,16 +21,13 @@
 
 -module(percept2_analyzer).
 -export([	
-	minmax/1,
 	waiting_activities/1,
 	activities2count/2,
 	activities2count/3,
 	activities2count2/2,
 	analyze_activities/2,
 	runnable_count/1,
-	runnable_count/2,
-	seconds2ts/2,
-	minmax_activities/2,
+	runnable_count/2, minmax_activities/2,
 	mean/1
 	]).
 
@@ -43,22 +40,6 @@
 %% 		Interface functions
 %%
 %%==========================================================================
-
-
-%% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
-%%	X = number()
-%%	Y = number()
-%%	MinX = number()
-%%	MinY = number()
-%%	MaxX = number()
-%%	MaxY = number()
-%% @doc Returns the min and max of a set of 2-dimensional numbers.
-
-minmax(Data) ->
-    Xs = [ X || {X,_Y} <- Data],
-    Ys = [ Y || {_X, Y} <- Data],
-    {lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}.
-
 %% @spec mean([number()]) -> {Mean, StdDev, N}
 %%	Mean = float()
 %%	StdDev = float()
@@ -100,7 +81,6 @@ mean(List)    ->
 
 activities2count2(Acts, StartTs) -> 
     Start = inactive_start_states(Acts),
-    io:format("Start:\n~p\n", [Start]),
     activities2count2(Acts, StartTs, Start, []).
 
 activities2count2([], _, _, Out) -> lists:reverse(Out);
@@ -223,7 +203,7 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
 	    % it is given via the next activity
 	    case Activities of
 	    	[] -> 
-                        [Info] = percept2_db:select(information, Pid),
+                        [Info] = percept2_db:select({information, Pid}),
                         case Info#information.stop of
 			    undefined ->
 			        % get profile end time
@@ -255,34 +235,6 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
 		 _ -> error
 	    end
     end.
-
-%% seconds2ts(Seconds, StartTs) -> TS
-%% In:
-%%	Seconds = float()
-%%	StartTs = timestamp()
-%% Out:
-%%	TS = timestamp()
-
-%% @spec seconds2ts(float(), StartTs::{integer(),integer(),integer()}) -> timestamp()
-%% @doc Calculates a timestamp given a duration in seconds and a starting timestamp. 
-
-seconds2ts(Seconds, {Ms, S, Us}) ->
-    % Calculate mega seconds integer
-    MsInteger = trunc(Seconds) div 1000000 ,
-
-    % Calculate the reminder for seconds
-    SInteger  = trunc(Seconds),
-
-    % Calculate the reminder for micro seconds
-    UsInteger = trunc((Seconds - SInteger) * 1000000),
-
-    % Wrap overflows
-
-    UsOut = (UsInteger + Us) rem 1000000,
-    SOut  = ((SInteger + S) + (UsInteger + Us) div 1000000) rem 1000000,
-    MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
-
-    {MsOut, SOut, UsOut}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %

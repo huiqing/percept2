@@ -26,6 +26,8 @@
 
 -export([query_fun_time/3, memory_graph/3]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
 
@@ -86,16 +88,20 @@ graph(_Env, Input) ->
 
     % seconds2ts
     StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_analyzer:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
+    TsMin    = percept2_utils:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_utils:seconds2ts(RangeMax, StartTs),
     
     Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
-    Acts     = percept2_db:select({activity, Options}),
-    Counts   = case IDs of
-                   [] -> percept2_analyzer:activities2count(Acts, StartTs);
-                   _ -> percept2_analyzer:activities2count2(Acts, StartTs)
-               end,
+    Counts = [{?seconds(TS, StartTs), Procs, Ports}||
+              {TS, {Procs, Ports}}
+                     <-percept2_db:select({activity,
+                                           {runnable_counts, Options}})],
+    %% Counts   = case IDs of
+    %%                 [] -> percept2_analyzer:activities2count(Acts, StartTs);
+    %%                 _ -> percept2_analyzer:activities2count2(Acts, StartTs)
+    %%             end,
     percept2_image:graph(Width, Height, Counts).
+
 
 scheduler_graph(_Env, Input) -> 
     Query    = httpd:parse_query(Input),
@@ -105,8 +111,8 @@ scheduler_graph(_Env, Input) ->
     Height   = percept2_html:get_option_value("height", Query),
     
     StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_analyzer:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
+    TsMin    = percept2_utils:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_utils:seconds2ts(RangeMax, StartTs),
     
 
     Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
@@ -114,23 +120,9 @@ scheduler_graph(_Env, Input) ->
     Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #activity{where = Scheds, timestamp = Ts} <- Acts],
     percept2_image:graph(Width, Height, Counts).
 
-memory_graph(_Env, Input) ->
-    Query    = httpd:parse_query(Input),
-    RangeMin = percept2_html:get_option_value("range_min", Query),
-    RangeMax = percept2_html:get_option_value("range_max", Query),
-    Width    = percept2_html:get_option_value("width", Query),
-    Height   = percept2_html:get_option_value("height", Query),
-    
-    StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_analyzer:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_analyzer:seconds2ts(RangeMax, StartTs),
-    
-
-    Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
-    %% io:format("Acts:\n~p\n", [Acts]),
-    Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #activity{where = Scheds, timestamp = Ts} <- Acts],
-    percept2_image:graph(Width, Height, Counts).
-
+memory_graph(Env, Input) ->
+    scheduler_graph(Env, Input). %% change this!
+ 
 activity_bar(_Env, Input) ->
     Query  = httpd:parse_query(Input),
     Pid    = percept2_html:get_option_value("pid", Query),

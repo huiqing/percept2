@@ -25,12 +25,11 @@
 %% 
 
 -module(percept2_profile).
+
 -export([start/2, 
          start/3,
-         stop/0,
-         start_trace_client/0,
-         stop_trace_client/1
-	]).
+         stop/0
+      	]).
 
 -include("../include/percept2.hrl").
 
@@ -39,19 +38,21 @@
 %% 		Type definitions 
 %%
 %%==========================================================================
-
 -type port_number() :: integer().
+
 %%==========================================================================
 %%
 %% 		Interface functions
 %%
 %%==========================================================================
--spec start(Type :: {file, file:filename()}|{ip, node(),port_number()}, Options::[percept_option()]) ->
-            {'ok', port()} | {'already_started', port()}.
+-spec start(Type :: {file, file:filename()}|{ip, node(),port_number()}, 
+            Options::[percept_option()]) ->
+                   {'ok', port()} | {'already_started', port()}.
 start(Type, Options) ->
     start_profile(Type,Options). 
 
-%%@spec start(string(), MFA::mfa(), [percept_option()]) -> ok | {already_started, Port} | {error, not_started}
+%%@spec start(string(), MFA::mfa(), [percept_option()]) -> 
+%%            ok | {already_started, Port} | {error, not_started}
 %%	Port = port()
 %%@doc Starts profiling at the entrypoint specified by the MFA. All events are collected, 
 %%	this means that processes outside the scope of the entry-point are also profiled. 
@@ -60,15 +61,15 @@ start(Type, Options) ->
 -spec start(Type :: {file, file:filename()}|{ip, port_number()},
 	    Entry :: {atom(), atom(), list()},
             Options :: [percept_option()]) ->
-	'ok' | {'already_started', port()} | {'error', 'not_started'}.
+	'ok' | {'already_started', port()} |
+                   {'error', 'not_started'}.
 
 start(Type, _Entry={Mod, Fun, Args},Options) ->
     case whereis(percept_port) of
 	undefined ->
 	    start_profile(Type,Options),
             _Res=erlang:apply(Mod, Fun, Args),
-            io:format("Profiling done.\n"),
-            stop();  %%has to wait for the application to be finished!!! (think about this again!).
+            stop();  
 	Port ->
 	    {already_started, Port}
     end.
@@ -76,10 +77,10 @@ start(Type, _Entry={Mod, Fun, Args},Options) ->
 deliver_all_trace() -> 
     Tracee = self(),
     Tracer = spawn(fun() -> 
-	receive {Tracee, start} -> ok end,
-    	Ref = erlang:trace_delivered(Tracee),
-	receive {trace_delivered, Tracee, Ref} -> Tracee ! {self(), ok} end
-    end),
+                           receive {Tracee, start} -> ok end,
+                           Ref = erlang:trace_delivered(Tracee),
+                           receive {trace_delivered, Tracee, Ref} -> Tracee ! {self(), ok} end
+                   end),
     erlang:trace(Tracee, true, [procs, {tracer, Tracer}]),
     Tracer ! {Tracee, start},
     receive {Tracer, ok} -> ok end,
@@ -99,7 +100,8 @@ stop() ->
     	undefined -> 
 	    {error, not_started};
 	Port ->
-	    erlang:port_command(Port, erlang:term_to_binary({profile_stop, erlang:now()})),
+	    erlang:port_command(Port, 
+                                erlang:term_to_binary({profile_stop, erlang:now()})),
             erlang:port_close(Port),
        	    ok
     end. 
@@ -116,8 +118,8 @@ start_profile(Type,Opts) ->
 	    erlang:system_flag(multi_scheduling, block),
             Port = case Type of 
                        {file, FileName} -> 
-                          %% P=(dbg:trace_port(file,{FileName,wrap,".dat",50000000,12}))(),
-                           P=(dbg:trace_port(file, FileName))(),
+                           P=(dbg:trace_port(file,{FileName,wrap,".dat",10000000,20}))(),
+                           %% P=(dbg:trace_port(file, FileName))(),
                            P;
                        {ip, Node, Number}->
                            P=(dbg:trace_port(ip, {Number, 50000}))(),
@@ -131,7 +133,7 @@ start_profile(Type,Opts) ->
             % Send start time
 	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
 	    erlang:system_flag(multi_scheduling, unblock),
-		
+            
 	    %% Register Port
     	    erlang:register(percept_port, Port),
 	    set_tracer(Port, Opts), 
@@ -150,50 +152,51 @@ set_tracer(Port, Opts) ->
                              set_on_spawn, procs| TraceOpts]),
     erlang:system_profile(Port, ProfileOpts).
     
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 parse_profile_options(Opts) ->
     parse_profile_options(Opts, {[],[],[]}).
 
 parse_profile_options([], Out) ->
     Out;
-parse_profile_options([Opt|Opts],{TOpts, POpts, Funcs}) ->
-    [Opt1|Others] = get_flags(Opt),
-    NewOpts = Others ++ Opts,
-    case Opt1 of
+parse_profile_options([Head|Tail],{TraceOpts, ProfileOpts, FuncOpts}) ->
+    [Opt|Others] = get_flags(Head),
+    NewOpts = Others ++ Tail,
+    case Opt of
 	procs ->
 	    parse_profile_options(
               NewOpts, 
-              {[procs|TOpts], 
-               [runnable_procs|POpts], Funcs});
+              {[procs|TraceOpts],
+               [runnable_procs|ProfileOpts], FuncOpts});
 	ports ->
 	    parse_profile_options(
               NewOpts,
-              {[ports|TOpts],  
-               [runnable_ports|POpts], Funcs});
+              {[ports|TraceOpts],
+               [runnable_ports|ProfileOpts], FuncOpts});
         scheduler ->
 	    parse_profile_options(
               NewOpts, 
-              {TOpts, 
-               [scheduler|POpts], Funcs});
+              {TraceOpts,
+               [scheduler|ProfileOpts], FuncOpts});
         exclusive ->
 	    parse_profile_options(
               NewOpts, 
-              {TOpts, 
-               [exclusive| POpts], Funcs});
+              {TraceOpts,
+               [exclusive| ProfileOpts], FuncOpts});
         {function, MFAs} ->
             parse_profile_options(
               NewOpts, 
-              {[call, return_to, arity|TOpts],
-               POpts, MFAs++Funcs});
+              {[call, return_to, arity|TraceOpts],
+               ProfileOpts, MFAs ++ FuncOpts});
 	_ -> 
-            case lists:member(Opt1, trace_flags()) orelse
-                lists:member(Opt1, profile_flags()) of 
+            case lists:member(Opt, trace_flags()) orelse
+                lists:member(Opt, profile_flags()) of
                 true ->
                     parse_profile_options(
-                      NewOpts, {[Opt1|TOpts], POpts, Funcs});
+                      NewOpts, {[Opt|TraceOpts], ProfileOpts, FuncOpts});
                 false ->
                     parse_profile_options(
-                      NewOpts, {TOpts, POpts, Funcs})
+                      NewOpts, {TraceOpts, ProfileOpts, FuncOpts})
             end
     end.
 
@@ -219,28 +222,3 @@ trace_flags()->
 profile_flags()->        
     ['runnable_procs','runnable_ports','scheduler','exclusive'].
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-start_trace_client() ->
-     register(trace_client, spawn_link(fun trace_client_loop/0)).
-
-%%Node::'hl2@hl-lt';
-stop_trace_client(Node) ->
-      {trace_client, Node} ! stop_profile.
-              
-trace_client_loop() ->
-    receive 
-        {From, {start_profile, Ip}} ->
-            {_, DB} =percept2_db:start(),
-            T0 = erlang:now(),
-            Pid=dbg:trace_client(ip, Ip, percept2:mk_trace_parser(self())),
-            Ref = erlang:monitor(process, Pid), 
-            From ! {trace_client, started},
-            percept2:parse_and_insert_loop(none, Pid, Ref, DB, T0),
-            trace_client_loop();
-        stop_profile ->
-            dbg:stop_clear(),
-            trace_client_loop();
-        stop ->
-            dbg:stop_clear()
-    end.

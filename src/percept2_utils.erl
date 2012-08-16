@@ -93,3 +93,45 @@ rm_tmp_files() ->
                lists:prefix("callgraph", F) orelse
                    lists:prefix("processtree", F)]
     end.
+
+
+
+%% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
+%%	X = number()
+%%	Y = number()
+%%	MinX = number()
+%%	MinY = number()
+%%	MaxX = number()
+%%	MaxY = number()
+%% @doc Returns the min and max of a set of 2-dimensional numbers.
+minmax(Data) ->
+    Xs = [ X || {X,_Y} <- Data],
+    Ys = [ Y || {_X, Y} <- Data],
+    {lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}.
+
+
+%% seconds2ts(Seconds, StartTs) -> TS
+%% In:
+%%	Seconds = float()
+%%	StartTs = timestamp()
+%% Out:
+%%	TS = timestamp()
+%% @spec seconds2ts(float(), StartTs::{integer(),integer(),integer()}) -> timestamp()
+%% @doc Calculates a timestamp given a duration in seconds and a starting timestamp. 
+seconds2ts(Seconds, {Ms, S, Us}) ->
+    % Calculate mega seconds integer
+    MsInteger = trunc(Seconds) div 1000000 ,
+
+    % Calculate the reminder for seconds
+    SInteger  = trunc(Seconds),
+
+    % Calculate the reminder for micro seconds
+    UsInteger = trunc((Seconds - SInteger) * 1000000),
+
+    % Wrap overflows
+
+    UsOut = (UsInteger + Us) rem 1000000,
+    SOut  = ((SInteger + S) + (UsInteger + Us) div 1000000) rem 1000000,
+    MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
+
+    {MsOut, SOut, UsOut}.

@@ -36,7 +36,7 @@
 
 graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
-    MinMax = percept2_analyzer:minmax(Data2),
+    MinMax = percept2_utils:minmax(Data2),
     {Xmin, Ymin, Xmax, Ymax} = MinMax, 
     graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
     				lists:min([RYmin, Ymin]),
@@ -56,7 +56,7 @@ graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
 
 graph(Width, Height, Data) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
-    Bounds = percept2_analyzer:minmax(Data2),
+    Bounds = percept2_utils:minmax(Data2),
     graf1(Width, Height, Bounds, Data).
 
 graf1(Width, Height, {Xmin, Ymin, Xmax, Ymax}, Data) ->
@@ -389,4 +389,3 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     Binary = egd:render(Im, png),
     egd:destroy(Im),
     Binary.
-
