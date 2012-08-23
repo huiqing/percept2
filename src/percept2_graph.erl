@@ -22,6 +22,7 @@
 
 -module(percept2_graph).
 -export([proc_lifetime/3, graph/3, scheduler_graph/3, 
+         ports_graph/3, procs_graph/3,
          activity/3, percentage/3, calltime_percentage/3]).
 
 -export([query_fun_time/3, memory_graph/3]).
@@ -48,7 +49,8 @@ graph(SessionID, Env, Input) ->
 
 activity(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
-    mod_esi:deliver(SessionID, binary_to_list(activity_bar(Env, Input))).
+    StartTs = percept2_db:select({system, start_ts}),
+    mod_esi:deliver(SessionID, binary_to_list(activity_bar(Env, Input, StartTs))).
 
 proc_lifetime(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
@@ -70,12 +72,31 @@ scheduler_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(scheduler_graph(Env, Input))).
 
+ports_graph(SessionID, Env, Input) ->
+    mod_esi:deliver(SessionID, header()),
+    mod_esi:deliver(SessionID, binary_to_list(ports_graph(Env, Input))).
+
+procs_graph(SessionID, Env, Input) ->
+    mod_esi:deliver(SessionID, header()),
+    mod_esi:deliver(SessionID, binary_to_list(procs_graph(Env, Input))).
+
 memory_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(memory_graph(Env, Input))).
 
 
 graph(_Env, Input) ->
+    graph_1(_Env, Input, procs_ports).
+
+procs_graph(_Env, Input) ->
+    graph_1(_Env, Input, procs).
+
+ports_graph(_Env, Input) ->
+    graph_1(_Env, Input, ports).
+
+graph_1(_Env, Input, Type) ->
+    io:format("graph input:\n~p\n", [Input]),
+    io:format("Type:\n~p\n", [Type]),
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
     RangeMax = percept2_html:get_option_value("range_max", Query),
@@ -83,27 +104,45 @@ graph(_Env, Input) ->
     Width    = percept2_html:get_option_value("width", Query),
     Height   = percept2_html:get_option_value("height", Query),
     
-    % Convert Pids to id option list
-    IDs      = [ {id, ID} || ID <- Pids],
-
-    % seconds2ts
+     % seconds2ts
     StartTs  = percept2_db:select({system, start_ts}),
     TsMin    = percept2_utils:seconds2ts(RangeMin, StartTs),
     TsMax    = percept2_utils:seconds2ts(RangeMax, StartTs),
     
-    Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
-    Counts = [{?seconds(TS, StartTs), Procs, Ports}||
-              {TS, {Procs, Ports}}
-                     <-percept2_db:select({activity,
-                                           {runnable_counts, Options}})],
-    %% Counts   = case IDs of
-    %%                 [] -> percept2_analyzer:activities2count(Acts, StartTs);
-    %%                 _ -> percept2_analyzer:activities2count2(Acts, StartTs)
-    %%             end,
-    percept2_image:graph(Width, Height, Counts).
+    % Convert Pids to id option list
+    IDs      = [ {id, ID} || ID <- Pids],
+       
+    case IDs/=[] of 
+        true -> 
+            Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
+            Acts     = percept_db:select({activity, Options}),
+            Counts=percept_analyzer:activities2count2(Acts, StartTs),
+            io:format("Counts:\n~p\n", [Counts]),
+            percept2_image:graph(Width, Height, Counts);
+        false ->                
+            Options  = [{ts_min, TsMin},{ts_max, TsMax}],
+            Counts = case Type of 
+                         procs_ports ->
+                             [{?seconds(TS, StartTs), Procs, Ports}||
+                                     {TS, {Procs, Ports}}
+                                         <-percept2_db:select(
+                                             {activity,{runnable_counts, Options}})];
+                         procs ->
+                             [{?seconds(TS, StartTs), Procs, 0}||
+                                 {TS, {Procs, _Ports}}
+                                     <-percept2_db:select(
+                                         {activity,{runnable_counts, Options}})];
+                         ports ->
+                             [{?seconds(TS, StartTs), 0, Ports}||
+                                 {TS, {_Procs, Ports}}
+                                     <-percept2_db:select(
+                                         {activity,{runnable_counts, Options}})]
+                     end,
+            percept2_image:graph(Width, Height, Counts)
+    end.
 
-
-scheduler_graph(_Env, Input) -> 
+scheduler_graph(_Env, Input) ->
+    io:format("scheduler graph: ~p\n", [Input]),
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
     RangeMax = percept2_html:get_option_value("range_max", Query),
@@ -117,13 +156,13 @@ scheduler_graph(_Env, Input) ->
 
     Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
     %% io:format("Acts:\n~p\n", [Acts]),
-    Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #activity{where = Scheds, timestamp = Ts} <- Acts],
+    Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts],
     percept2_image:graph(Width, Height, Counts).
 
 memory_graph(Env, Input) ->
     scheduler_graph(Env, Input). %% change this!
  
-activity_bar(_Env, Input) ->
+activity_bar(_Env, Input, StartTs) ->
     Query  = httpd:parse_query(Input),
     Pid    = percept2_html:get_option_value("pid", Query),
     Min    = percept2_html:get_option_value("range_min", Query),
@@ -132,7 +171,6 @@ activity_bar(_Env, Input) ->
     Height = percept2_html:get_option_value("height", Query),
     
     Data    = percept2_db:select({activity, [{id, Pid}]}),
-    StartTs = percept2_db:select({system, start_ts}),
     Activities = [{?seconds(Ts, StartTs), State} || #activity{timestamp = Ts, state = State} <- Data],
     percept2_image:activities(Width, Height, {Min,Max}, Activities).
 

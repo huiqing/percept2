@@ -107,7 +107,7 @@ load_database_page(SessionID, Env, Input) ->
 process_tree_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
-        {Header, Content} = process_page_header_content(Input),
+        {Header, Content} = process_page_header_content(Env, Input),
         mod_esi:deliver(SessionID, header(Header)),
         mod_esi:deliver(SessionID, Menu),
         mod_esi:deliver(SessionID, Content),
@@ -203,18 +203,10 @@ error_page(SessionID, _Env, _Input) ->
 overview_content(Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
     CacheKey = "overview"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, Content}] ->
-            io:format("Use cached html\n"),
-            Content;
-        [] ->
-            io:format("Regenerated html\n"),
-            Content=overview_content_1(Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
-                                         content=Content}),
-            Content
-    end.
+    io:format("CacheKey:~p\n", [CacheKey]),
+    gen_content(Env,Input,CacheKey,fun overview_content_1/2).
+
+
 overview_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Min = get_option_value("range_min", Query),
@@ -246,17 +238,19 @@ overview_content_1(_Env, Input) ->
 	    "Min:", 
 	    "<input name=range_min value=" ++ term2html(float(Min)) ++">",
 	    "<select name=\"graph_select\" onChange=\"select_image()\">
-	      	<option value=\""++ url_graph(Width, Height, Min, Max, []) ++"\" />Ports & Processes
-                <option value=\""++ url_sched_graph(Width, Height, Min, Max, []) ++"\" />Schedulers
-                <option value=\""++ url_memory_graph(Width, Height, Min, Max, []) ++"\" />Memory
-             </select>",
+	      	<option value=\""++ url_graph(Width, Height, Min, Max, []) ++"\">Ports & Processes </option>
+                <option value=\""++ url_sched_graph(Width, Height, Min, Max, []) ++"\">Schedulers </option>
+                <option value=\""++ url_ports_graph(Width, Height, Min, Max, []) ++"\" />Ports
+	    	<option value=\""++ url_procs_graph(Width, Height, Min, Max, []) ++"\" />Processes
+            </select>",
 	    "<input type=submit value=Update>"
 	    ]) ++
 	table_line([
 	    "Max:", 
 	    "<input name=range_max value=" ++ term2html(float(Max)) ++">",
-	    "<a href=/cgi-bin/percept2_html/codelocation_page?range_min=" ++
-	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Code location </a>"
+            "",
+	    "<a href=\"/cgi-bin/percept2_html/codelocation_page?range_min=" ++
+	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++"\">Code location</a>"
             ]) ++
     	"</table>",
     MainTable = 
@@ -299,13 +293,25 @@ div_tag_graph() ->
 	Pids :: [pid()]) -> string().
 
 url_graph(W, H, Min, Max, []) ->
-    "/cgi-bin/percept2_graph/graph?range_min=" ++ term2html(float(Min)) 
+    "/cgi-bin/percept2_graph/graph?range_min="++ term2html(float(Min)) 
     	++ "&range_max=" ++ term2html(float(Max))
 	++ "&width=" ++ term2html(float(W))
 	++ "&height=" ++ term2html(float(H)).
 
 url_sched_graph(W, H, Min, Max, []) ->
     "/cgi-bin/percept2_graph/scheduler_graph?range_min=" ++ term2html(float(Min)) 
+    	++ "&range_max=" ++ term2html(float(Max))
+	++ "&width=" ++ term2html(float(W))
+	++ "&height=" ++ term2html(float(H)).
+
+url_ports_graph(W, H, Min, Max, []) ->
+    "/cgi-bin/percept2_graph/ports_graph?range_min=" ++ term2html(float(Min)) 
+    	++ "&range_max=" ++ term2html(float(Max))
+	++ "&width=" ++ term2html(float(W))
+	++ "&height=" ++ term2html(float(H)).
+
+url_procs_graph(W, H, Min, Max, []) ->
+    "/cgi-bin/percept2_graph/procs_graph?range_min=" ++ term2html(float(Min)) 
     	++ "&range_max=" ++ term2html(float(Max))
 	++ "&width=" ++ term2html(float(W))
 	++ "&height=" ++ term2html(float(H)).
@@ -319,58 +325,51 @@ url_memory_graph(W, H, Min, Max, []) ->
 
 %%% concurrency page content.
 concurrency_content(Env, Input) ->
+    io:format("concurrrenc content\n"),
     CacheKey = "concurrency_content"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, Content}] ->
-            io:format("Use cached html\n"),
-            Content;
-        [] ->
-            io:format("Regenerated html\n"),
-            Content=concurrency_content_1(Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
-                                         content=Content}),
-            Content
-    end.
+    gen_content(Env, Input, CacheKey, fun concurrency_content_1/2).
+
 concurrency_content_1(_Env, Input) ->
+    io:format("Concurrency content:\n~p\n", [Input]),
     %% Get query
     Query = httpd:parse_query(Input),
-    
     %% Collect selected pids and generate id tags
-    Pids = [value2pid(PidValue) || {PidValue, Case} <- Query, 
-                                   Case == "on", 
-                                   PidValue /= "select_all"],
-    IDs  = [{id, Pid} || Pid <- Pids],
-    %%o:format("IDs:\n~p\n", [IDs]),
-    % FIXME: A lot of extra work here, redo
-
-    %% Analyze activities and calculate area bounds
-    Activities = percept2_db:select({activity, IDs}),
+    Pids = [value2pid(PidValue)
+            || {PidValue, Case} <- Query, 
+               Case == "on", 
+               PidValue /= "select_all",
+               PidValue /= "include_unshown_procs"],
+    IDs=case lists:member({"include_unshown_procs","on"}, Query) of 
+            true ->
+                lists:append([expand_pid(Pid)|| Pid <- Pids]);
+            false ->
+                [Pid|| Pid <- Pids,
+                              not is_dummy_process_pid(Pid)]
+        end,
+    io:format("IDs:\n~p\n", [IDs]),
+   
     StartTs = percept2_db:select({system, start_ts}),
-    Counts = [{Time, Y1 + Y2} || {Time, Y1, Y2} <- percept2_analyzer:activities2count2(Activities, StartTs)],
-    {T00,_,T10,_} = percept2_utils:minmax(Counts),
-    T0 = T00/1000000,
-    T1 = T10/1000000, 
-    % FIXME: End
-    
-    PidValues = [pid2value(Pid) || Pid <- Pids],
-
-    %% Generate activity bar requests
+    {MinTs, MaxTs} = percept2_db:select({activity, {min_max_ts, Pids}}),
+    {T0, T1} = {?seconds(MinTs, StartTs), ?seconds(MaxTs, StartTs)}, 
+    io:format("T0, T1:\n~p\n", [{T0, T1}]),
+    PidValues = [pid2value(Pid) || Pid <- IDs],
+    %%Generate activity bar requests
     ActivityBarTable = lists:foldl(
-    	fun(Pid, Out) ->
-	    ValueString = pid2value(Pid),
-	    Out ++ 
-	    	table_line([
-	    	    pid2html(Pid),
-		   "<img onload=\"size_image(this, '" ++ 
-		   image_string_head("activity", [{"pid", ValueString}, {range_min, T0},{range_max, T1},{height, 10}], []) ++
-		   "')\" src=/images/white.png border=0 />"
-		])
-	end, [], Pids),
-
+                         fun(Pid, Out) ->
+                                 ValueString = pid2value(Pid),
+                                 Out ++ 
+                                     table_line(
+                                       [
+                                        pid2html(Pid),
+                                        "<img onload=\"size_image(this, '" ++ 
+                                            image_string_head("activity", [{"pid", ValueString}, {range_min, T0},{range_max, T1},{height, 10}], []) ++
+                                            "')\" src=/images/white.png border=0 />"
+                                       ])
+                         end, [], IDs),
+    
     %% Make pids request string
     PidsRequest = join_strings_with(PidValues, ":"),
-
+    io:format("PidRequest:\n~p\n", [PidsRequest]),
     "<div id=\"content\">
     <table cellspacing=0 cellpadding=0 border=0>" ++
     table_line([
@@ -382,21 +381,19 @@ concurrency_content_1(_Env, Input) ->
     ActivityBarTable ++
     "</table></div>\n".
 
+expand_pid(Pid) ->
+    case is_dummy_process_pid(Pid) of
+        true ->
+            [Info] = percept2_db:select({information, Pid}),
+            [Pid1||Pid1 <- Info#information.hidden_pids];
+        false ->
+            [Pid]
+    end.
+
 %%% code location content page.
 codelocation_content(Env, Input) ->
     CacheKey = "codelocation_content"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, Content}] ->
-            io:format("Use cached html\n"),
-            Content;
-        [] ->
-            io:format("Regenerated html\n"),
-            Content=codelocation_content_1(Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
-                                         content=Content}),
-            Content
-    end.
+    gen_content(Env, Input, CacheKey, fun codelocation_content_1/2).
 codelocation_content_1(_Env, Input) ->
     Query   = httpd:parse_query(Input),
     Min     = get_option_value("range_min", Query),
@@ -432,18 +429,7 @@ cl_deltas([A,B|Ls], Out) -> cl_deltas([B|Ls], [B - A | Out]).
 %%% active functions content page.
 active_funcs_content(Env, Input) ->
     CacheKey = "active_funcs_content"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, Content}] ->
-            io:format("Use cached html\n"),
-            Content;
-        [] ->
-            io:format("Regenerated html\n"),
-            Content=active_funcs_content_1(Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
-                                         content=Content}),
-            Content
-    end.
+    gen_content(Env, Input, CacheKey, fun active_funcs_content_1/2).
 active_funcs_content_1(_Env, Input) ->
     Query   = httpd:parse_query(Input),
     Min     = get_option_value("range_min", Query),
@@ -523,22 +509,12 @@ load_database_content(SessionId, _Env, Input) ->
     mod_esi:deliver(SessionId, "</div>"). 
 
 %%% process tree  page content.
-process_page_header_content(Input) ->
+process_page_header_content(Env, Input) ->
     io:format("Process page input:\n~p\n", [Input]),
     CacheKey = "process_tree_page"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, HeaderAndContent}] ->
-            io:format("Use chached process page\n"),
-            HeaderAndContent;
-        [] ->
-            io:format("Regenerated html\n"),
-            Res = process_page_header_content_1(Input),
-            ets:insert(history_html, 
-                       #history_html{id=CacheKey,
-                                     content=Res}),
-            Res
-    end.
-process_page_header_content_1(Input) ->
+    gen_content(Env, Input, CacheKey, fun process_page_header_content_1/2).
+  
+process_page_header_content_1(_Env, Input) ->
     Query   = httpd:parse_query(Input),
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
@@ -584,7 +560,8 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
 		[Prepare|Out]
 	end, [], Ports),
     Selector = "<table cellspacing=10>" ++
-        "<tr> <td>" ++ "<input onClick='selectall()' type=checkbox name=select_all>Select all" ++ "</td></tr>" ++
+        "<tr> <td>" ++ "<input onClick='selectall()' type=checkbox name=select_all>Select all" ++ "</td>"
+        ++"<td><input type=checkbox name=include_unshown_procs>Include unshown procs"++"</td></tr>" ++
         "<tr> <td> <input type=submit value=Compare> </td>" ++
         "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/visualise_process_tree\">"++
         "<b>Visualise Process Tree</b>"++"</a></td></tr>",
@@ -780,27 +757,19 @@ procstoptime(TS) ->
 
 %%% process_info_content
 process_info_content(Env, Input) ->
+    io:format("Process info Input:\n~p\n", [Input]),
     CacheKey = "process_info"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, Content}] ->
-            io:format("Use cached html\n"),
-            Content;
-        [] ->
-            io:format("Regenerated html\n"),
-            Content=process_info_content_1(Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
-                                         content=Content}),
-            Content
-    end.
+    gen_content(Env, Input, CacheKey, fun process_info_content_1/2).
+
 process_info_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     [I] = percept2_db:select({information, Pid}),
     ArgumentString = case I#information.entry of
-                         {_, _, Arguments} -> 
-                             lists:flatten([term2html(Arg) ++ "<br>" ||
-                                               Arg <- Arguments]);
+                         {_, _, Arguments} when is_list(Arguments)-> 
+                             lists:flatten(io_lib:write(Arguments, 10));
+                             %% lists:flatten([term2html(Arg) ++ "<br>" ||
+                             %%                   Arg <- Arguments]);
                          _                 ->
                              ""
                      end,
@@ -819,7 +788,10 @@ process_info_content_1(_Env, Input) ->
     InfoTable = html_table
                   ([
                     [{th, "Pid"},        term2html(I#information.id)],
-                    [{th, "Name"},       term2html(I#information.name)],
+                    [{th, "Name"},       term2html(case is_dummy_process_pid(Pid) of
+                                                       true -> dummy_process;
+                                                       _ ->I#information.name
+                                                   end)],
                     [{th, "Entrypoint"}, mfa2html(I#information.entry)],
                             [{th, "Arguments"},  ArgumentString],
                     [{th, "Timetable"},  TimeTable],
@@ -831,8 +803,13 @@ process_info_content_1(_Env, Input) ->
                      term2html(info_msg_received(I))],
                     [{th, "{#msg_sent, <br> #msg_sent_to_same_RQ, <br> #msg_sent_to_another_RQ,<br> avg_msg_size}"}, 
                      term2html(info_msg_sent(I))]
-                   ]),
-
+                   ] ++ case is_dummy_process_pid(Pid) of 
+                            true ->
+                                [[{th, "Compressed Processes"}, lists:flatten(
+                                                                 lists:map(fun(Id) -> pid2html(Id) ++ " " end,
+                                                                           I#information.hidden_pids))]];
+                            false -> []
+                        end),
     PidActivities = percept2_db:select({activity, [{id, Pid}]}),
     WaitingMfas   = percept2_analyzer:waiting_activities(PidActivities),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
@@ -886,22 +863,25 @@ process_tree_content(_Env, _Input) ->
     end.
  
 %%% function callgraph content
-func_callgraph_content(SessionID, Env, Input) ->
+func_callgraph_content(_SessionID, Env, Input) ->
     CacheKey = "func_callpath"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, HeaderStyleAndContent}] ->
-            io:format("Use cached html\n"),
-            HeaderStyleAndContent;
-        [] ->
-            io:format("Regenerated html\n"),
-            HeaderStyleAndContent=func_callgraph_content_1(SessionID, Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
+    case ets:info(hisotry_html) of
+        undefined ->
+            apply(fun func_callgraph_content_1/2, [Env, Input]);
+        _ ->
+            case ets:lookup(history_html, CacheKey) of 
+                [{history_html, CacheKey, HeaderStyleAndContent}] ->
+                    HeaderStyleAndContent;
+                [] ->
+                    HeaderStyleAndContent= apply(fun func_callgraph_content_1/2, [Env, Input]),
+                    ets:insert(history_html, 
+                               #history_html{id=CacheKey,
                                          content=HeaderStyleAndContent}),
-            HeaderStyleAndContent
+                    HeaderStyleAndContent
+            end
     end.
 
-func_callgraph_content_1(_SessionID, _Env, _Input) ->
+func_callgraph_content_1(_Env, _Input) ->
     %% should Input be used?
     CallTree = ets:tab2list(fun_calltree),
     HeaderStyle = mk_fun_display_style(CallTree),
@@ -956,7 +936,7 @@ fun_sub_table(_Id, [], _IsChildren) ->
 fun_sub_table(Id={_Pid, _Fun, _Caller},Children, IsChildren) ->
     SubHtml = mk_funs_html(Children, IsChildren),
     "<tr><td colspan=\"10\"> <table cellspacing=10  cellpadding=2 border=1 "
-        "id=\""++mk_fun_table_id(Id)++"\", style=\"margin-left:60px;\">" ++
+        "id=\""++mk_fun_table_id(Id)++"\" style=\"margin-left:60px;\">" ++
         SubHtml ++ "</table></td></tr>".
      %% "<tr><td colspan=\"10\"> <table width=450 cellspacing=10 "
      
@@ -1007,18 +987,7 @@ mfa_to_list(_) -> "undefined".
 %%%function information
 function_info_content(Env, Input) ->
     CacheKey = "function_info"++integer_to_list(erlang:crc32(Input)),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, HeaderStyleAndContent}] ->
-            io:format("Use cached html\n"),
-            HeaderStyleAndContent;
-        [] ->
-            io:format("Regenerated html\n"),
-            HeaderStyleAndContent=function_info_content_1(Env, Input),
-            ets:insert(history_html, 
-                           #history_html{id=CacheKey,
-                                         content=HeaderStyleAndContent}),
-            HeaderStyleAndContent
-    end.
+    gen_content(Env, Input, CacheKey, fun function_info_content_1/2).
 function_info_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
@@ -1044,14 +1013,15 @@ function_info_content_1(_Env, Input) ->
      InfoTable ++ "<br>" ++
          "</div>".
 
-callgraph_time_content(_Env, Input) ->
+callgraph_time_content(Env, Input) ->
+    io:format("callgraph input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     ImgFileName="callgraph"++pid2value(Pid)++".svg",
     ImgFullFilePath = filename:join(
                     [code:priv_dir(percept2), "server_root",
                      "images", ImgFileName]),
-    Table = calltime_content(Pid),
+    Table = calltime_content(Env,Pid),
     Content = "<div style=\"text-align:center; align:center\">" ++
         "<h3 style=\"text-align:center;\">" ++ pid2html(Pid)++"</h3>"++ 
         "<iframe src=\"/images/"++ImgFileName++"\" type=\"image/svg+xml\""++
@@ -1075,21 +1045,11 @@ callgraph_time_content(_Env, Input) ->
             end
     end.
         
-calltime_content(Pid)->
+calltime_content(Env, Pid)->
     CacheKey = "calltime"++integer_to_list(erlang:crc32(pid_to_list(Pid))),
-    case ets:lookup(history_html, CacheKey) of 
-        [{history_html, CacheKey, Content}] ->
-            io:format("Use cached html\n"),
-            Content;
-        [] ->
-            io:format("Regenerated html\n"),
-            Content=calltime_content_1(Pid),
-            ets:insert(history_html, 
-                       #history_html{id=CacheKey,
-                                     content=Content}),
-            Content
-    end.
-calltime_content_1(Pid) ->
+    gen_content(Env, Pid, CacheKey, fun calltime_content_1/2).
+
+calltime_content_1(_Env, Pid) ->
     Elems0 = percept2_db:select({calltime, Pid}),
     Elems = lists:reverse(lists:keysort(1, Elems0)),
     SystemStartTS = percept2_db:select({system, start_ts}),
@@ -1107,6 +1067,22 @@ calltime_content_1(Pid) ->
         ||{{_Pid, CallTime}, Func, CallCount}<-Elems]], Props).
    
 
+gen_content(Env,Input,CacheKey,Fun) ->
+    case ets:info(history_html) of
+        undefined -> 
+            apply(Fun, [Env, Input]);
+        _ -> 
+            case ets:lookup(history_html, CacheKey) of 
+                [{history_html, CacheKey, Content}] ->
+                    Content;
+                [] ->
+                    Content= apply(Fun, [Env, Input]),
+                    ets:insert(history_html, 
+                               #history_html{id=CacheKey,
+                                             content=Content}),
+                    Content
+            end
+    end.
 
 
 %%% --------------------------- %%%
@@ -1396,3 +1372,11 @@ error_msg(Error) ->
 	<tr height=5><td></td> <td></td></tr>
      </table>\n".
 
+is_dummy_process_pid(Pid) ->
+    Str = lists:flatten(io_lib:format("~p", [Pid])),
+    Str1=lists:sublist(Str, 2, erlang:length(Str)-2),
+    [A,B,_C] = string:tokens(Str1, "."),
+    A=="0" andalso B=="0".
+
+%% graph input:
+%% "pids=0.23.0:0.36.0&range_min=0.0000&range_max=0.9214&height=400&width=1227"

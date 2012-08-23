@@ -118,8 +118,8 @@ start_profile(Type,Opts) ->
 	    erlang:system_flag(multi_scheduling, block),
             Port = case Type of 
                        {file, FileName} -> 
-                           P=(dbg:trace_port(file,{FileName,wrap,".dat",10000000,20}))(),
-                           %% P=(dbg:trace_port(file, FileName))(),
+                         %%  P=(dbg:trace_port(file,{FileName,wrap,".dat",10000000,20}))(),
+                           P=(dbg:trace_port(file, FileName))(),
                            P;
                        {ip, Node, Number}->
                            P=(dbg:trace_port(ip, {Number, 50000}))(),

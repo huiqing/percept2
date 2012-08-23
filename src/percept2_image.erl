@@ -205,15 +205,28 @@ draw_yticks0(_, _, _, _, _, _, _) -> ok.
 %%	Binary = binary()
 
 activities(Width, Height, {UXmin, UXmax}, Activities) ->
+    io:format("\nactivities:\n~p\n",[{Width, Height, {UXmin, UXmax}, Activities}]),
     Xs = [ X || {X,_} <- Activities],
-    Xmin = lists:min(Xs),
-    Xmax = lists:max(Xs),
+    Xmin = case Xs of 
+               [] -> 0.0;
+               _ ->lists:min(Xs)
+           end,
+    Xmax = case Xs of 
+               [] -> 0.0;
+               _ ->lists:max(Xs)
+           end,
     activities0(Width, Height, {lists:min([Xmin, UXmin]), lists:max([UXmax, Xmax])}, Activities).
 
 activities(Width, Height, Activities) ->
     Xs = [ X || {X,_} <- Activities],
-    Xmin = lists:min(Xs),
-    Xmax = lists:max(Xs),
+     Xmin = case Xs of 
+               [] -> 0.0;
+               _ ->lists:min(Xs)
+           end,
+    Xmax = case Xs of 
+               [] -> 0.0;
+               _ ->lists:max(Xs)
+           end,
     activities0(Width, Height, {Xmin, Xmax}, Activities).
 
 activities0(Width, Height, {Xmin, Xmax}, Activities) ->
@@ -231,11 +244,10 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ width = Width }, Acts) ->
     White = egd:color({255, 255, 255}),
     Green = egd:color({0,250, 0}),
     Black = egd:color({0, 0, 0}),
-
     Dx    = Width/(Xmax - Xmin),
-
     draw_activity(Image, {Xmin, Xmax}, Area, {White, Green, Black}, Dx, Acts).
 
+draw_activity(_, _, _, _, _, []) -> ok;
 draw_activity(_, _, _, _, _, [_]) -> ok;
 draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }, {Cw, Cg, Cb}, Dx, [{Xa1, State}, {Xa2, Act2} | Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),

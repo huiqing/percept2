@@ -149,8 +149,7 @@ start_webserver(Port) when is_integer(Port) ->
     case whereis(percept_httpd) of
 	undefined ->
 	    {ok, Config} = get_webserver_config("percept", Port),
-            percept2_utils:rm_tmp_files(),
-	    inets:start(),
+            inets:start(),
 	    case inets:start(httpd, Config) of
 		{ok, Pid} ->
 		    AssignedPort = find_service_port_from_pid(inets:services_info(), Pid),
@@ -159,6 +158,13 @@ start_webserver(Port) when is_integer(Port) ->
 		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
 		    register(percept_httpd, Mem),
                     percept2_utils:rm_tmp_files(),
+                    case ets:info(history_html) of 
+                        undefined ->
+                            ets:new(history_html, [named_table, public, {keypos, #history_html.id},
+                                                   ordered_set]);
+                        _ ->
+                            ets:delete_all_objects(history_html)
+                    end,
                     {started, Host, AssignedPort};
 		{error, Reason} ->
 		    {error, {inets, Reason}}

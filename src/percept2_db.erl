@@ -45,6 +45,8 @@
 
 -define(STOP_TIMEOUT, 1000).
 
+-compile(export_all).
+
 %%% ------------------------%%%
 %%% 	Type definitions    %%%
 %%% ------------------------%%%
@@ -146,8 +148,13 @@ stop_percept_db(FileNameSubDBPairs) ->
     ets:delete(funcall_info),
     ets:delete(fun_calltree),
     ets:delete(fun_info),
-    ets:delete(history_html),
-    stopped.
+    case ets:info(history_html) of
+        undefined -> 
+            stopped;
+        _ ->
+            ets:delete_all_objects(history_html),
+            stopped
+    end.
 
 stop_percept_sub_dbs(FileNameSubDBPairs) ->
     percept2_utils:pforeach(
@@ -200,7 +207,7 @@ consolidate_db() ->
         {percept_db, consolidate_done} ->
             ok
     end.
-        
+
 %%% ------------------------%%%
 %%% 	Database loop       %%%
 %%% ------------------------%%%
@@ -218,8 +225,6 @@ init_percept_db(Parent, TraceFileNames) ->
                            {read_concurrency,true}]),
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
                        ordered_set,{read_concurrency, true}]),
-    ets:new(history_html, [named_table, public, {keypos, #history_html.id},
-                           ordered_set]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept_db, started, FileNameSubDBPairs},
     loop_percept_db(FileNameSubDBPairs).
@@ -227,6 +232,7 @@ init_percept_db(Parent, TraceFileNames) ->
 loop_percept_db(FileNameSubDBPairs) ->
     receive
      	{select, Pid, Query} ->
+            io:format("Query:\n~p\n", [Query]),
             Res = percept_db_select_query(FileNameSubDBPairs, Query),
             Pid ! {result, Res},
 	    loop_percept_db(FileNameSubDBPairs);
@@ -456,11 +462,11 @@ insert_profile_trace(SubDBIndex,Trace) ->
             ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
             insert_profile_trace_1(ActivityProcRegName, Id, State, Mfa, TS, ports);
         {profile, scheduler, Id, State, NoScheds, Ts} ->
-            Act= #activity{
-              id = {scheduler, Id},
-              state = State,
+            Act= #scheduler{
               timestamp = Ts,
-              where = NoScheds},
+              id =  Id,
+              state = State,
+              active_scheds = NoScheds},
               % insert scheduler activity
             SchedulerProcRegName = mk_proc_reg_name("pdb_scheduler",
                                                     SubDBIndex),
@@ -468,29 +474,24 @@ insert_profile_trace(SubDBIndex,Trace) ->
         _Unhandled ->
             io:format("unhandled trace: ~p~n", [_Unhandled])
     end.
-
 insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS,_Type) ->
-    case check_activity_consistency({ProcRegName, Id}, State) of
-        invalid_state ->
-            ok;  %% ingnored.
-        ok ->
-            update_activity(ProcRegName,
-                            #activity{id = Id,
-                                      state = State,
-                                      timestamp = TS,
-                                      where = Mfa})
-    end.
-check_activity_consistency(Id, State) ->
-    case get({previous_state, Id}) of
-	State ->
-      	    invalid_state;
-	undefined when State == inactive -> 
-	    invalid_state;
-	_ ->
-	    put({previous_state, Id}, State),
-	    ok
-    end.
+    update_activity(ProcRegName,
+                    #activity{id = Id,
+                              state = State,
+                              timestamp = TS,
+                              where = Mfa}).
 
+check_activity_consistency(Id, State, RunnableStates) ->
+    case lists:keyfind(Id,1,RunnableStates) of 
+        {Id, State} ->
+            invalid_state;
+        false when State == inactive ->
+            invalid_state;
+        false ->
+            [{Id, State}|RunnableStates];
+        _ ->
+            lists:keyreplace(Id, 1, RunnableStates, {Id, State})
+    end.
 
 trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) ->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
@@ -646,6 +647,7 @@ init_pdb_activity(ProcRegName, Parent) ->
 update_activity(ProcRegName, Activity) ->
     ProcRegName ! {update_activity, {ProcRegName, Activity}}.
     
+
 select_query_activity(FileNameSubDBPairs, Query) ->
     io:format("select_query_activity:\n~p\n", [Query]),
     Res = percept2_utils:pmap(
@@ -656,48 +658,59 @@ select_query_activity(FileNameSubDBPairs, Query) ->
                             Res
                     end
             end, FileNameSubDBPairs),
-    lists:append(Res).                        
+    case Query of 
+        {activity,{min_max_ts, _}} ->
+            io:format("Res:\n~p\n", [Res]),
+            {Mins,Maxs}=lists:unzip(lists:append(Res)),
+            {case Mins of [] -> undefined; _ -> lists:min(Mins) end,
+             case Maxs of [] -> undefined; _ -> lists:max(Maxs) end};
+        _ ->
+            lists:append(Res)
+    end.
 
 pdb_activity_loop()->
     receive 
         {update_activity, {SubTab,Activity}} ->
             ets:insert(SubTab, Activity),
             pdb_activity_loop();
-        {consolidate_runnability, {From, SubDBIndex, {ActiveProcs, ActivePorts}}} ->
-            {ok, {NewActiveProcs, NewActivePorts}}=
-                do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts}), 
-            From!{self(), done, {NewActiveProcs, NewActivePorts}},
-            pdb_activity_loop();
-        {query_pdb_activity, From, {SubDBIndex, Query}} ->
-            Res = select_query_activity_1(SubDBIndex, Query),
-            From !{pdb_activity, Res},
+        {consolidate_runnability, {From, SubDBIndex, {ActiveProcs, ActivePorts, RunnableStates}}} ->
+            {ok, {NewActiveProcs, NewActivePorts, NewRunnableStates}}=
+                do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts}, RunnableStates), 
+            From!{self(), done, {NewActiveProcs, NewActivePorts, NewRunnableStates}},
             pdb_activity_loop();
         {action, stop} ->
             ok            
     end.
-do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts}) ->
+do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts},RunnableStates) ->
     Tab=mk_proc_reg_name("pdb_activity", SubDBIndex),
     put({runnable, procs}, ActiveProcs),
     put({runnable, ports}, ActivePorts),
-    consolidate_runnability_loop(Tab, ets:first(Tab)).
+    consolidate_runnability_loop(Tab, ets:first(Tab), RunnableStates).
 
-consolidate_runnability_loop(_Tab, '$end_of_table') ->
-    {ok, {get({runnable, procs}), get({runnable, ports})}};
-consolidate_runnability_loop(Tab, Key) ->
+consolidate_runnability_loop(_Tab, '$end_of_table',RunnableStates) ->
+    {ok, {get({runnable, procs}), get({runnable, ports}), RunnableStates}};
+consolidate_runnability_loop(Tab, Key, RunnableStates) ->
     case ets:lookup(Tab, Key) of
-	[#activity{id = Id, state = State }] when is_pid(Id) ->
-	    Rc = get_runnable_count(procs, State),
-            ets:update_element(Tab, Key, {#activity.runnable_count, 
-                                          {Rc, get({runnable, ports})}});
-        [#activity{id = Id, state = State}] when is_port(Id) ->
-	    Rc = get_runnable_count(ports, State),
-	    ets:update_element(Tab, Key, {#activity.runnable_count, 
-                                          {get({runnable, procs}),Rc}});
-	_ -> throw(consolidate)
-    end,
-    consolidate_runnability_loop(Tab, ets:next(Tab, Key)).
-
-%% get_runnable_count(Type, State) -> RunnableCount
+	[#activity{id = Id, state = State }] ->
+            case check_activity_consistency(Id, State,RunnableStates) of 
+                invalid_state ->
+                    NextKey = ets:next(Tab, Key),
+                    ets:delete(Tab, Key),
+                    consolidate_runnability_loop(Tab, NextKey, RunnableStates);
+                NewRunnableStates when is_pid(Id)->
+                    Rc = get_runnable_count(procs, State),
+                    ets:update_element(Tab, Key, {#activity.runnable_count, 
+                                                  {Rc, get({runnable, ports})}}),
+                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates);
+                NewRunnableStates when is_port(Id)->
+                    Rc = get_runnable_count(ports, State),
+                    ets:update_element(Tab, Key, {#activity.runnable_count, 
+                                                  {get({runnable, ports}), Rc}}),
+                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates)
+            end
+    end.
+  
+%% get_runnable_count(Type, Id, State) -> RunnableCount
 %% In: 
 %%	Type = procs | ports
 %%	State = active | inactive
@@ -708,13 +721,13 @@ consolidate_runnability_loop(Tab, Key) ->
 %%	during the profile duration.
 get_runnable_count(Type, State) ->
     case {get({runnable, Type}), State} of 
-    	{N, active} ->
-	    put({runnable, Type}, N + 1),
-	    N + 1;
-	{N, inactive} ->
-	    put({runnable, Type}, N - 1),
-	    N - 1;
-	Unhandled ->
+        {N, active} ->
+            put({runnable, Type}, N + 1),
+            N + 1;
+        {N, inactive} ->
+            put({runnable, Type}, N - 1),
+            N - 1;
+        Unhandled ->
 	    io:format("get_runnable_count, unhandled ~p~n", [Unhandled]),
 	    Unhandled
     end.
@@ -723,31 +736,30 @@ get_runnable_count(Type, State) ->
 select_query_activity_1(SubDBIndex, Query) ->
     case Query of
         {activity, {runnable_counts, Options}} ->
-            MS = activity_count_ms(Options),
+            get_runnable_counts(SubDBIndex, Options);
+        {activity, {min_max_ts, Pids}} ->
+            Head = #activity{timestamp ='$1', id ='$2', _='_'},
+            Body = ['$1'],
+            MS= [{Head, [{'==', Head#activity.id, Pid}], Body}||Pid<-Pids],
             Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
-            case catch ets:select(Tab, MS) of
-                {'EXIT', Reason} ->
-                    io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
-                    [];
-                Match ->
-                    io:format("~p items found in tab ~p\n", [length(Match), Tab]),
-                    Match
-            end;            
-    	{activity, Options} when is_list(Options) ->
-	    case lists:member({ts_exact, true},Options) of
-		true ->
-		    case catch select_query_activity_exact_ts(SubDBIndex, Options) of
-			{'EXIT', Reason} ->
-	    		    io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
+            case ets:select(Tab, MS) of 
+                [] -> [];
+                TSs ->[{hd(TSs), lists:last(TSs)}]
+            end;
+        {activity, Options} when is_list(Options) ->
+            case lists:member({ts_exact, true},Options) of
+                true ->
+                    case catch select_query_activity_exact_ts(SubDBIndex, Options) of
+                    {'EXIT', Reason} ->
+                            io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
 			    [];
 		    	Match ->
 			    Match
 		    end;		    
 		false ->
 		    MS = activity_ms(Options),
-                Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
-                io:format("Tab:\n~p\n", [Tab]),
-		case catch ets:select(Tab, MS) of
+                    Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
+                    case catch ets:select(Tab, MS) of
 		    {'EXIT', Reason} ->
 	                    io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
 			    [];
@@ -760,6 +772,20 @@ select_query_activity_1(SubDBIndex, Query) ->
 	    io:format("select_query_activity, unhandled: ~p~n", [Unhandled]),
     	    []
     end.
+
+%% This only works when all the procs/ports are selected.
+get_runnable_counts(SubDBIndex, Options) ->
+    MS = activity_count_ms(Options),
+    Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case catch ets:select(Tab, MS) of
+        {'EXIT', Reason} ->
+            io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
+            [];
+        Match ->
+            io:format("~p items found in tab ~p\n", [length(Match), Tab]),
+            Match
+    end.
+         
 
 select_query_activity_exact_ts(SubDBIndex, Options) ->
     case { proplists:get_value(ts_min, Options, undefined), 
@@ -819,7 +845,6 @@ lists_filter([D|Ds], Options) ->
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PORT1}).
 
 activity_ms(Opts) ->
-    % {activity, Timestamp, State, Mfa}
     Head = #activity{
     	timestamp = '$1',
 	id = '$2',
@@ -851,11 +876,14 @@ activity_count_ms(Opts) ->
     % {activity, Timestamp, State, Mfa}
     Head = #activity{
     	timestamp = '$1',
-        runnable_count='$2',
-	_ = '_'},
+        id = '$2',
+        state = '$3',
+        where = '$4',
+        runnable_count='$5'
+	},
 
     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
-    Body = [{{'$1', '$2'}}],
+    Body = [{{'$1', '$5'}}],
     lists:foldl(
     	fun (Option, MS) ->
 	    case Option of
@@ -863,9 +891,7 @@ activity_count_ms(Opts) ->
 	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
 		{id, procs} ->
 	    	    [{Head,[{is_pid, Head#activity.id} | Conditions], Body} | MS];
-		{id, ID} when is_pid(ID) ; is_port(ID) ->
-	    	    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
-		{id, all} ->
+                {id, all} ->
 	    	    [{Head, Conditions,Body} | MS];
 		_ ->
 	    	    io:format("activity_ms id dropped ~p~n", [Option]),
@@ -899,7 +925,6 @@ activity_ms_and(Head, [Opt|Opts], Constraints, IDs) ->
 	    activity_ms_and(Head, Opts, Constraints, IDs)
     end.
 
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                  %%
 %%             access to pdb_scheduler              %%
@@ -908,7 +933,7 @@ activity_ms_and(Head, [Opt|Opts], Constraints, IDs) ->
 init_pdb_scheduler(ProcRegName, Parent) ->
     register(ProcRegName, self()),
     ets:new(ProcRegName, [named_table, protected, 
-                          {keypos, #activity.timestamp},
+                          {keypos, #scheduler.timestamp},
                           ordered_set]),
     Parent ! {ProcRegName, started},    
     pdb_scheduler_loop().
@@ -920,7 +945,7 @@ update_scheduler(SchedulerProcRegName,Activity) ->
 select_query_scheduler(FileNameSubDBPairs, Query) ->
     Res = percept2_utils:pmap(
             fun({_, SubDB}) ->
-                    SubDB ! {select, self(), {SubDB, Query}},
+                    SubDB ! {select, self(), Query},
                     receive
                         {SubDB, Res} ->
                             Res
@@ -933,10 +958,6 @@ pdb_scheduler_loop()->
         {update_scheduler, {SchedulerProcRegName,Activity}} ->
             ets:insert(SchedulerProcRegName, Activity),
             pdb_scheduler_loop();
-        {'query_pdb_scheduler', From, {SubDBIndex, Query}} ->
-            Res=select_query_scheduler_1(SubDBIndex, Query),
-            From !{self(), Res},
-            pdb_scheduler_loop();
         {action, stop} ->
             ok
     end.
@@ -944,20 +965,35 @@ pdb_scheduler_loop()->
 select_query_scheduler_1(SubDBIndex, Query) ->
     case Query of
 	{scheduler, Options} when is_list(Options) ->
-	    Head = #activity{
+            Head = #scheduler{
 	    	timestamp = '$1',
 		id = '$2',
 		state = '$3',
-		where = '$4',
-		_ = '_'},
+		active_scheds = '$4'
+             },
 	    Body = ['$_'],
 	    % We don't need id's
-	    {Constraints, _ } = activity_ms_and(Head, Options, [], []),
+            Constraints = scheduler_ms_and(Head, Options, []),
             Tab = mk_proc_reg_name("pdb_scheduler", SubDBIndex),
-	    ets:select(Tab, [{Head, Constraints, Body}]);
+            ets:select(Tab, [{Head, Constraints, Body}]);
 	Unhandled ->
 	    io:format("select_query_scheduler_1, unhandled: ~p~n", [Unhandled]),
 	    []
+    end.
+
+scheduler_ms_and(_, [], Constraints) -> 
+    Constraints;
+scheduler_ms_and(Head, [Opt|Opts], Constraints) ->
+    case Opt of
+	{ts_min, Min} ->
+	    scheduler_ms_and(Head, Opts, 
+                             [{'>=', Head#scheduler.timestamp, {Min}} | Constraints]);
+        {ts_max, Max} ->
+	    scheduler_ms_and(Head, Opts, 
+                             [{'=<', Head#scheduler.timestamp, {Max}} | Constraints]);
+	_ -> 
+	    io:format("scheduler_ms_and option dropped ~p~n", [Opt]),
+	    scheduler_ms_and(Head, Opts, Constraints)
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1122,7 +1158,18 @@ select_query_information(Query) ->
 		[{is_port, '$1'}],
 		[true]
 		}]);
-	{information, Id} when is_port(Id) ; is_pid(Id) -> 
+        {information, {range_min_max, Ids}} ->
+            StartStopTS=[ets:select(pdb_info, 
+                                    [{#information{id = Id, start='$2', stop='$3', _ = '_'},
+                                      [],
+                                      [{{'$2', '$3'}}]
+                                     }])||Id<-Ids],
+            [{_, SystemStartTs}] =ets:lookup(pdb_system, {system, start_ts}),
+            [{_, SystemStopTs}] =ets:lookup(pdb_system, {system, stop_ts}),
+            io:format("SystemStopstarts:\n~p\n", [{SystemStartTs, SystemStopTs}]),
+            {Starts, Stops} = lists:unzip(lists:append(StartStopTS)),
+            {lists:min(Starts), lists:max(Stops)};
+        {information, Id} when is_port(Id) ; is_pid(Id) -> 
 	    ets:select(pdb_info, [{
 		#information{ id = Id, _ = '_'},
 		[],
@@ -1783,23 +1830,55 @@ get_stop_time_ts(LastIndex) ->
 %%%                                                      %%%
 %%%------------------------------------------------------%%%
 consolidate_runnability(LastSubDBIndex) ->
-    consolidate_runnability_1(1,{0,0},LastSubDBIndex).
+    io:format("LastSubDBIndex:\n~p\n", [LastSubDBIndex]),
+    consolidate_runnability_1(1,{0,0,[]},LastSubDBIndex).
 
 consolidate_runnability_1(CurSubDBIndex, _, LastSubDBIndex) 
   when CurSubDBIndex>LastSubDBIndex ->
     ok;
-consolidate_runnability_1(CurSubDBIndex, {ActiveProcs, ActivePorts},
+consolidate_runnability_1(CurSubDBIndex, {ActiveProcs, ActivePorts, RunnableStates},
                           LastSubDBIndex) ->
     ActivityProcRegName = mk_proc_reg_name("pdb_activity", CurSubDBIndex),
     Pid = whereis(ActivityProcRegName),
     Pid ! {consolidate_runnability, 
-           {self(), CurSubDBIndex, {ActiveProcs, ActivePorts}}},
+           {self(), CurSubDBIndex, {ActiveProcs, ActivePorts, RunnableStates}}},
     receive
-        {Pid,done, {NewActiveProcs, NewActivePorts}} ->
+        {Pid,done, {NewActiveProcs, NewActivePorts, NewRunnableStates}} ->
             consolidate_runnability_1(CurSubDBIndex+1, 
-                                      {NewActiveProcs, NewActivePorts},
+                                      {NewActiveProcs, NewActivePorts, NewRunnableStates},
                                       LastSubDBIndex)
     end.
+
+%% %%%------------------------------------------------------%%%
+%% %%%                                                      %%%
+%% %%%  consolidate pdb_info to removed undefined start/end %%%
+%% %%%  time stamps.                                        %%%
+%% %%%                                                      %%%
+%% %%%------------------------------------------------------%%%
+%% consolidate_pdb_info(FileNameSubDBPairs) ->
+%%     Pids = ets:select(pdb_info, 
+%%                       [{#information{id='$1', start='$2', 
+%%                                      stop='$3', _='_'},
+%%                         [{'orelse', {'==', '$2', undefined},
+%%                           {'==', '$3', undefined}}], ['$1']}]),
+%%     case Pids of 
+%%         [] -> ok;
+%%         _ ->
+%%             lists:foreach(
+%%               fun(Pid) ->
+%%                       {MinTs, MaxTs} = percept_db_select_query(
+%%                                          FileNameSubDBPairs,
+%%                                          {activity, {min_max_ts, [Pid]}}),
+%%                       case MinTs == undefined orelse MaxTs==undefined of 
+%%                           true ->
+%%                               ets:delete(pdb_info, Pid);
+%%                           false ->
+%%                               ets:update_element(pdb_info, Pid, {#information.start, MinTs}),
+%%                               ets:update_element(pdb_info, Pid, {#information.stop, MaxTs})
+%%                       end
+%%               end, Pids)
+%%     end.
+
 
 %%%------------------------------------------------------%%%
 %%%                                                      %%%
@@ -1927,8 +2006,10 @@ add_to_1({Fun, CNT}, Acc) ->
 -type process_tree()::{#information{},[process_tree()]}.
 gen_compressed_process_tree()->
     Trees = gen_process_tree(),
-    compress_process_tree(Trees).
-    
+    put(last_index, 0),
+    NewTrees=compress_process_tree(Trees),
+    erase(last_index),
+    NewTrees.
 
 -spec gen_process_tree/0::()->[process_tree()].
 gen_process_tree() ->
@@ -1980,12 +2061,18 @@ add_ancestors(ProcessTree, As) ->
 
 compress_process_tree(Trees) ->
     compress_process_tree(Trees, []).
+  
 
 compress_process_tree([], Out)->
     lists:reverse(Out);
-compress_process_tree([T|Ts], Out) ->
-    T1=compress_process_tree_1(T),
-    compress_process_tree(Ts, [T1|Out]).
+compress_process_tree([T={P, _}|Ts], Out) ->
+    case is_dummy_process_pid(P#information.id) of
+        true ->
+            compress_process_tree(Ts, Out);
+        false ->
+            T1=compress_process_tree_1(T),
+            compress_process_tree(Ts, [T1|Out])
+    end.
 
 compress_process_tree_1(Tree={_Parent, []}) ->
     Tree;
@@ -2019,27 +2106,37 @@ compress_process_tree_3(ChildrenGroup) ->
             case length(UnNamedProcs) == length(Children) of
                 true ->
                     Num = length(Cs),
+                    LastIndex = get(last_index),
+                    put(last_index, LastIndex+1),
                     CompressedChildren=
-                        #information{id=list_to_pid("<0.0.0>"),
-                                     name=list_to_atom(integer_to_list(Num)++" procs omitted"),
-                                     parent=C0#information.parent,
-                                     entry = EntryFun,
-                                     start =lists:min([C1#information.start||{C1,_}<-Cs]),
-                                     stop = lists:max([C1#information.stop||{C1, _}<-Cs]),
-                                     msgs_received=lists:foldl(fun({P,_}, {R1Acc, R2Acc}) ->
-                                                                       {R1, R2}=P#information.msgs_received,
-                                                                       {R1+R1Acc, R2+R2Acc}
-                                                               end, {0,0}, Cs),
-                                     msgs_sent = lists:foldl(fun({P, _}, {S1Acc, S2Acc}) ->
-                                                                     {S1, S2} = P#information.msgs_sent,
-                                                                     {S1+S1Acc, S2+S2Acc}
-                                                             end, {0,0}, Cs)
-                                    },
+                        Info=#information{id=list_to_pid("<0.0."++integer_to_list(LastIndex)++">"),
+                                          name=list_to_atom(integer_to_list(Num)++" procs omitted"),
+                                          parent=C0#information.parent,
+                                          entry = EntryFun,
+                                          start =lists:min([C1#information.start||{C1,_}<-Cs]),
+                                          stop = lists:max([C1#information.stop||{C1, _}<-Cs]),
+                                          msgs_received=lists:foldl(fun({P,_}, {R1Acc, R2Acc}) ->
+                                                                           {R1, R2}=P#information.msgs_received,
+                                                                           {R1+R1Acc, R2+R2Acc}
+                                                                   end, {0,0}, Cs),
+                                          msgs_sent = lists:foldl(fun({P, _}, {S1Acc, S2Acc}) ->
+                                                                         {S1, S2} = P#information.msgs_sent,
+                                                                         {S1+S1Acc, S2+S2Acc}
+                                                                 end, {0,0}, Cs),
+                                          hidden_pids = UnNamedProcs
+                                         },
+                    update_information_1(Info),
                     [compress_process_tree_1(C), {CompressedChildren,[]}];   
                 false ->
                     compress_process_tree(Children)
             end
     end.
+
+is_dummy_process_pid(Pid) ->
+    Str = lists:flatten(io_lib:format("~p", [Pid])),
+    Str1=lists:sublist(Str, 2, erlang:length(Str)-2),
+    [A,B,_C] = string:tokens(Str1, "."),
+    A=="0" andalso B=="0".
 
 %%% -------------------	%%%
 %%% Utility functionss	%%%
@@ -2124,3 +2221,5 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
  %% percept2:analyze(["sim_code_v60.dat", "sim_code_v61.dat", "sim_code_v62.dat","sim_code_v63.dat", "sim_code_v64.dat","sim_code_v6.dat", "sim_code_v66.dat", "sim_code_v67.dat","sim_code_v68.dat","sim_code_v69.dat", "sim_code_v610.dat","sim_code_v611.dat","sim_code_v612.dat"]).
 
  %% percept2:analyze(["sim_code_v60.dat", "sim_code_v61.dat", "sim_code_v62.dat","sim_code_v63.dat", "sim_code_v64.dat","sim_code_v65.dat", "sim_code_v66.dat"]).
+
+%% percept2_graph:scheduler_graph(0, "range_min=0.0000&range_max=2.9328&width=532&height=600").
