@@ -78,7 +78,7 @@ ports_graph(SessionID, Env, Input) ->
 
 procs_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
-    mod_esi:deliver(SessionID, binary_to_list(procs_graph(Env, Input))).
+    mod_esi:deliver(SessionID, binary_to_list(procs_graph(nv, Input))).
 
 memory_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
@@ -117,7 +117,6 @@ graph_1(_Env, Input, Type) ->
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept_db:select({activity, Options}),
             Counts=percept_analyzer:activities2count2(Acts, StartTs),
-            io:format("Counts:\n~p\n", [Counts]),
             percept2_image:graph(Width, Height, Counts);
         false ->                
             Options  = [{ts_min, TsMin},{ts_max, TsMax}],

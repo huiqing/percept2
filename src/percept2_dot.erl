@@ -12,8 +12,8 @@
 %%% --------------------------------%%%
 gen_callgraph_img(Pid) ->
     Res=ets:select(fun_calltree, 
-                      [{#fun_calltree{id = {'$1', '_','_'}, _='_'},
-                        [{'==', '$1', Pid}],
+                      [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+                        [],
                         ['$_']
                        }]),
     case Res of 
@@ -21,14 +21,17 @@ gen_callgraph_img(Pid) ->
         [Tree] -> gen_callgraph_img_1(Pid, Tree)
     end.
    
-gen_callgraph_img_1(Pid, CallTree) ->
-    String = lists:flatten(io_lib:format("~p", [Pid])),
-    PidStr=lists:sublist(String, 2, erlang:length(String)-2),
+gen_callgraph_img_1(Pid, CallTree) when is_pid(Pid)->
+    gen_callgraph_img_1(percept2_utils:pid2value(Pid), CallTree);
+gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
+    PidStr=integer_to_list(P1)++"."++integer_to_list(P2)++
+        "."++integer_to_list(P3),
     BaseName = "callgraph"++PidStr,
     DotFileName = BaseName++".dot",
     SvgFileName = filename:join(
                     [code:priv_dir(percept2), "server_root",
                      "images", BaseName++".svg"]),
+    io:format("CallTree:\n~p\n", [CallTree]),
     fun_callgraph_to_dot(CallTree,DotFileName),
     os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
     file:delete(DotFileName),

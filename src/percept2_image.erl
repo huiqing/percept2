@@ -53,12 +53,28 @@ graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
 %%	Ports = integer()
 %% Out:
 %%	Image = binary()
-
+graph(Width, Height, []) ->
+    io:format("DDDDDDDDDD\n"),
+    error_graph(Width, Height,"No trace data recorded! ");
 graph(Width, Height, Data) ->
+    io:format("AAAAAAA\n"),
+    io:format("Data:\n~p\n", [Data]),
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
     Bounds = percept2_utils:minmax(Data2),
     graf1(Width, Height, Bounds, Data).
 
+error_graph(Width, Height, Text) ->
+    %% Initiate Image
+    Image = egd:create(Width, Height),
+    io:format("Image:\n~p\n", [Image]),
+    Font = load_font(),
+    egd:text(Image, {100, 100}, Font, Text,  egd:color(Image, {255, 0, 0})),
+    Binary = egd:render(Image, png),
+    io:format("Font:\n~p\n", [{Font, egd_font:size(Font)}]),
+    egd:destroy(Image),
+    Binary.
+
+    
 graf1(Width, Height, {Xmin, Ymin, Xmax, Ymax}, Data) ->
     % Calculate areas
     HO = 20,

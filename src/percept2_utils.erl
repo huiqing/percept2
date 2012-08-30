@@ -135,3 +135,15 @@ seconds2ts(Seconds, {Ms, S, Us}) ->
     MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
 
     {MsOut, SOut, UsOut}.
+
+
+
+-spec pid2value(Pid :: pid()) -> string().
+pid2value(Pid={pid, {_, _, _}}) -> Pid;
+pid2value(Pid) when is_pid(Pid) ->
+    String = lists:flatten(io_lib:format("~p", [Pid])),
+    PidStr=lists:sublist(String, 2, erlang:length(String)-2),
+    [P1,P2,P3] = string:tokens(PidStr,"."),
+    {pid, {list_to_integer(P1), 
+           list_to_integer(P2),
+           list_to_integer(P3)}}.

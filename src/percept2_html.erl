@@ -29,7 +29,8 @@
          visualise_process_tree/3,
          func_callgraph_page/3,
          function_info_page/3,
-         visualise_callgraph/3
+         visualise_callgraph/3,
+         summary_report_page/3
         ]).
 
 -export([get_option_value/2]).
@@ -43,7 +44,6 @@
 %%% 	API functions     	%%%
 %%% --------------------------- %%%
 overview_page(SessionID, Env, Input) ->
-    io:format("Input:\n~p\n", [{SessionID, Env, Input}]),
     try
         Menu = menu(Input),
         OverviewContent = overview_content(Env, Input),
@@ -84,6 +84,15 @@ active_funcs_page(SessionID, Env, Input) ->
             error_page(SessionID, Env, Input)
     end.
 
+summary_report_page(SessionID, Env, Input) ->
+    try
+        Menu = menu(Input),
+        deliver_page(SessionID, Menu, summary_report_content())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+    
 databases_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
@@ -93,6 +102,7 @@ databases_page(SessionID, Env, Input) ->
             error_page(SessionID, Env, Input)
     end.
     
+
 load_database_page(SessionID, Env, Input) ->
     try
         mod_esi:deliver(SessionID, header()),
@@ -203,18 +213,18 @@ error_page(SessionID, _Env, _Input) ->
 overview_content(Env, Input) ->
     io:format("Input:\n~p\n", [Input]),
     CacheKey = "overview"++integer_to_list(erlang:crc32(Input)),
-    io:format("CacheKey:~p\n", [CacheKey]),
     gen_content(Env,Input,CacheKey,fun overview_content_1/2).
 
 
 overview_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
+    io:format("Query:\n~p\n", [Query]),
     Min = get_option_value("range_min", Query),
     Max = get_option_value("range_max", Query),
     Width  = 1200,
     Height = 600,
     TotalProfileTime = ?seconds((percept2_db:select({system, stop_ts})),
-                                    (percept2_db:select({system, start_ts}))),
+                                (percept2_db:select({system, start_ts}))),
     Procs = percept2_db:select({information, procs_count}),
     Ports = percept2_db:select({information, ports_count}),
     InformationTable = 
@@ -240,8 +250,8 @@ overview_content_1(_Env, Input) ->
 	    "<select name=\"graph_select\" onChange=\"select_image()\">
 	      	<option value=\""++ url_graph(Width, Height, Min, Max, []) ++"\">Ports & Processes </option>
                 <option value=\""++ url_sched_graph(Width, Height, Min, Max, []) ++"\">Schedulers </option>
-                <option value=\""++ url_ports_graph(Width, Height, Min, Max, []) ++"\" />Ports
-	    	<option value=\""++ url_procs_graph(Width, Height, Min, Max, []) ++"\" />Processes
+                <option value=\""++ url_ports_graph(Width, Height, Min, Max, []) ++"\">Ports </option>
+	    	<option value=\""++ url_procs_graph(Width, Height, Min, Max, []) ++"\">Processes </option>
             </select>",
 	    "<input type=submit value=Update>"
 	    ]) ++
@@ -259,7 +269,7 @@ overview_content_1(_Env, Input) ->
 	table_line([RangeTable]) ++
 	"</table>",
     Footer = "</div></form>",
-    Header ++ MainTable ++ Footer.
+    Header ++ MainTable.
     
 div_tag_graph() ->
 %background:url('/images/loader.gif') no-repeat center;
@@ -334,11 +344,12 @@ concurrency_content_1(_Env, Input) ->
     %% Get query
     Query = httpd:parse_query(Input),
     %% Collect selected pids and generate id tags
-    Pids = [value2pid(PidValue)
+    Pids = [str_to_internal_pid(PidValue)
             || {PidValue, Case} <- Query, 
                Case == "on", 
                PidValue /= "select_all",
                PidValue /= "include_unshown_procs"],
+    io:format("Pids:\n~p\n", [Pids]),
     IDs=case lists:member({"include_unshown_procs","on"}, Query) of 
             true ->
                 lists:append([expand_pid(Pid)|| Pid <- Pids]);
@@ -352,11 +363,11 @@ concurrency_content_1(_Env, Input) ->
     {MinTs, MaxTs} = percept2_db:select({activity, {min_max_ts, Pids}}),
     {T0, T1} = {?seconds(MinTs, StartTs), ?seconds(MaxTs, StartTs)}, 
     io:format("T0, T1:\n~p\n", [{T0, T1}]),
-    PidValues = [pid2value(Pid) || Pid <- IDs],
+    PidValues = [pid2str(Pid) || Pid <- IDs],
     %%Generate activity bar requests
     ActivityBarTable = lists:foldl(
                          fun(Pid, Out) ->
-                                 ValueString = pid2value(Pid),
+                                 ValueString = pid2str(Pid),
                                  Out ++ 
                                      table_line(
                                        [
@@ -385,7 +396,8 @@ expand_pid(Pid) ->
     case is_dummy_process_pid(Pid) of
         true ->
             [Info] = percept2_db:select({information, Pid}),
-            [Pid1||Pid1 <- Info#information.hidden_pids];
+            
+            [percept2_utils:pid2value(Pid1)||Pid1 <- Info#information.hidden_pids];
         false ->
             [Pid]
     end.
@@ -438,22 +450,30 @@ active_funcs_content_1(_Env, Input) ->
     TsMin   = percept2_utils:seconds2ts(Min, StartTs),
     TsMax   = percept2_utils:seconds2ts(Max, StartTs),
     ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}]}),
-    Table = html_table(
-              [[{th, " pid "},
-                {th, "module:function/arity"},
-                {th, "activity"},
-                {th, "function start/end secs"},
-                {th, "monitor start/end secs"}]] ++
-                   [[{td, pid2html(element(1, F#funcall_info.id))},
-                     {td, term2html(F#funcall_info.func)},
-                     {td, make_image_string(F, {Min, Max})},
-                     {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
-                                     ?seconds((F#funcall_info.end_ts), StartTs)})},
-                     {td, term2html({Min, Max})}]
-                   || F <- ActiveFuns, ?seconds((F#funcall_info.end_ts), (element(2, F#funcall_info.id))) > 0.01]),
-    "<div id=\"content\">" ++ 
-        Table ++ 
-        "</div>".
+    case ActiveFuns of 
+        [] ->
+            "<div style=\"text-align:center;\">" ++
+                "<blink><center><h3><p>No function activities recorded " ++
+                "for the time interval selected.</p></h3></center><blink>" ++
+                "</div>";
+        _ ->
+            Table = html_table(
+                      [[{th, " pid "},
+                        {th, "module:function/arity"},
+                        {th, "activity"},
+                        {th, "function start/end secs"},
+                        {th, "monitor start/end secs"}]] ++
+                          [[{td, pid2html(element(1, F#funcall_info.id))},
+                            {td, term2html(F#funcall_info.func)},
+                            {td, make_image_string(F, {Min, Max})},
+                            {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
+                                            ?seconds((F#funcall_info.end_ts), StartTs)})},
+                            {td, term2html({Min, Max})}]
+                           || F <- ActiveFuns, ?seconds((F#funcall_info.end_ts), (element(2, F#funcall_info.id))) > 0.01]),
+            "<div id=\"content\">" ++ 
+                Table ++ 
+                "</div>"
+    end.
 
 make_image_string(F, {QueryStart, QueryEnd})->
     SystemStartTS = percept2_db:select({system, start_ts}),
@@ -468,6 +488,10 @@ make_image_string(F, {QueryStart, QueryEnd})->
                   {height, 10}]).
 
    
+summary_report_content() ->
+    "<div style=\"text-align:center;\">" ++
+        "<blink><center><h3><p>Sorry, this functionality is not supported yet. " ++
+        "</div>".
 %%% databases content page.
 databases_content() ->
     "<div id=\"content\">
@@ -531,6 +555,7 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     SystemStartTS = percept2_db:select({system, start_ts}),
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
+    io:format("ProfileTime:\n~p\n", [ProfileTime]),
     %% Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     %% ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
     %% ActiveProcsInfo=lists:append([percept2_db:select({information, Pid})||Pid <- ActivePids]),
@@ -538,7 +563,7 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, []), %%ActiveProcsInfo),
     PortsHtml = lists:foldl(
     	fun (I, Out) -> 
-	    StartTime = procstarttime(I#information.start),
+            StartTime = procstarttime(I#information.start),
 	    EndTime   = procstoptime(I#information.stop),
 	    Prepare = 
 	    	table_line([
@@ -637,7 +662,7 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
               EndTime   = procstoptime(I#information.stop),
               Prepare =
                   table_line([
-                              "<input type=checkbox name=" ++ pid2value(I#information.id) ++ ">",
+                              "<input type=checkbox name=" ++ pid2str(I#information.id) ++ ">",
                               expand_or_collapse(Children, Id),
                               case lists:member(I, ActiveProcsInfo) orelse  is_parent(Id, ActiveProcsInfo) of 
                                   true ->pid2html_with_color(I#information.id);
@@ -694,13 +719,13 @@ expand_or_collapse(Children, Id) ->
         [] ->
             "<input type=\"button\", value=\"-\">";
         _ ->
-            "<input type=\"button\" id=\"lnk"++pid_to_list(Id)++
-                "\" onclick = \"return toggle('lnk"++pid_to_list(Id)++"', '"
-                ++mk_table_id(Id)++"')\", value=\"+\">"
+            "<input type=\"button\" id=\"lnk" ++ pid2str(Id) ++
+                  "\" onclick = \"return toggle('lnk" ++ pid2str(Id) ++ "', '"
+                  ++ mk_table_id(Id) ++ "')\", value=\"+\">"
     end.
 
 mk_table_id(Pid) ->
-    "t"++[C||C<-pid_to_list(Pid), not lists:member(C, [46, 60, 62])].
+    "t" ++ [C||C <- pid2str(Pid), not lists:member(C, [46, 60, 62])].
 
 sub_table(_Id, [], _ProfileTime, _) ->
     "";
@@ -763,7 +788,9 @@ process_info_content(Env, Input) ->
 
 process_info_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
+    io:format("Query:\n~p\n", [Query]),
     Pid = get_option_value("pid", Query),
+    io:format("Pid:\n~p\n", [Pid]),
     [I] = percept2_db:select({information, Pid}),
     ArgumentString = case I#information.entry of
                          {_, _, Arguments} when is_list(Arguments)-> 
@@ -916,12 +943,12 @@ mk_funs_html(FunCallTree, IsChildren) ->
               CNT = F#fun_calltree.cnt,
               Prepare = 
                   if IsChildren ->
-                          table_line([pid2value(Pid),
+                          table_line([pid2str(Pid),
                                       fun_expand_or_collapse(FChildren, Id),
                                       mfa2html_with_link(Id),
                                       term2html(CNT)]);
                      true ->
-                          table_line([pid2value(Pid),
+                          table_line([pid2str(Pid),
                                       fun_expand_or_collapse(FChildren, Id),
                                       mfa2html_with_link(Id),
                                       term2html(CNT),
@@ -977,7 +1004,7 @@ mk_fun_table_id(Id) ->
     "t"++[C||C<-id_to_list(Id), 
              not lists:member(C,[14,36, 45, 46,47, 60, 62,94])].
 
-id_to_list({Pid, Func, Caller}) ->pid_to_list(Pid)++mfa_to_list(Func) ++ mfa_to_list(Caller).
+id_to_list({Pid, Func, Caller}) -> pid2str(Pid) ++ mfa_to_list(Func) ++ mfa_to_list(Caller).
 
 mfa_to_list({M, F, A}) when is_atom(M) andalso is_atom(F)->
     atom_to_list(M)++atom_to_list(F)++integer_to_list(A);
@@ -1017,7 +1044,8 @@ callgraph_time_content(Env, Input) ->
     io:format("callgraph input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
-    ImgFileName="callgraph"++pid2value(Pid)++".svg",
+    io:format("Pid:\n~p\n",[Pid]),
+    ImgFileName="callgraph" ++ pid2str(Pid) ++ ".svg",
     ImgFullFilePath = filename:join(
                     [code:priv_dir(percept2), "server_root",
                      "images", ImgFileName]),
@@ -1046,7 +1074,7 @@ callgraph_time_content(Env, Input) ->
     end.
         
 calltime_content(Env, Pid)->
-    CacheKey = "calltime"++integer_to_list(erlang:crc32(pid_to_list(Pid))),
+    CacheKey = "calltime" ++ integer_to_list(erlang:crc32(pid2str(Pid))),
     gen_content(Env, Pid, CacheKey, fun calltime_content_1/2).
 
 calltime_content_1(_Env, Pid) ->
@@ -1133,6 +1161,7 @@ table_line([Element | Elements], Out) ->
 -spec term2html(any()) -> string().
 
 term2html(Term) when is_float(Term) -> lists:flatten(io_lib:format("~.4f", [Term]));
+term2html(Pid={pid, {P1, P2, P3}}) -> "<" ++ pid2str(Pid) ++ ">";
 term2html(Term) -> lists:flatten(io_lib:format("~p", [Term])).
 
 -spec mfa2html(MFA :: {atom(), atom(), list() | integer()}) -> string().
@@ -1152,11 +1181,11 @@ mfa2html_with_link({Pid, MFA, _Caller}) ->
 mfa2html_with_link({Pid, {Module, Function, Arguments}}) when is_list(Arguments) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, length(Arguments)])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, length(Arguments)])),
-    "<a href=\"/cgi-bin/percept2_html/function_info_page?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++MFAString++"</a>";    
+    "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++ "&mfa=" ++ MFAValue ++ "\">" ++ MFAString ++ "</a>";
 mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_integer(Arity) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
-    "<a href=\"/cgi-bin/percept2_html/function_info_page?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++MFAString++"</a>"; 
+    "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++ "&mfa=" ++ MFAValue ++ "\">" ++ MFAString ++ "</a>";
 mfa2html_with_link(_) ->
     "undefined".
 
@@ -1166,24 +1195,27 @@ mfas2html_with_link(Pid, MFAs) ->
 
 visual_link({Pid,{M,F,A}, _})->
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [M, F, A])), 
-    "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid="++pid2value(Pid)++"&mfa="++MFAValue++"\">"++"show call graph/time"++"</a>";
+    "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid=" ++ pid2str(Pid) ++ "&mfa=" ++ MFAValue ++ "\">" ++ "show call graph/time" ++ "</a>";
 visual_link({Pid,undefined, _})->
-    "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid="++pid2value(Pid)++"&mfa="++"undefined"++"\">"++"show callgraph/time"++"</a>".
+    "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid=" ++ pid2str(Pid) ++ "&mfa=" ++ "undefined" ++ "\">" ++ "show callgraph/time" ++ "</a>".
 
 calltime_link(Pid)->
-    "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid="++pid2value(Pid)++"\">"++"show ACT"++"</a>".
+    "<a href=\"/cgi-bin/percept2_html/visualise_callgraph?pid=" ++ pid2str(Pid) ++ "\">" ++ "show ACT" ++ "</a>".
 
 %%% --------------------------- %%%
 %%% 	to html          	%%%
 %%% --------------------------- %%%
-
--spec pid2html(Pid :: pid() | port()) -> string().
+-spec pid2html(Pid :: pid()|pid_value()| port()) -> string().
 pid2html(Pid) when is_pid(Pid) ->
     PidString = term2html(Pid),
-    PidValue = pid2value(Pid),
+    PidValue = pid2str(Pid),
     "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++
         PidValue++"\">"++PidString++"</a>";
-
+pid2html(Pid={pid, _}) ->
+    PidString = term2html(Pid),
+    PidValue = pid2str(Pid),
+    "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++
+        PidValue++"\">"++PidString++"</a>";
 pid2html(Pid) when is_port(Pid) ->
     term2html(Pid);
 pid2html(_) ->
@@ -1191,7 +1223,7 @@ pid2html(_) ->
 
 pid2html_with_color(Pid) when is_pid(Pid) ->
     PidString = term2html(Pid),
-    PidValue = pid2value(Pid),
+    PidValue = pid2str(Pid),
     "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++PidValue++"\">"
                   ++"<font color=\"#FF0000\">"++PidString++"</font></a>";
 pid2html_with_color(Pid) when is_port(Pid) ->
@@ -1242,17 +1274,20 @@ image_string_tail(Request, [{Type, Value} | Opts], Out) ->
 %%% --------------------------- %%%
 %%% 	percept conversions    	%%%
 %%% --------------------------- %%%
--spec pid2value(Pid :: pid()) -> string().
-
-pid2value(Pid) ->
+-spec pid2str(Pid :: pid()) ->  string().
+pid2str(Pid) when is_pid(Pid) ->
     String = lists:flatten(io_lib:format("~p", [Pid])),
-    lists:sublist(String, 2, erlang:length(String)-2).
+    lists:sublist(String, 2, erlang:length(String)-2);
+pid2str({pid, {P1, P2, P3}}) ->
+    integer_to_list(P1)++"."++integer_to_list(P2)++"."++integer_to_list(P3).
 
--spec value2pid(Value :: string()) -> pid().
-
-value2pid(Value) ->
-   String = lists:flatten("<" ++ Value ++ ">"),
-   erlang:list_to_pid(String).
+    
+-spec str_to_internal_pid(Str :: string()) ->  pid_value().
+str_to_internal_pid(PidStr) ->
+    [P1,P2,P3] = string:tokens(PidStr,"."),
+    {pid, {list_to_integer(P1), 
+           list_to_integer(P2),
+           list_to_integer(P3)}}.
 
 string2mfa(String) ->
     Str=lists:sublist(String, 2, erlang:length(String)-2),
@@ -1267,19 +1302,21 @@ string2mfa(String) ->
 %%% --------------------------- %%%
 %%% 	get value       	%%%
 %%% --------------------------- %%%
+-type pid_value()::{pid, {pos_integer(), pos_integer(), pos_integer()}}.
 -spec get_option_value(Option :: string(), Options :: [{string(),any()}]) ->
-	{'error', any()} | boolean() | pid() | [pid()] | number().
+	{'error', any()} | boolean() | pid_value() | [pid_value()] | number().
 get_option_value(Option, Options) ->
-     case lists:keysearch(Option, 1, Options) of
-    	false -> get_default_option_value(Option);
-	{value, {Option, _Value}} when Option == "fillcolor" -> true;
-	{value, {Option, Value}} when Option == "pid" -> value2pid(Value);
-	{value, {Option, Value}} when Option == "pids" -> 
-	    [value2pid(PidValue) || PidValue <- string:tokens(Value,":")];
-         {value, {Option, Value}} when Option =="mfa" ->
-             string2mfa(Value);
-         {value, {Option, Value}} -> get_number_value(Value);
-         _ -> {error, undefined}
+    case lists:keysearch(Option, 1, Options) of
+        false -> get_default_option_value(Option);
+        {value, {Option, _Value}} when Option == "fillcolor" -> true;
+        {value, {Option, Value}} when Option == "pid" ->
+            str_to_internal_pid(Value);
+        {value, {Option, Value}} when Option == "pids" -> 
+             [str_to_internal_pid(PidValue)|| PidValue <- string:tokens(Value,":")];
+        {value, {Option, Value}} when Option =="mfa" ->
+            string2mfa(Value);
+        {value, {Option, Value}} -> get_number_value(Value);
+        _ -> {error, undefined}
     end.
 
 get_default_option_value(Option) ->
@@ -1353,12 +1390,12 @@ menu(Input) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
      	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
-        <li><a href=/cgi-bin/percept2_html/summary_report>summary report</a></li>
+        <li><a href=/cgi-bin/percept2_html/summary_report_page>summary report</a></li>
+        <li><a href=/cgi-bin/percept2_html/inter_node_messaging?range_min=" ++
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">inter-node messaging</a></li>
         <li><a href=/cgi-bin/percept2_html/active_funcs_page?range_min=" ++
-            term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">function activities</a></li>
-        <li><a href=/cgi-bin/percept2_html/func_callgraph_page?range_min=" ++
-        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">function callpath</a></li>
-     	<li><a href=/cgi-bin/percept2_html/process_tree_page?range_min=" ++
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">function activities</a></li>
+        <li><a href=/cgi-bin/percept2_html/process_tree_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">processes</a></li>
       	<li><a href=/cgi-bin/percept2_html/overview_page>overview</a></li>
      </ul></div>\n".
@@ -1372,11 +1409,9 @@ error_msg(Error) ->
 	<tr height=5><td></td> <td></td></tr>
      </table>\n".
 
-is_dummy_process_pid(Pid) ->
-    Str = lists:flatten(io_lib:format("~p", [Pid])),
-    Str1=lists:sublist(Str, 2, erlang:length(Str)-2),
-    [A,B,_C] = string:tokens(Str1, "."),
-    A=="0" andalso B=="0".
+
+is_dummy_process_pid({pid, {0, 0, _}}) -> true;
+is_dummy_process_pid(_) -> false.
 
 %% graph input:
 %% "pids=0.23.0:0.36.0&range_min=0.0000&range_max=0.9214&height=400&width=1227"
