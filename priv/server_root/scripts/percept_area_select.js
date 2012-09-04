@@ -44,8 +44,29 @@ function load_image() {
 	}
 }
 
+function load_message_image() {
+	var percept_graph = document.getElementById("percept_graph");
+	if (percept_graph) {
+		percept_content = document.getElementById("content");
+		var width  = percept_content.offsetWidth - 50;
+		var height = max(screen.height - 550, 600); 
+		var rmin   = document.form_area.data_min.value;
+		var rmax   = document.form_area.data_max.value;
+                var node1  = document.form_area.node1.value;
+                var node2  = document.form_area.node2.value;
+		percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/inter_node_message_graph" +
+			"?range_min=" + rmin + 
+			"&range_max=" + rmax +
+			"&width=" + width + 
+			"&height=" + height +
+                        "&node1=" + node1 +
+                        "&node2=" + node2 + "')";
+		percept_graph.style.width = width;
+		percept_graph.style.height = height;
+	}
+}
 function select_image() {
-	var Graph = document.getElementById("percept2_graph");
+	var Graph = document.getElementById("percept_graph");
 	if (Graph) {
 	    var GraphIndex = document.form_area.graph_select.selectedIndex;
 	    var GraphSelectValue = document.form_area.graph_select.options[GraphIndex].value;
