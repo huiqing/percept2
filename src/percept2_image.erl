@@ -24,10 +24,14 @@
          graph/3, 
          graph/4, 
          activities/3, 
-         activities/4]).
+         activities/4,
+         inter_node_message_image/5]).
+
 -record(graph_area, {x = 0, y = 0, width, height}).
+
 -compile(inline).
 
+-include("../include/percept2.hrl").
 %%% -------------------------------------
 %%% GRAF
 %%% -------------------------------------
@@ -54,23 +58,18 @@ graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
 %% Out:
 %%	Image = binary()
 graph(Width, Height, []) ->
-    io:format("DDDDDDDDDD\n"),
-    error_graph(Width, Height,"No trace data recorded! ");
+    error_graph(Width, Height,"No trace data recorded.");
 graph(Width, Height, Data) ->
-    io:format("AAAAAAA\n"),
-    io:format("Data:\n~p\n", [Data]),
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
     Bounds = percept2_utils:minmax(Data2),
     graf1(Width, Height, Bounds, Data).
 
 error_graph(Width, Height, Text) ->
     %% Initiate Image
-    Image = egd:create(Width, Height),
-    io:format("Image:\n~p\n", [Image]),
+    Image = egd:create(round(Width/2), round(Height/2)),
     Font = load_font(),
-    egd:text(Image, {100, 100}, Font, Text,  egd:color(Image, {255, 0, 0})),
+    egd:text(Image, {200, 100}, Font, Text,  egd:color(Image, {255, 0, 0})),
     Binary = egd:render(Image, png),
-    io:format("Font:\n~p\n", [{Font, egd_font:size(Font)}]),
     egd:destroy(Image),
     Binary.
 
@@ -221,7 +220,6 @@ draw_yticks0(_, _, _, _, _, _, _) -> ok.
 %%	Binary = binary()
 
 activities(Width, Height, {UXmin, UXmax}, Activities) ->
-    io:format("\nactivities:\n~p\n",[{Width, Height, {UXmin, UXmax}, Activities}]),
     Xs = [ X || {X,_} <- Activities],
     Xmin = case Xs of 
                [] -> 0.0;
@@ -296,7 +294,7 @@ proc_lifetime(Width, Height, Start, End, ProfileTime) ->
     DX = (Width-1)/ProfileTime,
     X1 = round(DX*Start),
     X2 = round(DX*End),
-    %% %%wrangler_io:format("Start, End, X1, X2:\n~p\n", [{Start, End, X1, X2, ProfileTime, Width}]),
+                                                
     % Paint
     egd:rectangle(Im, {0,0}, {Width-1, Height-1}, Grey),
     egd:filledRectangle(Im, {X1, 0}, {X2, Height - 1}, Green),
@@ -417,3 +415,38 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     Binary = egd:render(Im, png),
     egd:destroy(Im),
     Binary.
+
+inter_node_message_image(Width, Height, Xmin, Xmax, Data) ->
+    Ymin = 0, 
+    Ymax = lists:max(element(2,lists:unzip3(Data))),
+     
+    % Calculate areas
+    HO = 20,
+    GrafArea   = #graph_area{x = HO, y = 4, width = Width - 2*HO, height = Height - 17},
+    XticksArea = #graph_area{x = HO, y = Height - 13, width = Width - 2*HO, height = 13},
+    YticksArea = #graph_area{x = 1,  y = 4, width = HO, height = Height - 17},
+    
+    %% Initiate Image
+    Image = egd:create(Width, Height),
+    Black = egd:color(Image, {0, 0, 0}),
+    Green = egd:color(Image, {0, 255, 0}),
+    draw_cross_graf(Image, Data, {Green, Green}, GrafArea, {Xmin, Ymin, Xmax, Ymax}),
+    draw_xticks(Image, Black, XticksArea, {Xmin, Xmax}, Data),
+    draw_yticks(Image, Black, YticksArea, {Ymin, Ymax}),
+    Binary = egd:render(Image, png),
+    egd:destroy(Image),
+    Binary.
+
+draw_cross_graf(Im, Data, Colors, GA = #graph_area{x = X0, y = Y0, width = Width, height = Height},
+                {Xmin, _Ymin, Xmax, Ymax}) ->
+    Dx = (Width)/(Xmax - Xmin),
+    Dy = (Height)/(Ymax),
+    Plotdata = [{trunc(X0 + X*Dx - Xmin*Dx), trunc(Y0 + Height - Y1*Dy)} 
+                || {X, Y1, _} <- Data],
+    draw_cross_graft1(Im, Plotdata, Colors, GA).
+
+draw_cross_graft1(Im, [{X1, Y1}|Data], C={B, _}, GA) ->
+    egd:line(Im, {X1-2, Y1}, {X1+2, Y1}, B),
+    egd:line(Im, {X1, Y1-2}, {X1, Y1+2}, B),  
+    draw_cross_graft1(Im, Data, C, GA);
+draw_cross_graft1(_Im, [], _, _) -> ok.

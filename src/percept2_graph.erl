@@ -25,7 +25,9 @@
          ports_graph/3, procs_graph/3,
          activity/3, percentage/3, calltime_percentage/3]).
 
--export([query_fun_time/3, memory_graph/3]).
+-export([query_fun_time/3,
+         memory_graph/3,
+         inter_node_message_graph/3]).
 
 -compile(export_all).
 
@@ -42,7 +44,7 @@
 graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(graph(Env, Input))).
- 
+  
 %% activity
 %% @spec activity(SessionID, Env, Input) -> term() 
 %% @doc An ESI callback implementation used by the httpd server.
@@ -78,14 +80,18 @@ ports_graph(SessionID, Env, Input) ->
 
 procs_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
-    mod_esi:deliver(SessionID, binary_to_list(procs_graph(nv, Input))).
+    mod_esi:deliver(SessionID, binary_to_list(procs_graph(Env, Input))).
 
 memory_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, header()),
     mod_esi:deliver(SessionID, binary_to_list(memory_graph(Env, Input))).
 
+inter_node_message_graph(SessionID, Env, Input) ->
+    mod_esi:deliver(SessionID, header()),
+    mod_esi:deliver(SessionID, binary_to_list(inter_node_message_graph(Env, Input))).
 
 graph(_Env, Input) ->
+    io:format("Graph Input:\n~p\n",[Input]),
     graph_1(_Env, Input, procs_ports).
 
 procs_graph(_Env, Input) ->
@@ -95,8 +101,6 @@ ports_graph(_Env, Input) ->
     graph_1(_Env, Input, ports).
 
 graph_1(_Env, Input, Type) ->
-    io:format("graph input:\n~p\n", [Input]),
-    io:format("Type:\n~p\n", [Type]),
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
     RangeMax = percept2_html:get_option_value("range_max", Query),
@@ -110,13 +114,12 @@ graph_1(_Env, Input, Type) ->
     TsMax    = percept2_utils:seconds2ts(RangeMax, StartTs),
     
     % Convert Pids to id option list
-    IDs      = [ {id, ID} || ID <- Pids],
-       
+    IDs      = [{id, ID} || ID <- Pids],
     case IDs/=[] of 
         true -> 
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept_db:select({activity, Options}),
-            Counts=percept_analyzer:activities2count2(Acts, StartTs),
+            Counts=percept2_analyzer:activities2count2(Acts, StartTs),
             percept2_image:graph(Width, Height, Counts);
         false ->                
             Options  = [{ts_min, TsMin},{ts_max, TsMax}],
@@ -154,7 +157,6 @@ scheduler_graph(_Env, Input) ->
     
 
     Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
-    %% io:format("Acts:\n~p\n", [Acts]),
     Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts],
     percept2_image:graph(Width, Height, Counts).
 
@@ -212,5 +214,22 @@ calltime_percentage(_Env, Input) ->
     Percentage = percept2_html:get_option_value("percentage", Query),
     percept2_image:calltime_percentage(round(Width), round(Height), float(CallTime), float(Percentage)).
 
+
+inter_node_message_graph(_Env, Input) ->
+    io:format("message Input:\n~p\n", [Input]),
+    Query = httpd:parse_query(Input),
+    Width = percept2_html:get_option_value("width", Query),
+    Height = percept2_html:get_option_value("height", Query),
+    RangeMin = percept2_html:get_option_value("range_min", Query),
+    RangeMax = percept2_html:get_option_value("range_max", Query),
+    Node1 = percept2_html:get_option_value("node1", Query),
+    Node2 = percept2_html:get_option_value("node2", Query),
+    StartTs = percept2_db:select({system, start_ts}),
+    MinTs    = percept2_utils:seconds2ts(RangeMin, StartTs),
+    MaxTs    = percept2_utils:seconds2ts(RangeMax, StartTs),
+    Data = percept2_db:select({inter_node, {message_acts, {Node1, Node2, MinTs, MaxTs}}}),
+    Data1=[{?seconds(TS, StartTs), Size, 0}||{TS, Size}<-Data],
+    percept2_image:inter_node_message_image(Width, Height, RangeMin, RangeMax, Data1).
+    
 header() ->
     "Content-Type: image/png\r\n\r\n".

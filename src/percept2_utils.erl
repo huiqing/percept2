@@ -29,13 +29,9 @@
 
 -module(percept2_utils).
 
--compile(export_all).
+-include("../include/percept2.hrl").
 
-%% pmap(Fun, List) ->
-%%     Parent = self(),
-%%     [receive {Pid, Result} -> Result end ||
-%%         Pid <- [spawn_link(?MODULE, pmap_1, [Fun, Parent, X])
-%%                 || X <- List]].
+-compile(export_all).
 
 pmap(Fun, List) ->
     Parent = self(),
@@ -82,19 +78,6 @@ pforeach_wait(S,N) ->
         S -> pforeach_wait(S,N-1)
     end.
 
-rm_tmp_files() ->
-    Dir =filename:join([code:priv_dir(percept2),"server_root", "images"]),
-    case file:list_dir(Dir) of 
-        {error, Error} ->
-            {error, Error};
-        {ok, FileNames} ->
-            [file:delete(filename:join(Dir, F))
-             ||F<-FileNames,
-               lists:prefix("callgraph", F) orelse
-                   lists:prefix("processtree", F)]
-    end.
-
-
 
 %% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
 %%	X = number()
@@ -138,7 +121,7 @@ seconds2ts(Seconds, {Ms, S, Us}) ->
 
 
 
--spec pid2value(Pid :: pid()) -> string().
+-spec pid2value(Pid :: pid()|pid_value()) -> pid_value().
 pid2value(Pid={pid, {_, _, _}}) -> Pid;
 pid2value(Pid) when is_pid(Pid) ->
     String = lists:flatten(io_lib:format("~p", [Pid])),

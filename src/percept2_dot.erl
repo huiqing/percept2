@@ -1,19 +1,20 @@
 -module(percept2_dot).
 
 -export([gen_callgraph_img/1,
-         gen_process_tree_img/0,
-         gen_process_tree_img_1/1]).
+         gen_process_tree_img/0]).
+
+-export([gen_process_tree_img_1/1]).
 
 -include("../include/percept2.hrl").
           
-
 %%% --------------------------------%%%
 %%% 	Callgraph Image generation  %%%
 %%% --------------------------------%%%
+-spec(gen_callgraph_img(Pid::pid_value()) -> ok|no_image).
 gen_callgraph_img(Pid) ->
     Res=ets:select(fun_calltree, 
-                      [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
-                        [],
+                      [{#fun_calltree{id = {'$1', '_','_'}, _='_'},
+                        [{'==', Pid, '$1'}],
                         ['$_']
                        }]),
     case Res of 
@@ -31,7 +32,6 @@ gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
     SvgFileName = filename:join(
                     [code:priv_dir(percept2), "server_root",
                      "images", BaseName++".svg"]),
-    io:format("CallTree:\n~p\n", [CallTree]),
     fun_callgraph_to_dot(CallTree,DotFileName),
     os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
     file:delete(DotFileName),
@@ -202,12 +202,6 @@ gen_process_tree_nodes_edges_1({Parent, []}) ->
 gen_process_tree_nodes_edges_1({Parent, Children}) -> 
     Parent1={Parent#information.id, Parent#information.name,
              clean_entry(Parent#information.entry)},
-    %% Children1=[{C#information.id, C#information.name,
-    %%             clean_entry(C#information.entry), process_tree_size(C1)}||C1={C, _}<-Children],
-    %% {Nodes, Edges, IgnoredPids} = group_edges(Parent1, Children1),
-    %% RemainedChildren=[Tree||Tree={P, _}<-Children, 
-    %%                         not lists:member(P#information.id,
-    %%                                          IgnoredPids)],
     Nodes = [{C#information.id, C#information.name,
               clean_entry(C#information.entry)}||{C, _} <- Children],
     Edges = [{Parent1, N, ""}||N<-Nodes],
@@ -248,8 +242,9 @@ format_process_tree_node(V) ->
     format_node(V, fun format_process_tree_vertex/1).
             
 format_process_tree_vertex({Pid, Name, Entry}) ->
-    lists:flatten(io_lib:format("~p; ~p;\\n~p",
-                                [Pid, Name, Entry]));
+    PidStr =  "<" ++ pid2str(Pid) ++ ">",
+    lists:flatten(io_lib:format("~s; ~p;\\n~p",
+                                [PidStr, Name, Entry]));
 format_process_tree_vertex(Other)  ->
      io_lib:format("~p", [Other]).
     
@@ -273,3 +268,11 @@ calc_dim([], H, TmpW, MaxW) ->
 format_label(Label) when is_integer(Label) ->
     io_lib:format("~p", [Label]);
 format_label(_Label) -> "".
+
+
+-spec pid2str(Pid :: pid()) ->  string().
+pid2str(Pid) when is_pid(Pid) ->
+    String = lists:flatten(io_lib:format("~p", [Pid])),
+    lists:sublist(String, 2, erlang:length(String)-2);
+pid2str({pid, {P1, P2, P3}}) ->
+    integer_to_list(P1)++"."++integer_to_list(P2)++"."++integer_to_list(P3).

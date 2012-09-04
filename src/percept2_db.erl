@@ -68,18 +68,18 @@
 -type system_option() :: start_ts | stop_ts.
 
 -type information_option() ::
-	all | procs | ports | pid() | port().
+	all | procs | ports | pid() | port() | procs_count| ports_count.
 
--type filename() :: string()|binary().
-
-
+-type inter_node_option() ::
+        all |{message_acts, {node(), node(), float(), float()}}.
+-type filename()::file:filename().
 %%% ------------------------%%%
 %%% 	Interface functions %%%
 %%% ------------------------%%%
 
 %% @doc starts the percept database
--spec start([filename()]) ->{started, [{filename(), pid()}]} | 
-                            {restarted, [{filename(), pid()}]}.
+-spec start([file:filename()]) ->{started, [{file:filename(), pid()}]} | 
+                            {restarted, [{file:filename(), pid()}]}.
 start(TraceFileNames) ->
     case erlang:whereis(percept_db) of
     	undefined ->
@@ -90,14 +90,14 @@ start(TraceFileNames) ->
 
 %% @private
 %% @doc restarts the percept database.
--spec restart([filename()],pid())-> [{filename(), pid()}].
+-spec restart([file:filename()],pid())-> [{filename(), pid()}].
 restart(TraceFileNames, PerceptDB)->
     true=stop_sync(PerceptDB),
     do_start(TraceFileNames).
 
 %% @private
 %% @doc starts the percept database.
--spec do_start([filename()])->{pid(), [{filename(), pid()}]}.
+-spec do_start([filename()])->[{filename(), pid()}].
 do_start(TraceFileNames)->
     Parent = self(),
     _Pid =spawn_link(fun() -> 
@@ -122,8 +122,8 @@ stop(ProcRegName) ->
             Pid ! {action, stop},
             {stopped, Pid}
     end.
-
--spec stop_sync(pid())-> true.
+-type regname()::atom().
+-spec stop_sync(pid()|regname())-> true.
 stop_sync(Pid)->
     MonitorRef = erlang:monitor(process, Pid),
     case stop(Pid) of 
@@ -193,8 +193,12 @@ insert(SubDB, Trace) ->
 -spec select({system, system_option()} | 
              {information, information_option()}| 
              {scheduler, scheduler_option()}|
-             {activity, activity_option()}) ->
-                    timestamp()|list().
+             {activity, activity_option()} |
+             {inter_node,inter_node_option()}|
+             {calltime, pid_value()}|
+             {code, term()} |
+             {funs, term()}) ->
+                    term().
                   
 select(Query) ->
     percept_db ! {select, self(), Query},
@@ -366,6 +370,8 @@ percept_db_select_query(FileNameSubDBPairs, Query) ->
             select_query_func(Query);
         {calltime, _} ->
             select_query_func(Query);
+        {inter_node, _} ->
+            select_query_inter_node(Query);
         Unhandled ->
 	    io:format("select_query, unhandled: ~p~n", [Unhandled]),
 	    []
@@ -380,6 +386,30 @@ percept_sub_db_select_query(SubDBIndex, Query) ->
             select_query_scheduler_1(SubDBIndex, Query);
         Unhandled ->
 	    io:format("percept_sub_db_select_query, unhandled: ~p~n", [Unhandled]),
+	    []
+    end.
+
+select_query_inter_node(Query) ->
+    case Query of
+        {inter_node, all} ->
+            Head = #inter_node{timed_from_node={'$0', '$1'},
+                               to_node = '$2',
+                               _='_'},
+            Constraints = [],
+            Body =  [['$1', '$2']],
+            Nodes=ets:select(inter_node, [{Head, Constraints, Body}]),
+            sets:to_list(sets:from_list(lists:append(Nodes)));
+        {inter_node, {message_acts, {FromNode, ToNode, MinTs, MaxTs}}} ->
+            Head = #inter_node{timed_from_node={'$0', FromNode},
+                                   to_node = ToNode,
+                                   msg_size = '$2',
+                                   _='_'},
+            Constraints = [{'>=', '$0', {MinTs}}, {'=<', '$0', {MaxTs}}],
+            Body =  [{{'$0', '$2'}}],
+            ets:select(inter_node, [{Head, Constraints, Body}]);
+        Unhandled ->
+	    io:format("select_query_inter_node, unhandled: ~p~n", 
+                      [Unhandled]),
 	    []
     end.
 
@@ -398,7 +428,7 @@ select_query_func(Query) ->
             ets:select(funcall_info, [{Head, Constraints, Body}]);
         {funs, Options} when Options==[] ->
             Head = #fun_info{
-              id={'$1', '$2'}, 
+              id={'$1','$2'}, 
               _='_'},
             Body =  ['$_'],
             Constraints = [],
@@ -482,7 +512,8 @@ insert_profile_trace(SubDBIndex,Trace) ->
             update_system_stop_ts(SystemProcRegName,Ts);
         {profile, Id, State, Mfa, TS} when is_pid(Id) ->
             ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-            insert_profile_trace_1(ActivityProcRegName,Id,State,Mfa,TS,procs);
+            insert_profile_trace_1(ActivityProcRegName, Id,
+                                   State,Mfa,TS,procs);
         {profile, Id, State, Mfa, TS} when is_port(Id) ->
             ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
             insert_profile_trace_1(ActivityProcRegName, Id, State, Mfa, TS, ports);
@@ -499,9 +530,12 @@ insert_profile_trace(SubDBIndex,Trace) ->
         _Unhandled ->
             io:format("unhandled trace: ~p~n", [_Unhandled])
     end.
-insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS,_Type) ->
+insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, Type) ->
+    ActId = if Type == procs -> percept2_utils:pid2value(Id);
+            true -> Id
+         end,
     update_activity(ProcRegName,
-                    #activity{id = Id,
+                    #activity{id = ActId,
                               state = State,
                               timestamp = TS,
                               where = Mfa}).
@@ -523,7 +557,7 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
     InformativeMfa = mfa2informative(Mfa),
     update_information(ProcRegName,
                        #information{id = percept2_utils:pid2value(Pid), start = TS,
-                                    parent = Parent, entry = InformativeMfa}),
+                                    parent = percept2_utils:pid2value(Parent), entry = InformativeMfa}),
     update_information_child(ProcRegName, percept2_utils:pid2value(Parent), Pid).
 
 trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pid)->
@@ -590,7 +624,7 @@ trace_in_exiting(_SubDBIndex, _Trace={trace_ts, _Pid, in_exiting, _, _Ts}) ->
 trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', MsgSize, _Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_received(ProcRegName, percept2_utils:pid2value(Pid), erlang:external_size(MsgSize));
+            update_information_received(ProcRegName, Pid, erlang:external_size(MsgSize));
        true ->
             ok
     end.
@@ -598,16 +632,16 @@ trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', MsgSize, _Ts}) ->
 trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, MsgSize, To, Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_sent(ProcRegName, percept2_utils:pid2value(Pid), erlang:external_size(MsgSize), To, Ts);
+            update_information_sent(ProcRegName, Pid, erlang:external_size(MsgSize), To, Ts);
        true ->
             ok
     end.
 
 trace_send_to_non_existing_process(SubDBIndex,
-  _Trace={trace_ts, Pid, send_to_non_existing_process, Msg, _To, Ts})->
+                                   _Trace={trace_ts, Pid, send_to_non_existing_process, Msg, _To, Ts})->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_sent(ProcRegName, percept2_utils:pid2value(Pid), erlang:external_size(Msg), none, Ts);
+            update_information_sent(ProcRegName,Pid, erlang:external_size(Msg), none, Ts);
        true ->
             ok
     end.
@@ -632,6 +666,7 @@ trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName ! {self(), end_of_trace_file},
     receive 
         {SubDBIndex, done} ->
+            io:format("Trace end of trace received done\n"),
             Parent ! {self(), done}
     end.
  
@@ -717,16 +752,16 @@ consolidate_runnability_loop(Tab, Key, RunnableStates) ->
                     NextKey = ets:next(Tab, Key),
                     ets:delete(Tab, Key),
                     consolidate_runnability_loop(Tab, NextKey, RunnableStates);
-                NewRunnableStates when is_pid(Id)->
-                    Rc = get_runnable_count(procs, State),
-                    ets:update_element(Tab, Key, {#activity.runnable_count, 
-                                                  {Rc, get({runnable, ports})}}),
-                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates);
                 NewRunnableStates when is_port(Id)->
                     Rc = get_runnable_count(ports, State),
                     ets:update_element(Tab, Key, {#activity.runnable_count, 
                                                   {get({runnable, ports}), Rc}}),
-                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates)
+                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates);
+                NewRunnableStates when is_tuple(Id) andalso  element(1, Id)==pid->
+                    Rc = get_runnable_count(procs, State),
+                    ets:update_element(Tab, Key, {#activity.runnable_count, 
+                                                  {Rc, get({runnable, ports})}}),
+                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates) 
             end
     end.
   
@@ -758,9 +793,8 @@ select_query_activity_1(SubDBIndex, Query) ->
         {activity, {runnable_counts, Options}} ->
             get_runnable_counts(SubDBIndex, Options);
         {activity, {min_max_ts, Pids}} ->
-            Head = #activity{timestamp ='$1', id ='$2', _='_'},
-            Body = ['$1'],
-            MS= [{Head, [{'==', Head#activity.id, Pid}], Body}||Pid<-Pids],
+            MS= [{#activity{timestamp ='$1', id=Pid,  _='_'}, [], ['$1']}
+                 ||Pid<-Pids],
             Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
             case ets:select(Tab, MS) of 
                 [] -> [];
@@ -881,9 +915,11 @@ activity_ms(Opts) ->
 		{id, ports} ->
 	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
 		{id, procs} ->
-	    	    [{Head,[{is_pid, Head#activity.id} | Conditions], Body} | MS];
-		{id, ID} when is_pid(ID) ; is_port(ID) ->
+	    	    [{Head,[{'==', pid, {element, 1, Head#activity.id}} | Conditions], Body} | MS];
+		{id, ID} when is_port(ID) ->
 	    	    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
+                {id, {pid, {P1, P2, P3}}}->
+	    	    [{Head,[{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conditions], Body} | MS];
 		{id, all} ->
 	    	    [{Head, Conditions,Body} | MS];
 		_ ->
@@ -910,7 +946,7 @@ activity_count_ms(Opts) ->
 		{id, ports} ->
 	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
 		{id, procs} ->
-	    	    [{Head,[{is_pid, Head#activity.id} | Conditions], Body} | MS];
+	    	    [{Head,[{'==', pid, {element, 1, '$2'}} | Conditions], Body} | MS];
                 {id, all} ->
 	    	    [{Head, Conditions,Body} | MS];
 		_ ->
@@ -1111,7 +1147,7 @@ update_information_rq_1(Pid, {TS,RQ}) ->
     case ets:lookup(pdb_info, Pid) of
         [] -> 
             ets:insert(pdb_info, #information{
-                         id = Pid, 
+                         id = percept2_utils:pid2value(Pid), 
                          rq_history=[{TS,RQ}]}),
             ok; %% this should not happen;
         [I] ->
@@ -1124,10 +1160,11 @@ update_information_rq_1(Pid, {TS,RQ}) ->
 %% and this feature is removed for now.
 update_information_sent_1(From, MsgSize, To, Ts) ->
     update_inter_node_message_tab(From, MsgSize, To, Ts),
-    case  ets:lookup(pdb_info, From) of
+    InternalPid =percept2_utils:pid2value(From),
+    case  ets:lookup(pdb_info, InternalPid) of
         [] -> 
             ets:insert(pdb_info, 
-                       #information{id=From, 
+                       #information{id=InternalPid, 
                                     msgs_sent={1, MsgSize}
                                    });            
         [I] ->
@@ -1137,8 +1174,6 @@ update_information_sent_1(From, MsgSize, To, Ts) ->
     end.
 
 update_inter_node_message_tab(From, MsgSize, To, Ts) ->
-    %% io:format("From To:\n~p\n", [{From, To}]),
-    %% io:format("same node:~p\n", [same_node_pids(From, To)]),
     case same_node_pids(From, To) of
         true ->
             ok;
@@ -1152,15 +1187,16 @@ update_inter_node_message_tab(From, MsgSize, To, Ts) ->
 
   
 update_information_received_1(Pid, MsgSize) ->
-    case  ets:lookup(pdb_info, Pid) of
+    Pid1=percept2_utils:pid2value(Pid),
+    case  ets:lookup(pdb_info, Pid1) of
         [] -> 
             ets:insert(pdb_info, #information{
-                         id =Pid,
+                         id =Pid1,
                          msgs_received ={1, MsgSize}
                         });
         [I] ->
             {No, Size} = I#information.msgs_received,
-            ets:update_element(pdb_info, Pid,
+            ets:update_element(pdb_info, Pid1,
                                {11, {No+1, Size+MsgSize}})
     end.
 
@@ -1181,7 +1217,7 @@ select_query_information(Query) ->
         {information, procs_count} ->
              ets:select_count(pdb_info, [{
 		#information{id = {pid, '$1'}, _ = '_'},
-		[{is_pid, '$1'}],
+		[],
 		[true]
 		}]);
 	{information, ports} ->
@@ -1359,7 +1395,7 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                     Proc! ReturnTrace,
                     pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs],PrevStacks, Done})
             end;
-        %% the current file file get to the end.
+        %% the current trace file gets to the end.
         {_Parent, end_of_trace_file} ->
             Self = self(),
             [Proc!{Self, end_of_trace_file}
@@ -1373,8 +1409,6 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
             end,
             pdb_func_loop({SubDB, SubDBIndex,ChildrenProcs,[], true});
         {Pid, done} ->
-           %%  io:format("One Proc done: ~p\n", [{Pid, SubDBIndex}]),
-          %% %%  io:format("Childrenprocs:\n~p\n", [ChildrenProcs]),
             case lists:keydelete(Pid,1,ChildrenProcs) of
                 [] ->
                     %% io:format("All procs are done. SubdbIndex:~p\n", [{SubDB, SubDBIndex}]),
@@ -1433,9 +1467,9 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack, WaitTimes}) ->
                                           %%  io:format("received previous stack:~p\n", [{PrevSubIndex, Pid, PrevStack1}]),
                                             NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack1),
                                             pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false, WaitTimes+1})
-                                    %% after 50000 ->
-                                    %%         io:format("Time out ~p\n", [{PrevSubIndex, Pid, WaitTimes}]),
-                                    %%         pdb_sub_func_loop({SubDBIndex, Pid, [[{Func, TS}]], false, WaitTimes+1})
+                                     after 50000 ->
+                                             io:format("Time out ~p\n", [{PrevSubIndex, Pid, WaitTimes}]),
+                                            pdb_sub_func_loop({SubDBIndex, Pid, [[{Func, TS}]], false, WaitTimes+1})
                                     end;
                                 _ ->
                                     NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack),
@@ -1664,6 +1698,8 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
     end.
    
         
+-spec(update_calltree_info(pid(), {true_mfa(), timestamp(), timestamp()}, 
+                           {true_mfa(), timestamp()}) ->true).             
 update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
     CallerStartTS = case is_list_comp(Caller) of 
                        true -> undefined;
@@ -1984,7 +2020,11 @@ update_fun_call_count_time({Pid, Func}, {StartTs, EndTs}) ->
                                 {8, FunInfo#fun_info.acc_time+Time}])
     end.
 
+%% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa(), non_neg_integer()},
+%%                       [{true_mfa(), non_neg_integer()}], timestamp(), timestamp()) ->true).
+             
 update_fun_info({Pid, MFA}, Caller, Called, StartTs, EndTs) ->
+    io:format("update_fun_info:\n~p\n", [{{Pid, MFA}, Caller, Called, StartTs, EndTs}]),
     case ets:lookup(fun_info, {Pid, MFA}) of
         [] ->
             NewEntry=#fun_info{id={percept2_utils:pid2value(Pid), MFA},
@@ -2063,7 +2103,7 @@ gen_process_tree_1([C|Cs], Tail, Out) ->
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
     gen_process_tree_1(Cs, NewTail, [{C, NewChildren}|Out]).
 
--spec add_ancestors/1::(process_tree())->process_tree().
+-spec add_ancestors/1::([process_tree()])->[process_tree()].
 add_ancestors(ProcessTree) ->
     add_ancestors(ProcessTree, []).
 
@@ -2159,6 +2199,7 @@ is_dummy_process_pid(_) -> false.
 %%% Utility functionss	%%%
 %%% -------------------	%%%
         
+-spec(mfarity({atom(), atom(), list()}) ->true_mfa()).             
 mfarity({M, F, Args}) when is_list(Args) ->
     {M, F, length(Args)};
 mfarity(MFA) ->

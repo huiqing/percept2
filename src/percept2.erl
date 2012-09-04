@@ -18,13 +18,15 @@
 %% 
 
 %% 
-%% @doc Percept - Erlang Concurrency Profiling Tool
+%% @doc Percept2 - Erlang Concurrency Profiling Tool
 %%
-%%	This module provides the user interface for the application.
+%% This module provides the user interface for the application.
 %% 
 
 -module(percept2).
+
 -behaviour(application).
+
 -export([
 	profile/1, 
 	profile/2, 
@@ -36,23 +38,22 @@
 	stop_webserver/0, 
 	stop_webserver/1, 
 
-	analyze/1,
-	% Application behaviour
-	start/2, 
-	stop/1]).
+	analyze/1]).
+
+%% Application callback functions.
+-export([start/2, stop/1]).
 
 -include("../include/percept2.hrl").
 
-%%========================================================================
-%%
-%% 		Application callback functions
-%%
-%%==========================================================================
-
-%% @spec start(Type, Args) -> {started, Hostname, Port} | {error, Reason} 
+%%---------------------------------------------------------%%
+%%                                                         %%
+%% 		Application callback functions             %%
+%%                                                         %%
+%%---------------------------------------------------------%%
 %% @doc none
 %% @hidden
-
+-spec start(any(), any()) -> {started, string(), pos_integer()}
+                                 |{error, already_started}.
 start(_Type, _Args) ->
     %% start web browser service
     start_webserver(0).
@@ -60,40 +61,34 @@ start(_Type, _Args) ->
 %% @spec stop(State) -> ok 
 %% @doc none
 %% @hidden
-
+-spec stop(any()) -> ok.
 stop(_State) ->
     %% stop web browser service
     stop_webserver(0).
 
-%%==========================================================================
-%%
-%% 		Interface functions
-%%
-%%==========================================================================
+%%---------------------------------------------------------%%
+%%                                                         %%
+%% 		Interface functions                        %%
+%%                                                         %%
+%%---------------------------------------------------------%%
 
-%% @spec profile(Filename::string()) -> {ok, Port} | {already_started, Port}
-%% @see percept_profile
-
-%% profiling
--spec profile(Filename :: file:filename()) ->
-	{'ok', port()} | {'already_started', port()}.
-
+%% profile to a single file, and only profile process/ports concurrency 
+%% activities.
+-spec profile(Filename::string()) -> {ok, Port} | {already_started, Port}.
 profile(Filename) ->
     percept2_profile:start(Filename, [concurrency]).
 
-%% @spec profile(Filename::string(), [percept_option()]) -> 
-%%       {ok, Port} | {already_started, Port}
-%% @see percept_profile
--spec profile(Filename :: file:filename(),
-	      Options :: [percept_option()]) ->
+%% profile to a single file with user-specified profiling/tracing options.
+-spec profile(Filename::file:filename(),Options :: [percept_option()]) ->
                      {'ok', port()} | {'already_started', port()}.
 profile(Filename, Options) ->
     percept2_profile:start(Filename, Options). 
 
 %% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) ->
 %%     ok | {already_started, Port} | {error, not_started}
-%% @see percept_profile
--spec profile(Type :: {file, file:filename()}|{ip,integer()},
+%% @see percept2_profile
+
+-spec profile(Type :: file:filename(),
 	      Entry :: {atom(), atom(), list()},
 	      Options :: [percept_option()]) ->
                      'ok' | {'already_started', port()} | {'error', 'not_started'}.
@@ -101,7 +96,7 @@ profile(Type, MFA, Options) ->
     percept2_profile:start(Type, MFA, Options).
 
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
-%% @see percept_profile
+%% @see percept2_profile
 stop_profile() ->
     percept2_profile:stop().
 
@@ -116,15 +111,19 @@ analyze(FileNames) ->
     end.
 
 analyze_par_1(FileNameSubDBPairs) ->
-    _Res=percept2_utils:pmap(
+    try  percept2_utils:pmap(
            fun({FileName, SubDBPid}) ->
                    parse_and_insert(FileName, SubDBPid)
            end, FileNameSubDBPairs),
-    percept2_db:consolidate_db(),
-    io:format("    ~p created processes.~n",
-              [percept2_db:select({information, procs_count})]),
-    io:format("    ~p opened ports.~n", 
-              [percept2_db:select({information, ports_count})]).
+         percept2_db:consolidate_db(),
+         io:format("    ~p created processes.~n",
+                   [percept2_db:select({information, procs_count})]),
+         io:format("    ~p opened ports.~n", 
+                   [percept2_db:select({information, ports_count})])
+    catch
+        E1:E2 ->
+             {error, {E1, E2}}
+    end.
    
 
 %% @spec start_webserver() -> {started, Hostname, Port} | {error, Reason}
@@ -157,7 +156,7 @@ start_webserver(Port) when is_integer(Port) ->
 		    %% workaround until inets can get me a service from a name.
 		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
 		    register(percept_httpd, Mem),
-                    percept2_utils:rm_tmp_files(),
+                    rm_tmp_files(),
                     case ets:info(history_html) of 
                         undefined ->
                             ets:new(history_html, [named_table, public, {keypos, #history_html.id},
@@ -200,7 +199,7 @@ do_stop(Port, Pid)->
             {error, not_started};
         Pid2 ->
             Pid ! quit,
-            percept2_utils:rm_tmp_files(),
+            rm_tmp_files(),
             inets:stop(httpd, Pid2)
     end.
 
@@ -303,7 +302,9 @@ service_memory({Pid, Port, Host}) ->
     end.
 
 % Create config data for the webserver 
-get_webserver_config(Servername, Port) when is_list(Servername), is_integer(Port) ->
+-spec get_webserver_config(list(), pos_integer()) -> {ok, list()}.
+get_webserver_config(Servername, Port) 
+  when is_list(Servername), is_integer(Port) ->
     Path = code:priv_dir(percept2),
     Root = filename:join([Path, "server_root"]),
     MimeTypesFile = filename:join([Root,"conf","mime.types"]),
@@ -345,3 +346,16 @@ get_webserver_config(Servername, Port) when is_list(Servername), is_integer(Port
 	{bind_address, any},
 	{port, Port}],
     {ok, Config}.
+
+
+rm_tmp_files() ->
+    Dir =filename:join([code:priv_dir(percept2),"server_root", "images"]),
+    case file:list_dir(Dir) of 
+        {error, Error} ->
+            {error, Error};
+        {ok, FileNames} ->
+            [file:delete(filename:join(Dir, F))
+             ||F<-FileNames,
+               lists:prefix("callgraph", F) orelse
+                   lists:prefix("processtree", F)]
+    end.

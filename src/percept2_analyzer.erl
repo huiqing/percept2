@@ -84,9 +84,9 @@ activities2count2(Acts, StartTs) ->
     activities2count2(Acts, StartTs, Start, []).
 
 activities2count2([], _, _, Out) -> lists:reverse(Out);
-activities2count2([#activity{ id = Id, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, Out) when is_pid(Id) ->
+activities2count2([#activity{id = {pid,_}, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, Out) ->
     activities2count2(Acts, StartTs, {Proc + 1, Port}, [{?seconds(Ts, StartTs), Proc + 1, Port}|Out]);
-activities2count2([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, Out) when is_pid(Id) ->
+activities2count2([#activity{ id ={pid, _}, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, Out) ->
     activities2count2(Acts, StartTs, {Proc - 1, Port}, [{?seconds(Ts, StartTs), Proc - 1, Port}|Out]);
 activities2count2([#activity{ id = Id, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, Out) when is_port(Id) ->
     activities2count2(Acts, StartTs, {Proc, Port + 1}, [{?seconds(Ts, StartTs), Proc, Port + 1}|Out]);
@@ -97,7 +97,7 @@ activities2count2([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts]
 inactive_start_states(Acts) -> 
     D = activity_start_states(Acts, dict:new()),
     dict:fold(fun
-        (K, inactive, {Procs, Ports}) when is_pid(K)  -> {Procs + 1, Ports};
+        ({pid, _}, inactive, {Procs, Ports})  -> {Procs + 1, Ports};
         (K, inactive, {Procs, Ports}) when is_port(K) -> {Procs, Ports + 1};
         (_, _, {Procs, Ports})                        -> {Procs, Ports}
     end, {0,0}, D).
@@ -122,36 +122,37 @@ activity_start_states([#activity{id = Id, state = State}|Acts], D) ->
 
 activities2count(Acts, StartTs) when is_list(Acts) -> activities2count(Acts, StartTs, separated).
 
-activities2count(Acts, StartTs, Type) when is_list(Acts) -> activities2count_loop(Acts, {StartTs, {0,0}}, Type, []).
+activities2count(Acts, StartTs, Type) when is_list(Acts) -> 
+    activities2count_loop(Acts, {StartTs, {0,0}}, Type, []).
 
 activities2count_loop([], _, _, Out) -> lists:reverse(Out);
 activities2count_loop(
-	[#activity{ timestamp = Ts, id = Id, runnable_count = Rc} | Acts], 
+	[#activity{timestamp = Ts, id = Id, runnable_count = {ProcsRc, PortsRc}} | Acts], 
 	{StartTs, {Procs, Ports}}, separated, Out) ->
     
     Time = ?seconds(Ts, StartTs),
     case Id of 
 	Id when is_port(Id) ->
-	    Entry = {Time, Procs, Rc},
-	    activities2count_loop(Acts, {StartTs, {Procs, Rc}}, separated, [Entry | Out]);
-	Id when is_pid(Id) ->
-	    Entry = {Time, Rc, Ports},
-	    activities2count_loop(Acts, {StartTs, {Rc, Ports}}, separated, [Entry | Out]);
+	    Entry = {Time, Procs, PortsRc},
+	    activities2count_loop(Acts, {StartTs, {Procs, PortsRc}}, separated, [Entry | Out]);
+	{pid, _} ->
+	    Entry = {Time, ProcsRc, Ports},
+	    activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, separated, [Entry | Out]);
 	_ ->
    	    activities2count_loop(Acts, {StartTs,{Procs, Ports}}, separated, Out)
     end;
 activities2count_loop(
-	[#activity{ timestamp = Ts, id = Id, runnable_count = Rc} | Acts], 
+	[#activity{ timestamp = Ts, id = Id, runnable_count ={ProcsRc, PortsRc}} | Acts], 
 	{StartTs, {Procs, Ports}}, summated, Out) ->
 	
     Time = ?seconds(Ts, StartTs), 
     case Id of 
 	Id when is_port(Id) ->
-	    Entry = {Time, Procs + Rc},
-	    activities2count_loop(Acts, {StartTs, {Procs, Rc}}, summated, [Entry | Out]);
-	Id when is_pid(Id) ->
-	    Entry = {Time, Rc + Ports},
-	    activities2count_loop(Acts, {StartTs, {Rc, Ports}}, summated, [Entry | Out])
+	    Entry = {Time, Procs + PortsRc},
+	    activities2count_loop(Acts, {StartTs, {Procs, PortsRc}}, summated, [Entry | Out]);
+	{pid, _}  ->
+	    Entry = {Time, ProcsRc + Ports},
+	    activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, summated, [Entry | Out])
     end.
 
 %% @spec waiting_activities([#activity{}]) -> FunctionList

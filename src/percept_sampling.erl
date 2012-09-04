@@ -67,7 +67,7 @@
 
 -export([init/4]).
 
--define(debug, 9).
+%%-define(debug, 9).
 %%-define(debug, 0). 
 -ifdef(debug). 
 dbg(Level, F, A) when Level >= ?debug ->

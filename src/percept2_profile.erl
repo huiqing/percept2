@@ -26,7 +26,8 @@
 
 -module(percept2_profile).
 
--export([start/2, 
+-export([
+         start/2, 
          start/3,
          stop/0
       	]).
@@ -45,29 +46,26 @@
 %% 		Interface functions
 %%
 %%==========================================================================
--spec start(Type :: {file, file:filename()}|{ip, node(),port_number()}, 
+
+-spec start(FileName :: file:filename(), 
             Options::[percept_option()]) ->
                    {'ok', port()} | {'already_started', port()}.
-start(Type, Options) ->
-    start_profile(Type,Options). 
+start(FileName, Options) ->
+    profile_to_file(FileName,Options). 
 
-%%@spec start(string(), MFA::mfa(), [percept_option()]) -> 
-%%            ok | {already_started, Port} | {error, not_started}
-%%	Port = port()
 %%@doc Starts profiling at the entrypoint specified by the MFA. All events are collected, 
 %%	this means that processes outside the scope of the entry-point are also profiled. 
 %%	No explicit call to stop/0 is needed, the profiling stops when
 %%	the entry function returns.
--spec start(Type :: {file, file:filename()}|{ip, port_number()},
+-spec start(FileName:: file:filename(),
 	    Entry :: {atom(), atom(), list()},
             Options :: [percept_option()]) ->
-	'ok' | {'already_started', port()} |
+                   'ok' | {'already_started', port_number()} |
                    {'error', 'not_started'}.
-
-start(Type, _Entry={Mod, Fun, Args},Options) ->
+start(FileName, _Entry={Mod, Fun, Args},Options) ->
     case whereis(percept_port) of
 	undefined ->
-	    start_profile(Type,Options),
+	    profile_to_file(FileName,Options),
             _Res=erlang:apply(Mod, Fun, Args),
             stop();  
 	Port ->
@@ -87,7 +85,6 @@ deliver_all_trace() ->
     erlang:trace(Tracee, false, [procs]),
     ok.
 
-%% @spec stop() -> ok | {'error', 'not_started'}
 %% @doc Stops profiling.
 -spec stop() -> 'ok' | {'error', 'not_started'}.
 stop() ->
@@ -111,29 +108,19 @@ stop() ->
 %% 		Auxiliary functions 
 %%
 %%==========================================================================
-start_profile(Type,Opts) ->
+-spec profile_to_file(FileName::file:filename(), Opts::[percept_option()])->
+                             {'ok', port()} | {'already_started', port()}.
+profile_to_file(Filename, Opts) ->
     case whereis(percept_port) of 
 	undefined ->
 	    io:format("Starting profiling.~n", []),
+
 	    erlang:system_flag(multi_scheduling, block),
-            Port = case Type of 
-                       {file, FileName} -> 
-                         %%  P=(dbg:trace_port(file,{FileName,wrap,".dat",10000000,20}))(),
-                           P=(dbg:trace_port(file, FileName))(),
-                           P;
-                       {ip, Node, Number}->
-                           P=(dbg:trace_port(ip, {Number, 50000}))(),
-                           {trace_client, Node} ! {self(), {start_profile, Number}},
-                           receive 
-                               {trace_client, started} -> 
-                                   ok
-                           end,
-                           P
-                   end,
-            % Send start time
+	    Port = (dbg:trace_port(file, Filename))(),
+	    % Send start time
 	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
 	    erlang:system_flag(multi_scheduling, unblock),
-            
+		
 	    %% Register Port
     	    erlang:register(percept_port, Port),
 	    set_tracer(Port, Opts), 
@@ -142,18 +129,20 @@ start_profile(Type,Opts) ->
 	    io:format("Profiling already started at port ~p.~n", [Port]),
 	    {already_started, Port}
     end.
-
-
+-spec(set_tracer(pid()|port(), [percept_option()]) -> ok).
 set_tracer(Port, Opts) ->
     {TraceOpts, ProfileOpts, MatchSpecMFAs} = parse_profile_options(Opts),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
     [erlang:trace_pattern(MFA, MatchSpec, [local])||MFA<-MatchSpecMFAs],
     erlang:trace(all, true, [{tracer, Port}, timestamp, call, return_to, 
                              set_on_spawn, procs| TraceOpts]),
-    erlang:system_profile(Port, ProfileOpts).
+    erlang:system_profile(Port, ProfileOpts),
+    ok.
     
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+-spec(parse_profile_options([percept_option()]) -> 
+             {[trace_flags()], [profile_flags()], [mfa()]}).
 parse_profile_options(Opts) ->
     parse_profile_options(Opts, {[],[],[]}).
 

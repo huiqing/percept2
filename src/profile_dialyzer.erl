@@ -6,7 +6,7 @@
 
 
 percept_profile(Dir) ->
-    percept2:profile({file, "dialyzer.dat"}, {profile_dialyzer, run_dialyzer, [Dir]},
+    percept2:profile("dialyzer.dat", {profile_dialyzer, run_dialyzer, [Dir]},
                      [message, process_scheduling, concurrency,{function, [{dialyzer_succ_typings, '_','_'}]}]).
 
 %%sample:
@@ -18,7 +18,7 @@ sample_profile(Dir)->
                             {profile_dialyzer, run_dialyzer, [Dir]}).
 
 run_dialyzer(Dir) ->
-    {ok, Files} = list_dir(Dir, ".erl",true),
+    {ok, Files} = list_dir(Dir, ".erl"),
     
     try dialyzer:run([{files, Files},{from, src_code},
                       {check_plt, false}])
@@ -27,17 +27,13 @@ run_dialyzer(Dir) ->
     end.
 
 
-list_dir(Dir, Extension, Dirs) ->
+list_dir(Dir, Extension) ->
     case file:list_dir(Dir) of
 	{error, _} = Error-> Error;
 	{ok, Filenames} ->
 	    FullFilenames = [filename:join(Dir, F) || F <-Filenames ],
-	    Matches1 = case Dirs of
-			   true ->
-			       [F || F <- FullFilenames,
-				     file_type(F) =:= {ok, 'directory'}];
-			   false -> []
-		       end,
+	    Matches1 = [F || F <- FullFilenames,
+                             file_type(F) =:= {ok, 'directory'}],			 
 	    Matches2 = [F || F <- FullFilenames,
 			     file_type(F) =:= {ok, 'regular'},
 			     filename:extension(F) =:= Extension],
