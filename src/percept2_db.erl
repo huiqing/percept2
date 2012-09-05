@@ -254,8 +254,8 @@ loop_percept_db(FileNameSubDBPairs) ->
 	    loop_percept_db(FileNameSubDBPairs);
         {'EXIT', _, normal} ->
             loop_percept_db(FileNameSubDBPairs);
-	Unhandled -> 
-	    io:format("loop_percept_db, unhandled query: ~p~n", [Unhandled]),
+	_Unhandled -> 
+	    ?dbg(0, "loop_percept_db, unhandled query: ~p~n", [_Unhandled]),
 	    loop_percept_db(FileNameSubDBPairs)
     end.
 
@@ -265,13 +265,12 @@ loop_percept_sub_db(SubDBIndex) ->
             insert_trace(SubDBIndex,Trace),
             loop_percept_sub_db(SubDBIndex);
         {select, Pid, Query} ->
-            io:format("loop_percept_sub_db query:~p\n", [Query]),
             Pid ! {self(), percept_sub_db_select_query(SubDBIndex, Query)},
             loop_percept_sub_db(SubDBIndex);
         {action, stop} ->
             stop_a_percept_sub_db(SubDBIndex);
-        Msg ->
-            io:format("loop_percept_sub_db:~p\n", [Msg]),
+        Unhandled ->
+            io:format("loop_percept_sub_db, unhandled:~p~n", [Unhandled]),
             loop_percept_sub_db(SubDBIndex)
     end.
 
@@ -297,7 +296,7 @@ start_a_percept_sub_db(Parent, {Index, TraceFileName}) ->
     System = mk_proc_reg_name("pdb_system", Index),
     FuncInfo = mk_proc_reg_name("pdb_func", Index),
     Warnings = mk_proc_reg_name("pdb_warnings", Index),
-    io:format("starting a percept_sub_db...\n"),
+    ?dbg(0,"starting a percept_sub_db...\n", []),
     start_child_process(Scheduler, fun init_pdb_scheduler/2),
     start_child_process(Activity, fun init_pdb_activity/2),
     start_child_process(ProcessInfo, fun init_pdb_info/2),
@@ -309,13 +308,13 @@ start_a_percept_sub_db(Parent, {Index, TraceFileName}) ->
 
 start_child_process(ProcRegName, Fun) ->
     Parent=self(),
-    Pid=spawn_link(fun() -> Fun(ProcRegName, Parent) end),
+    _Pid=spawn_link(fun() -> Fun(ProcRegName, Parent) end),
     receive
         {ProcRegName, started} ->
-            io:format("Process ~p started, Pid:~p\n", [ProcRegName, Pid]),
+            ?dbg(0, "Process ~p started, Pid:~p\n", [ProcRegName, _Pid]),
             ok;
-        Msg ->
-            io:format("Unexpected message:\n~p\n", [Msg])            
+        Unhandled ->
+            io:format("start_child_process, unhandled:~p~n", [Unhandled])
     end.
 
 -spec stop_a_percept_sub_db(integer()) -> true.
@@ -328,7 +327,6 @@ stop_a_percept_sub_db(SubDBIndex) ->
     Warnings = mk_proc_reg_name("pdb_warnings", SubDBIndex),
     case ets:info(Scheduler) of 
         undefined -> 
-            io:format("Table does not exist\n"),
             ok;
         _ ->                     
             ets:delete(Scheduler)
@@ -373,12 +371,12 @@ percept_db_select_query(FileNameSubDBPairs, Query) ->
         {inter_node, _} ->
             select_query_inter_node(Query);
         Unhandled ->
-	    io:format("select_query, unhandled: ~p~n", [Unhandled]),
+	    io:format("percept_db_select_query, unhandled: ~p~n", [Unhandled]),
 	    []
     end.
 
 percept_sub_db_select_query(SubDBIndex, Query) ->
-    io:format("Subdb query:\n~p\n", [{SubDBIndex, Query}]),
+    ?dbg(0, "Subdb query:\n~p\n", [{SubDBIndex, Query}]),
     case Query of 
         {activity, _ } -> 
 	    select_query_activity_1(SubDBIndex, Query);
@@ -448,7 +446,8 @@ select_query_func(Query) ->
             Body =[{{{{{{pid, {{P1,P2, P3}}}},'$3'}}, '$1', '$2'}}],
             ets:select(fun_info, [{Head, Constraints, Body}]);
         Unhandled ->
-            io:format("select_query_func, unhandled: ~p~n", [Unhandled]),
+            io:format("select_query_func, unhandled: ~p~n", 
+                      [Unhandled]),
 	    []
     end.
 
@@ -528,7 +527,7 @@ insert_profile_trace(SubDBIndex,Trace) ->
                                                     SubDBIndex),
             update_scheduler(SchedulerProcRegName, Act);
         _Unhandled ->
-            io:format("unhandled trace: ~p~n", [_Unhandled])
+            ?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
     end.
 insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, Type) ->
     ActId = if Type == procs -> percept2_utils:pid2value(Id);
@@ -582,29 +581,32 @@ trace_link(_SubDBIndex,_Trace) ->
 trace_unlink(_SubDBIndex, _Trace) ->
     ok.
 
-trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  _MFA, Ts})->
-    if is_pid(Pid) ->
-            ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_rq(ProcRegName, percept2_utils:pid2value(Pid), {Ts, Rq});
-       true -> ok
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  _MFA, Ts}) when is_pid(Pid)->
+    ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+    erlang:put({in, Pid}, {Rq, Ts}),
+    case erlang:get({run_queue, Pid}) of 
+        Rq ->
+            ok;
+        _ ->
+            erlang:put({run_queue, Pid}, Rq),
+            InternalPid = percept2_utils:pid2value(Pid),
+            update_information_rq(ProcRegName, InternalPid, {Ts, Rq})
     end;
-trace_in(_SubDBIndex, _Trace={trace_ts, _Pid, in, _MFA, _Ts}) ->
+trace_in(_SubDBIndex, _Trace) ->
     ok.
             
-trace_out(_SubDBIndex, _Trace={trace_ts, Pid, out, _Rq,  _MFA, TS}) 
-  when is_pid(Pid) ->
-    %%TODO:  Need to be fixed.
-    case erlang:get(Pid) of 
-         undefined -> io:format("No In time\n");
-        InTime ->
+trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  _MFA, TS}) when is_pid(Pid) ->
+    case erlang:get({in, Pid}) of 
+        {Rq, InTime} ->
             Elapsed = elapsed(InTime, TS),
-             erlang:erase(Pid),
-             ets:update_counter(pdb_info, Pid, {13, Elapsed})
+            erlang:erase({in,Pid}),
+            InternalPid = percept2_utils:pid2value(Pid),
+            ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+            update_information_element(ProcRegName, InternalPid, {13, Elapsed});
+        undefined ->ok;
+        _ -> erlang:erase({in, Pid})    
     end;
-trace_out(_SubDBIndex, _Trace={trace_ts, Pid, out, _MFA, _Ts})
-  when is_pid(Pid) ->
-    ok;
-trace_out(_, _) ->
+trace_out(_SubDBIndex, _Trace)->
     ok.
 
 elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
@@ -612,13 +614,14 @@ elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
     S  = (S2 - S1 + Me) * 1000000,
     Mi2 - Mi1 + S.
 
-trace_out_exited(_SubDBIndex, _Trace={trace_ts, _Pid, out_exited, _, _Ts}) ->
-    ok.
+%%{trace_ts, _Pid, out_exited, _, _, _Ts}
+trace_out_exited(_SubDBIndex, _Trace)-> ok.
 
-trace_out_exiting(_SubDBIndex, _Trace={trace_ts, _Pid, out_exiting, _, _Ts}) ->
+%%{trace_ts, _Pid, out_exiting, _, _, _Ts}
+trace_out_exiting(_SubDBIndex, _Trace) ->
     ok.
-
-trace_in_exiting(_SubDBIndex, _Trace={trace_ts, _Pid, in_exiting, _, _Ts}) ->
+%%{trace_ts, _Pid, in_exiting, _, _, _Ts})
+trace_in_exiting(_SubDBIndex, _Trace) ->
     ok.
 
 trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', MsgSize, _Ts}) ->
@@ -666,7 +669,7 @@ trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName ! {self(), end_of_trace_file},
     receive 
         {SubDBIndex, done} ->
-            io:format("Trace end of trace received done\n"),
+            ?dbg(0, "Trace end of trace received done\n", []),
             Parent ! {self(), done}
     end.
  
@@ -705,7 +708,7 @@ update_activity(ProcRegName, Activity) ->
     
 
 select_query_activity(FileNameSubDBPairs, Query) ->
-    io:format("select_query_activity:\n~p\n", [Query]),
+    ?dbg(0, "select_query_activity:\n~p\n", [Query]),
     Res = percept2_utils:pmap(
             fun({_, SubDB}) ->
                     SubDB ! {select, self(), Query},
@@ -783,7 +786,7 @@ get_runnable_count(Type, State) ->
             put({runnable, Type}, N - 1),
             N - 1;
         Unhandled ->
-	    io:format("get_runnable_count, unhandled ~p~n", [Unhandled]),
+	    ?dbg(0, "get_runnable_count, unhandled ~p~n", [Unhandled]),
 	    Unhandled
     end.
 
@@ -818,7 +821,7 @@ select_query_activity_1(SubDBIndex, Query) ->
 	                    io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
 			    [];
 		    	Match ->
-                            io:format("~p items found in tab ~p\n", [length(Match), Tab]),
+                            ?dbg(0, "~p items found in tab ~p~n", [length(Match), Tab]),
                             Match
 		    end
 	    end;
@@ -836,7 +839,6 @@ get_runnable_counts(SubDBIndex, Options) ->
             io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
             [];
         Match ->
-            io:format("~p items found in tab ~p\n", [length(Match), Tab]),
             Match
     end.
          
@@ -1238,9 +1240,6 @@ select_query_information(Query) ->
                                       [],
                                       [{{'$2', '$3'}}]
                                      }])||Id<-Ids],
-            [{_, SystemStartTs}] =ets:lookup(pdb_system, {system, start_ts}),
-            [{_, SystemStopTs}] =ets:lookup(pdb_system, {system, stop_ts}),
-            io:format("SystemStopstarts:\n~p\n", [{SystemStartTs, SystemStopTs}]),
             {Starts, Stops} = lists:unzip(lists:append(StartStopTS)),
             {lists:min(Starts), lists:max(Stops)};
         {information, Id} when is_port(Id) -> 
@@ -1274,7 +1273,6 @@ init_pdb_system(ProcRegName, Parent)->
     pdb_system_loop().
 
 update_system_start_ts(SystemProcRegName, TS) ->
-    %% io:format("SysmteProcRegName:\n~p\n", [whereis(SystemProcRegName)]),
     SystemProcRegName ! {'update_system_start_ts', TS}.
 
 update_system_stop_ts(SystemProcRegName, TS) ->
@@ -1411,7 +1409,7 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
         {Pid, done} ->
             case lists:keydelete(Pid,1,ChildrenProcs) of
                 [] ->
-                    %% io:format("All procs are done. SubdbIndex:~p\n", [{SubDB, SubDBIndex}]),
+                    ?dbg(0, "All procs are done. SubdbIndex:~p\n", [{SubDB, SubDBIndex}]),
                     SubDB ! {SubDBIndex,done},
                     pdb_func_loop({SubDB, SubDBIndex,[], [], Done});
                 NewChildrenProcs ->
@@ -1420,7 +1418,6 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
             end;
         %% a process parsing the previous log file gets to the end
         {end_of_trace_file, {PrevSubDBIndex,Pid, Stack}} ->
-           %% io:format("Received stack from privious subdb:~p\n",[{PrevSubDBIndex,Pid, Stack}]),
             case lists:keyfind(Pid, 1, ChildrenProcs) of 
                 {Pid, Proc} ->
                     Proc ! {end_of_trace_file, {PrevSubDBIndex, Pid, Stack}},
@@ -1432,15 +1429,14 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                         NextPid ->
                             NextPid ! {end_of_trace_file, {SubDBIndex, Pid, Stack}}
                     end,
-                    %% io:format("Pid proc does not exist\n"), 
                     pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
                 false ->
                     %% This could be that the process has not run yet, or the process 
                     %% has finished.
                     pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, [{Pid, Stack}|PrevStacks], Done})
             end;
-        Others -> 
-            io:format("Unexpected message:~p\n", [Others]),
+        Unhandled ->
+            io:format("function pdb_fun_loop, unhandled:~p~n", [Unhandled]),
             pdb_func_loop({SubDB,SubDBIndex,ChildrenProcs, PrevStacks, Done})                
     end.
 
@@ -1460,15 +1456,12 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack, WaitTimes}) ->
                         _ ->
                             case PrevStack of 
                                 false ->
-                                    %% io:format("Wait times:~p\n", [WaitTimes]),
-                                    %% io:format("wait for prev stack:~p\n", [{PrevSubIndex, Pid, WaitTimes}]),
                                     receive 
                                         {end_of_trace_file, {PrevSubIndex, Pid, PrevStack1}} ->
-                                          %%  io:format("received previous stack:~p\n", [{PrevSubIndex, Pid, PrevStack1}]),
                                             NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack1),
                                             pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false, WaitTimes+1})
                                      after 50000 ->
-                                             io:format("Time out ~p\n", [{PrevSubIndex, Pid, WaitTimes}]),
+                                            io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid, WaitTimes}]),
                                             pdb_sub_func_loop({SubDBIndex, Pid, [[{Func, TS}]], false, WaitTimes+1})
                                     end;
                                 _ ->
@@ -1481,13 +1474,10 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack, WaitTimes}) ->
             end;
         {Parent, end_of_trace_file} ->
             NextFuncRegName = mk_proc_reg_name("pdb_func",SubDBIndex+1),
-          %%  io:format("SubDB: ~p Process ~p done\n", [SubDBIndex, Pid]),
             case whereis(NextFuncRegName) of 
                 undefined ->
-                  %%  io:format("NewFuncRegName ~p does not exist\n", [NextFuncRegName]),
                     Parent ! {Pid, done};
                 NextPid ->
-                   %% io:format("End of trace Stack:\n~p\n", [Stack]),
                     NextPid ! {end_of_trace_file, {SubDBIndex, Pid, Stack}},
                     Parent ! {Pid, done}
             end
@@ -1763,7 +1753,6 @@ collapse_call_tree(CallTree, Callee) ->
     Children=CallTree#fun_calltree.called,
     case collect_children_to_merge(Children, {Caller, Callee}) of 
         {_, []} ->
-         %%   io:format("Nothing to merge\n"),
             CallTree;
         {ToRemain, ToMerge} ->
             NewCalled = lists:foldl(fun(C, Acc) ->
@@ -1799,13 +1788,10 @@ collect_children_to_merge_1(CallTree, {Caller, Callee}) ->
 
 add_new_callee(CalleeInfo, CalleeList) ->
     Id = CalleeInfo#fun_calltree.id,
-  %%  io:format("ID:\n~p\n", [Id]),
     case lists:keyfind(Id, 2, CalleeList) of
         false ->
-          %%  io:format("not found\n"),
             [CalleeInfo|CalleeList];
         C ->
-           %% io:format("found:~p\n", [C]),
             NewC=combine_fun_info(C, CalleeInfo),
             lists:keyreplace(Id, 2, CalleeList, NewC)
     end.
@@ -1858,11 +1844,11 @@ consolidate_db(FileNameSubDBPairs) ->
             update_system_stop_ts(mk_proc_reg_name("pdb_system", 1),Max);
         _ -> ok
     end,
-    io:format("consolidate runnability ...\n"),
+    ?dbg(0, "consolidate runnability ...\n",[]),
     consolidate_runnability(LastIndex),
-    io:format("consolidate function callgraph ...\n"),
+    ?dbg(0, "consolidate function callgraph ...\n",[]),
     consolidate_calltree(),
-    io:format("generate function information ...\n"),
+    ?dbg(0,"generate function information ...\n",[]),
     process_func_info(),
     true.
 
@@ -1880,7 +1866,6 @@ get_start_time_ts() ->
               _ -> undefined
           end,
     Ts = [T||T<-[AMin, SMin, IMin], T/=undefined],
-    io:format("Ts:\n~p\n", [[AMin, SMin, IMin]]),
     case Ts of
         [] -> undefined;
         _ -> lists:min(Ts)
@@ -1915,7 +1900,6 @@ get_stop_time_ts(LastIndex) ->
 %%%                                                      %%%
 %%%------------------------------------------------------%%%
 consolidate_runnability(LastSubDBIndex) ->
-    io:format("LastSubDBIndex:\n~p\n", [LastSubDBIndex]),
     consolidate_runnability_1(1,{0,0,[]},LastSubDBIndex).
 
 consolidate_runnability_1(CurSubDBIndex, _, LastSubDBIndex) 
@@ -2020,11 +2004,10 @@ update_fun_call_count_time({Pid, Func}, {StartTs, EndTs}) ->
                                 {8, FunInfo#fun_info.acc_time+Time}])
     end.
 
-%% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa(), non_neg_integer()},
+%% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa()|undefined, non_neg_integer()},
 %%                       [{true_mfa(), non_neg_integer()}], timestamp(), timestamp()) ->true).
              
 update_fun_info({Pid, MFA}, Caller, Called, StartTs, EndTs) ->
-    io:format("update_fun_info:\n~p\n", [{{Pid, MFA}, Caller, Called, StartTs, EndTs}]),
     case ets:lookup(fun_info, {Pid, MFA}) of
         [] ->
             NewEntry=#fun_info{id={percept2_utils:pid2value(Pid), MFA},
