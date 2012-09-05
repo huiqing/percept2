@@ -91,7 +91,6 @@ inter_node_message_graph(SessionID, Env, Input) ->
     mod_esi:deliver(SessionID, binary_to_list(inter_node_message_graph(Env, Input))).
 
 graph(_Env, Input) ->
-    io:format("Graph Input:\n~p\n",[Input]),
     graph_1(_Env, Input, procs_ports).
 
 procs_graph(_Env, Input) ->
@@ -144,7 +143,6 @@ graph_1(_Env, Input, Type) ->
     end.
 
 scheduler_graph(_Env, Input) ->
-    io:format("scheduler graph: ~p\n", [Input]),
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
     RangeMax = percept2_html:get_option_value("range_max", Query),
@@ -216,7 +214,6 @@ calltime_percentage(_Env, Input) ->
 
 
 inter_node_message_graph(_Env, Input) ->
-    io:format("message Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Width = percept2_html:get_option_value("width", Query),
     Height = percept2_html:get_option_value("height", Query),

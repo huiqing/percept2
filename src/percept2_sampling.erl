@@ -251,7 +251,6 @@ read_data_from_tab(run_queue) ->
 read_data_from_tab(run_queues) ->
     Tab = mk_ets_tab_name(run_queues),
     lists:flatten(ets:foldr(fun(_Data={_, Secs, RunQueues}, Acc) ->
-                                  %%  io:format("RunQueues:\n~p\n", [RunQueues]),
                                     {_, RunQueues1} = lists:foldl(
                                                    fun(Len, {Sum, RQAcc}) ->
                                                            {Len+Sum,[Len+Sum|RQAcc]}

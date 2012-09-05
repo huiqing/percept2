@@ -13,9 +13,9 @@ percept_profile(Dir) ->
 %% profile:dialyzer:sample_profile(["/proj/wrangler"]).
 %% profile:dialyzer:percept_profile(["/proj/wrangler"]).
 sample_profile(Dir)->
-    percept_sampling:sample(['run_queue','run_queues','scheduler_utilisation',
-                             'process_count', 'schedulers_online','mem_info'],
-                            {profile_dialyzer, run_dialyzer, [Dir]}).
+    percept2_sampling:sample(['run_queue','run_queues','scheduler_utilisation',
+                              'process_count','schedulers_online','mem_info'],
+                             {profile_dialyzer, run_dialyzer, [Dir]}).
 
 run_dialyzer(Dir) ->
     {ok, Files} = list_dir(Dir, ".erl"),

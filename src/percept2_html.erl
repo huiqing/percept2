@@ -48,7 +48,6 @@
 %%% --------------------------- %%%
 -spec(overview_page(pid(), list(), string()) -> ok | {error, term()}).
 overview_page(SessionID, Env, Input) ->
-    io:format("Args:\n~p\n", [{SessionID, Env, Input}]),
     try
         Menu = menu(Input),
         OverviewContent = overview_content(Env, Input),
@@ -427,8 +426,6 @@ concurrency_content_1(_Env, Input) ->
 
 concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
     {T0, T1} = {?seconds(MinTs, StartTs), ?seconds(MaxTs, StartTs)},
-    io:format("T0, T1:\n~p\n", [{T0, T1}]),
-    io:format("IDs:\n~p\n", [IDs]),
     ActivityBarTable =
         lists:foldl(
           fun(Pid, Out) ->
@@ -626,7 +623,6 @@ load_database_content(SessionId, _Env, Input) ->
 
 %%% process tree  page content.
 process_page_header_content(Env, Input) ->
-    io:format("Process page input:\n~p\n", [Input]),
     CacheKey = "process_tree_page"++integer_to_list(erlang:crc32(Input)),
     gen_content(Env, Input, CacheKey, fun process_page_header_content_1/2).
   
@@ -646,7 +642,6 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     SystemStartTS = percept2_db:select({system, start_ts}),
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
-    io:format("ProfileTime:\n~p\n", [ProfileTime]),
     %% Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     %% ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
     %% ActiveProcsInfo=lists:append([percept2_db:select({information, Pid})||Pid <- ActivePids]),
@@ -730,7 +725,6 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
 
 %%% process tree  page content.
 ports_page_content(Env, Input) ->
-    io:format("Ports page input:\n~p\n", [Input]),
     CacheKey = "ports_page"++integer_to_list(erlang:crc32(Input)),
     gen_content(Env, Input, CacheKey, fun ports_page_content_1/2).
 
@@ -872,15 +866,12 @@ procstoptime(TS) ->
 
 %%% process_info_content
 process_info_content(Env, Input) ->
-    io:format("Process info Input:\n~p\n", [Input]),
     CacheKey = "process_info"++integer_to_list(erlang:crc32(Input)),
     gen_content(Env, Input, CacheKey, fun process_info_content_1/2).
 
 process_info_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
-    io:format("Query:\n~p\n", [Query]),
     Pid = get_option_value("pid", Query),
-    io:format("Pid:\n~p\n", [Pid]),
     [I] = percept2_db:select({information, Pid}),
     ArgumentString = case I#information.entry of
                          {_, _, Arguments} when is_list(Arguments)-> 
@@ -1129,10 +1120,8 @@ function_info_content_1(_Env, Input) ->
          "</div>".
 
 callgraph_time_content(Env, Input) ->
-    io:format("callgraph input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
-    io:format("Pid:\n~p\n",[Pid]),
     ImgFileName="callgraph" ++ pid2str(Pid) ++ ".svg",
     ImgFullFilePath = filename:join(
                     [code:priv_dir(percept2), "server_root",
@@ -1184,7 +1173,6 @@ calltime_content_1(_Env, Pid) ->
    
 
 inter_node_message_content(Env, Input) ->
-    io:format("Input:\n~p\n", [Input]),
     Nodes =percept2_db:select({inter_node, all}),
     case length(Nodes) < 2 of 
         true -> error_msg("No inter-node message passing has been recorded.");

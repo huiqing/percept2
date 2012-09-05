@@ -12,7 +12,6 @@ gen_plt_script(Title, XLabel, YLabel, LineLabel, DataFile, OutFile)->
         eof ->
             {error, eof};
         {ok,Data} ->
-            io:format("Data:\n~p\n", [Data]),
             file:close(FD),
             gen_plt_sript_1(Title, XLabel, YLabel, LineLabel, Data,DataFile,OutFile)
     end.
