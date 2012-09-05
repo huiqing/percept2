@@ -1176,7 +1176,7 @@ calltime_content_1(_Env, Pid) ->
       [[{th, "module:function/arity"},
         {th, "callcount"},
         {th, "accumulated time"}]|
-       [[{td, term2html(Func)},
+       [[{td, mfa2html_with_link({Pid,Func})},
          {td, term2html(CallCount)},
          {td, image_string(calltime_percentage, 
                            [{width,200}, {height, 10}, {calltime, CallTime}, {percentage, CallTime/ProfileTime}])}]
