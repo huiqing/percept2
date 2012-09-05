@@ -83,7 +83,7 @@
          }).
 
 -record(funcall_info, {
-          id                 ::{pid(),timestamp()}|{special_atom(),special_atom()},       
+          id                 ::{pid_value(),timestamp()}|{special_atom(),special_atom()},       
           func               ::true_mfa() | special_atom(),
           end_ts=undefined   ::timestamp()|undefined|special_atom()
          }).
