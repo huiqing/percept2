@@ -38,7 +38,7 @@
 
 -export([get_option_value/2]).
 
-%%-compile(export_all).
+-compile(export_all).
 
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -48,6 +48,7 @@
 %%% --------------------------- %%%
 -spec(overview_page(pid(), list(), string()) -> ok | {error, term()}).
 overview_page(SessionID, Env, Input) ->
+    ?dbg(0, "overview_content input:~p~n", [Input]),
     try
         Menu = menu(Input),
         OverviewContent = overview_content(Env, Input),
@@ -906,10 +907,12 @@ process_info_content_1(_Env, Input) ->
                     [{th, "Parent"},     pid2html(I#information.parent)],
                     [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> pid2html(Child) ++ " " end,
                                                                  I#information.children))],
-                    [{th, "RQ_history"}, term2html(lists:reverse(I#information.rq_history))],
-                    [{th, "{#msg_received, <br>  avg_msg_size}"},
+                    [{th, "RQ_history"}, term2html(
+                                           element(2,lists:unzip(
+                                                     lists:keysort(1, I#information.rq_history))))],
+                    [{th, "{#msg_received, <br>avg_msg_size}"},
                      term2html(info_msg_received(I))],
-                    [{th, "{#msg_sent, <br> #msg_sent_to_same_RQ, <br> #msg_sent_to_another_RQ,<br> avg_msg_size}"}, 
+                    [{th, "{#msg_sent,<br>avg_msg_size}"}, 
                      term2html(info_msg_sent(I))]
                    ] ++ case is_dummy_pid(Pid) of
                             true ->
@@ -1172,7 +1175,7 @@ calltime_content_1(_Env, Pid) ->
         ||{{_Pid, CallTime}, Func, CallCount}<-Elems]], Props).
    
 
-inter_node_message_content(Env, Input) ->
+inter_node_message_content(Env, _Input) ->
     Nodes =percept2_db:select({inter_node, all}),
     case length(Nodes) < 2 of 
         true -> error_msg("No inter-node message passing has been recorded.");
