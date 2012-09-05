@@ -40,6 +40,7 @@
 
 -type pid_value()::{pid, {non_neg_integer(), non_neg_integer(), non_neg_integer()}}.
 
+%% for removing warnings from dialyzer.
 -type special_atom()::'_'|'$0'|'$1'|'$2'|'$3'|'$4'|'$5'.
 %%% -------------------	%%%
 %%% 	Records		%%%
