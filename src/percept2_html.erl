@@ -512,7 +512,9 @@ active_funcs_content_1(_Env, Input) ->
 active_funcs_content_2(_Min, _Max, _StartTs, []) ->
     blink_msg("No function activities recorded for the time interval selected.");
 active_funcs_content_2(Min, Max, StartTs, ActiveFuns) ->
-    TableContent = [[{td, pid2html(element(1, F#funcall_info.id))},
+    CleanPid = percept2_db:select({system, nodes})==1,
+    io:format("CleanPid:\n~p\n", [CleanPid]),
+    TableContent = [[{td, pid2html(element(1, F#funcall_info.id), CleanPid)},
                      {td, term2html(F#funcall_info.func)},
                      {td, make_image_string(F, {Min, Max})},
                      {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
@@ -523,7 +525,7 @@ active_funcs_content_2(Min, Max, StartTs, ActiveFuns) ->
     Table = html_table(
               [[{th, " pid "},
                 {th, "module:function/arity"},
-                {th, "activity"},
+                {th, "activity"}, 
                 {th, "function start/end secs"},
                 {th, "monitor start/end secs"}]] ++
                   TableContent),
@@ -745,6 +747,7 @@ ports_page_content_1(_Env, _Input) ->
         "</div>\n".
    
 mk_ports_html(Ports, ProfileTime) ->
+    CleanPid = percept2_db:select({system, nodes})==1,
     PortsHtml=lists:foldl(
                 fun (I, Out) ->
                         StartTime = procstarttime(I#information.start),
@@ -760,7 +763,7 @@ mk_ports_html(Ports, ProfileTime) ->
                                                                      {height, 10}]),
                                         mfa2html(I#information.entry),
                                         term2html(I#information.name),
-                                        pid2html(I#information.parent)
+                                        pid2html(I#information.parent, CleanPid)
                                        ]),
                         [Prepare|Out]
                 end, [], Ports),        
@@ -1127,6 +1130,7 @@ function_info_content_1(_Env, Input) ->
          "</div>".
 
 callgraph_time_content(Env, Input) ->
+    CleanPid = percept2_db:select({system, nodes})==1,
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     ImgFileName="callgraph" ++ pid2str(Pid) ++ ".svg",
@@ -1135,7 +1139,7 @@ callgraph_time_content(Env, Input) ->
                      "images", ImgFileName]),
     Table = calltime_content(Env,Pid),
     Content = "<div style=\"text-align:center; align:center\">" ++
-        "<h3 style=\"text-align:center;\">" ++ pid2html(Pid)++"</h3>"++ 
+        "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++ 
         "<iframe src=\"/images/"++ImgFileName++"\" type=\"image/svg+xml\""++
         "frameborder=\"0\" scrolling=\"auto\" marginheight=\"0\" width=\"80\%\" height=\"75\%\""++
         "></iframe>"++
@@ -1151,7 +1155,7 @@ callgraph_time_content(Env, Input) ->
                     Content;
                 no_image ->
                     "<div style=\"text-align:center;\">" ++
-                        "<h3 style=\"text-align:center;\">" ++ pid2html(Pid)++"</h3>"++ 
+                        "<h3 style=\"text-align:center;\">" ++ pid2html(Pid, CleanPid)++"</h3>"++ 
                         "<blink><center><h3><p>No data generated </p></h3></center><blink>" ++
                         "</div>"
             end
@@ -1268,7 +1272,6 @@ mfa2html({Module, Function, Arity}) when is_atom(Module), is_integer(Arity) ->
     lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity]));
 mfa2html(_) ->
     "undefined".
-
 
 %% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
 

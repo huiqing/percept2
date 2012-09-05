@@ -654,7 +654,8 @@ trace_send_to_non_existing_process(SubDBIndex,
 trace_open(SubDBIndex, _Trace={trace_ts, Caller, open, Port, Driver, TS})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{
-                          id = Port, entry = Driver, start = TS, parent = Caller}).
+                          id = Port, entry = Driver, start = TS,
+                         parent =  percept2_utils:pid2value(Caller)}).
 
 trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
@@ -1689,7 +1690,7 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
                                                       {Func, TS1}
                                               end
                                      end,
-            ets:insert(funcall_info, #funcall_info{id={Pid, TS1}, func=Func0, end_ts=TS}),
+            ets:insert(funcall_info, #funcall_info{id={percept2_utils:pid2value(Pid), TS1}, func=Func0, end_ts=TS}),
             update_fun_call_count_time({Pid, Func0}, {TS1, TS}),
             update_calltree_info(Pid, {Func0, TS1, TS}, {Caller, CallerStartTs});
          _ -> ok  %% garbage collect or suspend.

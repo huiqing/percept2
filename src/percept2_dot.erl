@@ -13,25 +13,21 @@
 -spec(gen_callgraph_img(Pid::pid_value()) -> ok|no_image).
 gen_callgraph_img(Pid) ->
     Res=ets:select(fun_calltree, 
-                      [{#fun_calltree{id = {'$1', '_','_'}, _='_'},
-                        [{'==', Pid, '$1'}],
+                      [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+                        [],
                         ['$_']
                        }]),
     case Res of 
         [] -> no_image;
         [Tree] -> 
-            CleanPid = percept2_db:select({system, nodes})==1,
-            gen_callgraph_img_1(Pid, Tree, CleanPid)
+            gen_callgraph_img_1(Pid, Tree)
     end.
    
-gen_callgraph_img_1(Pid, CallTree, CleanPid) when is_pid(Pid)->
-    gen_callgraph_img_1(percept2_utils:pid2value(Pid), CallTree, CleanPid);
-gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree,CleanPid) ->
-    PidStr= case CleanPid of 
-                true -> "0."++integer_to_list(P2)++"."++integer_to_list(P3);
-                _ ->integer_to_list(P1)++"." ++integer_to_list(P2)++
-                        "."++integer_to_list(P3)
-            end,
+gen_callgraph_img_1(Pid, CallTree) when is_pid(Pid)->
+    gen_callgraph_img_1(percept2_utils:pid2value(Pid), CallTree);
+gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
+    PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
+                        "."++integer_to_list(P3),
     BaseName = "callgraph"++PidStr,
     DotFileName = BaseName++".dot",
     SvgFileName = filename:join(
