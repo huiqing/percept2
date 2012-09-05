@@ -379,9 +379,10 @@ codelocation_content_1(_Env, Input) ->
     Secs  = [timer:now_diff(A#activity.timestamp,StartTs)/1000 || A <- Acts],
     Delta = cl_deltas(Secs),
     Zip   = lists:zip(Acts, Delta),
+    CleanPid = percept2_db:select({system, nodes})==1,
     TableContent = [[{td, term2html(D)},
                      {td, term2html(timer:now_diff(A#activity.timestamp,StartTs) / 1000)},
-                     {td, pid2html(A#activity.id)},
+                     {td, pid2html(A#activity.id, CleanPid)},
                      {td, term2html(A#activity.state)},
                      {td, mfa2html(A#activity.where)},
                      {td, term2html(A#activity.runnable_count)}] || {A, D} <- Zip],
@@ -427,6 +428,7 @@ concurrency_content_1(_Env, Input) ->
 
 concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
     {T0, T1} = {?seconds(MinTs, StartTs), ?seconds(MaxTs, StartTs)},
+    CleanPid = percept2_db:select({system, nodes})==1,
     ActivityBarTable =
         lists:foldl(
           fun(Pid, Out) ->
@@ -439,7 +441,7 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                                    {height, 10}], []),
                   Out ++
                       table_line(
-                        [pid2html(Pid),
+                        [pid2html(Pid, CleanPid),
                          "<img onload=\"size_image(this, '" ++
                              ActivityBar ++
                              "')\" src=/images/white.png border=0 />"
@@ -668,6 +670,7 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
         "</form>".
       
 mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
+    CleanPid = percept2_db:select({system, nodes})==1,
     ProcsHtml=lists:foldl(
               fun ({I, Children},Out) ->
                       Id=I#information.id,
@@ -681,7 +684,7 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                                       %%     is_parent(Id, ActiveProcsInfo) of 
                                       %%     true ->pid2html_with_color(I#information.id);
                                       %%     false ->
-                                      pid2html(I#information.id),
+                                      pid2html(I#information.id, CleanPid),
                                       %% end,
                                       image_string(proc_lifetime, [
                                                            {profiletime, ProfileTime},
@@ -690,7 +693,7 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                                                            {width, 100},
                                                                    {height, 10}]),
                                       term2html(I#information.name),
-                                      pid2html(I#information.parent),
+                                      pid2html(I#information.parent, CleanPid),
                                       integer_to_list(max(0,length(I#information.rq_history)-1)),
                                       msg2html(info_msg_received(I)),
                                       msg2html(info_msg_sent(I)),
@@ -893,10 +896,10 @@ process_info_content_1(_Env, Input) ->
 	 term2html(I#information.stop),
 	 term2html(procstoptime(I#information.stop))]
 	]),   
-
+    CleanPid = percept2_db:select({system, nodes})==1,
     InfoTable = html_table
                   ([
-                    [{th, "Pid"},        term2html(I#information.id)],
+                    [{th, "Pid"},        pid2html(I#information.id, CleanPid)],
                     [{th, "Name"}, term2html(case is_dummy_pid(Pid) of
                                                  true -> dummy_process;
                                                  _ -> I#information.name
@@ -904,8 +907,9 @@ process_info_content_1(_Env, Input) ->
                     [{th, "Entrypoint"}, mfa2html(I#information.entry)],
                             [{th, "Arguments"},  ArgumentString],
                     [{th, "Timetable"},  TimeTable],
-                    [{th, "Parent"},     pid2html(I#information.parent)],
-                    [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> pid2html(Child) ++ " " end,
+                    [{th, "Parent"},     pid2html(I#information.parent, CleanPid)],
+                    [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> 
+                                                                         pid2html(Child, CleanPid) ++ " " end,
                                                                  I#information.children))],
                     [{th, "RQ_history"}, term2html(
                                            element(2,lists:unzip(
@@ -917,7 +921,7 @@ process_info_content_1(_Env, Input) ->
                    ] ++ case is_dummy_pid(Pid) of
                             true ->
                                 [[{th, "Compressed Processes"}, lists:flatten(
-                                                                 lists:map(fun(Id) -> pid2html(Id) ++ " " end,
+                                                                 lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
                                                                            I#information.hidden_pids))]];
                             false -> []
                         end),
@@ -1295,6 +1299,16 @@ visual_link({Pid,undefined, _})->
 %%% --------------------------- %%%
 %%% 	to html          	%%%
 %%% --------------------------- %%%
+pid2html(Pid={pid, {_P1, P2, P3}}, true) ->
+    PidValue = pid2str(Pid),
+    PidString="<0." ++ integer_to_list(P2)
+                                 ++ "." ++ integer_to_list(P3)
+                                 ++ ">",
+    "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++
+        PidValue++"\">"++PidString++"</a>";
+pid2html(Other, _) ->
+    pid2html(Other).
+
 -spec pid2html(Pid :: pid()|pid_value()| port()) -> string().
 pid2html(Pid) 
   when is_pid(Pid); is_tuple(Pid) andalso element(1, Pid)==pid ->
@@ -1541,9 +1555,3 @@ blink_msg(Message) ->
     "<div style=\"text-align:center;\"><blink><center><h3><p>"
         ++ Message ++"</p></h3></center><blink></div>".
 
-
-%% is_parent(I, ActiveProcsInfo) ->  
-%%     lists:any(fun(P) ->
-%%                       lists:member(I, P#information.ancestors)
-%%               end, ActiveProcsInfo).
-  

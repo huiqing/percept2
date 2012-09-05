@@ -19,14 +19,19 @@ gen_callgraph_img(Pid) ->
                        }]),
     case Res of 
         [] -> no_image;
-        [Tree] -> gen_callgraph_img_1(Pid, Tree)
+        [Tree] -> 
+            CleanPid = percept2_db:select({system, nodes})==1,
+            gen_callgraph_img_1(Pid, Tree, CleanPid)
     end.
    
-gen_callgraph_img_1(Pid, CallTree) when is_pid(Pid)->
-    gen_callgraph_img_1(percept2_utils:pid2value(Pid), CallTree);
-gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
-    PidStr=integer_to_list(P1)++"."++integer_to_list(P2)++
-        "."++integer_to_list(P3),
+gen_callgraph_img_1(Pid, CallTree, CleanPid) when is_pid(Pid)->
+    gen_callgraph_img_1(percept2_utils:pid2value(Pid), CallTree, CleanPid);
+gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree,CleanPid) ->
+    PidStr= case CleanPid of 
+                true -> "0."++integer_to_list(P2)++"."++integer_to_list(P3);
+                _ ->integer_to_list(P1)++"." ++integer_to_list(P2)++
+                        "."++integer_to_list(P3)
+            end,
     BaseName = "callgraph"++PidStr,
     DotFileName = BaseName++".dot",
     SvgFileName = filename:join(
@@ -163,27 +168,28 @@ gen_process_tree_img() ->
     
 gen_process_tree_img_1(Parent)->
     CompressedTrees=percept2_db:gen_compressed_process_tree(),
-    Res=gen_process_tree_img(CompressedTrees),
+    CleanPid =  percept2_db:select({system, nodes})==1,
+    Res=gen_process_tree_img(CompressedTrees, CleanPid),
     Parent ! {self(), done, Res}.
 
-gen_process_tree_img([]) ->
+gen_process_tree_img([], _) ->
     no_image;
-gen_process_tree_img(ProcessTrees) ->
+gen_process_tree_img(ProcessTrees, CleanPid) ->
     BaseName = "processtree",
     DotFileName = BaseName++".dot",
     SvgFileName = filename:join(
                     [code:priv_dir(percept2), "server_root",
                      "images", BaseName++".svg"]),
-    ok=process_tree_to_dot(ProcessTrees,DotFileName),
+    ok=process_tree_to_dot(ProcessTrees,DotFileName, CleanPid),
     os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
     file:delete(DotFileName),
     ok.
             
-process_tree_to_dot(ProcessTrees, DotFileName) ->
+process_tree_to_dot(ProcessTrees, DotFileName, CleanPid) ->
     {Nodes, Edges} = gen_process_tree_nodes_edges(ProcessTrees),
     MG = digraph:new(),
     digraph_add_edges_to_process_tree({Nodes, Edges}, MG),
-    process_tree_to_dot_1(MG, DotFileName),
+    process_tree_to_dot_1(MG, DotFileName, CleanPid),
     digraph:delete(MG),
     ok.
 
@@ -227,30 +233,34 @@ digraph_add_edge_1(MG, From, To, Label) ->
     end,
     digraph:add_edge(MG, From, To, Label).
 
-process_tree_to_dot_1(MG, OutFileName) ->
+process_tree_to_dot_1(MG, OutFileName,CleanPid) ->
     Edges =[digraph:edge(MG, X) || X <- digraph:edges(MG)],
     Nodes = digraph:vertices(MG),
     GraphName="ProcessTree",
     Start = ["digraph ",GraphName ," {"],
-    VertexList = [format_process_tree_node(N) ||N <- Nodes],
+    VertexList = [format_process_tree_node(N,CleanPid) ||N <- Nodes],
     End = ["graph [", GraphName, "=", GraphName, "]}"],
-    EdgeList = [format_process_tree_edge(X, Y, Label) ||{_, X, Y, Label} <- Edges],
+    EdgeList = [format_process_tree_edge(X, Y, Label, CleanPid) ||{_, X, Y, Label} <- Edges],
     String = [Start, VertexList, EdgeList, End],
     ok = file:write_file(OutFileName, list_to_binary(String)).
 
-format_process_tree_node(V) ->
-    format_node(V, fun format_process_tree_vertex/1).
+format_process_tree_node(V, CleanPid) ->
+    format_node({V, CleanPid}, fun format_process_tree_vertex/1).
             
-format_process_tree_vertex({Pid, Name, Entry}) ->
-    PidStr =  "<" ++ pid2str(Pid) ++ ">",
+format_process_tree_vertex({{Pid={pid, {_P1, P2, P3}}, Name, Entry}, CleanPid}) ->
+    Pid1 = case CleanPid of 
+               true -> {pid, {0, P2, P3}};
+               _ -> Pid
+           end,
+    PidStr =  "<" ++ pid2str(Pid1) ++ ">",
     lists:flatten(io_lib:format("~s; ~p;\\n~p",
                                 [PidStr, Name, Entry]));
 format_process_tree_vertex(Other)  ->
      io_lib:format("~p", [Other]).
     
-format_process_tree_edge(V1, V2, Label) ->
-    String = ["\"",format_process_tree_vertex(V1),"\"", " -> ",
-	      "\"", format_process_tree_vertex(V2), "\""],
+format_process_tree_edge(V1, V2, Label, CleanPid) ->
+    String = ["\"",format_process_tree_vertex({V1, CleanPid}),"\"", " -> ",
+	      "\"", format_process_tree_vertex({V2, CleanPid}), "\""],
     [String, " [", "label=", "\"", format_label(Label),
      "\"",  "fontsize=20 fontname=\"Verdana\"", "];\n"].
 

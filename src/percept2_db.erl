@@ -269,6 +269,8 @@ loop_percept_sub_db(SubDBIndex) ->
             loop_percept_sub_db(SubDBIndex);
         {action, stop} ->
             stop_a_percept_sub_db(SubDBIndex);
+        {'EXIT', _, normal} ->
+            loop_percept_sub_db(SubDBIndex);
         Unhandled ->
             io:format("loop_percept_sub_db, unhandled:~p~n", [Unhandled]),
             loop_percept_sub_db(SubDBIndex)
@@ -1133,16 +1135,17 @@ update_information_1(#information{id = Id} = NewInfo) ->
                      ets:insert(pdb_info, list_to_tuple(lists:reverse(Result)))
     end.
 
-update_information_child_1(Id, Child) -> 
+update_information_child_1(Id, ChildPid) ->
+    InternalPid = percept2_utils:pid2value(ChildPid),
     case ets:lookup(pdb_info, Id) of
     	[] ->
             ets:insert(pdb_info,#information{
                          id = Id,
-                         children = [Child]});
+                         children = [InternalPid]});
         [I] ->
             ets:insert(pdb_info,
                        I#information{
-                         children = [Child|I#information.children]})
+                         children = [InternalPid|I#information.children]})
     end.
 
 update_information_rq_1(Pid, {TS,RQ}) ->
@@ -1278,6 +1281,9 @@ update_system_start_ts(SystemProcRegName, TS) ->
 update_system_stop_ts(SystemProcRegName, TS) ->
     SystemProcRegName ! {'update_system_stop_ts', TS}.
 
+update_system_nodes_num(SystemProcRegName, Num) ->
+    SystemProcRegName ! {'update_system_nodes_num', Num}.
+
 pdb_system_loop() ->
     receive
         {'update_system_start_ts', TS}->
@@ -1286,6 +1292,8 @@ pdb_system_loop() ->
         {'update_system_stop_ts', TS} ->
             update_system_stop_ts_1(TS),
             pdb_system_loop();
+        {'update_system_nodes_num', Num} ->
+            ets:insert(pdb_system, {{system, nodes}, Num});
         {action, stop} ->
             ok
     end.
@@ -1330,6 +1338,11 @@ select_query_system(Query) ->
     	    case ets:lookup(pdb_system, {system, stop_ts}) of
 	    	[] -> undefined;
 		[{{system, stop_ts}, StopTS}] -> StopTS
+	    end;
+        {system, nodes} ->
+            case ets:lookup(pdb_system, {system, nodes}) of
+	    	[] -> 1;
+		[{{system, nodes}, Num}] -> Num
 	    end;
 	Unhandled ->
 	    io:format("select_query_system, unhandled: ~p~n", [Unhandled]),
@@ -1831,19 +1844,24 @@ is_list_comp(_) ->
 consolidate_db(FileNameSubDBPairs) ->
     io:format("Consolidating...~n"),
     LastIndex = length(FileNameSubDBPairs),
+    SystemProc = mk_proc_reg_name("pdb_system", 1),
     % Check start/stop timestamps
     case percept_db_select_query([], {system, start_ts}) of
 	undefined ->
             Min=get_start_time_ts(),
-            update_system_start_ts(mk_proc_reg_name("pdb_system", 1),Min);
+            update_system_start_ts(SystemProc,Min);
         _ -> ok
     end,
     case percept_db_select_query([], {system, stop_ts}) of
 	undefined ->
             Max = get_stop_time_ts(LastIndex),
-            update_system_stop_ts(mk_proc_reg_name("pdb_system", 1),Max);
+            update_system_stop_ts(SystemProc,Max);
         _ -> ok
     end,
+    %% check no of nodes (temporary solution).
+    NumOfNodes=get_num_of_nodes(),
+    update_system_nodes_num(SystemProc, NumOfNodes),
+
     ?dbg(0, "consolidate runnability ...\n",[]),
     consolidate_runnability(LastIndex),
     ?dbg(0, "consolidate function callgraph ...\n",[]),
@@ -1892,7 +1910,11 @@ get_stop_time_ts(LastIndex) ->
         [] -> undefined;
         _ -> lists:max(Ts)
     end.
-  
+get_num_of_nodes() ->  
+    NodeIds=ets:select(pdb_info, 
+                       [{#information{id={pid, {'$1', '_','_'}}, _='_'},
+                         [], ['$1']}]),
+    length(sets:to_list(sets:from_list(NodeIds))).
     
 %%%------------------------------------------------------%%%
 %%%                                                      %%%
@@ -2066,8 +2088,7 @@ gen_process_tree([Elem|Tail], Out) ->
     Children = Elem#information.children,
     {ChildrenElems, Tail1} = lists:partition(
                                fun(E) -> 
-                                       lists:member(E#information.id, 
-                                                    [percept2_utils:pid2value(Pid)||Pid <- Children])
+                                       lists:member(E#information.id, Children) 
                                end, Tail),
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
     gen_process_tree(NewTail, [{Elem, NewChildren}|Out]).
@@ -2080,8 +2101,7 @@ gen_process_tree_1([C|Cs], Tail, Out) ->
     Children = C#information.children,
     {ChildrenElems, Tail1} = lists:partition(
                                fun(E) -> 
-                                       lists:member(E#information.id, 
-                                                    [percept2_utils:pid2value(Pid)||Pid <- Children])
+                                       lists:member(E#information.id, Children)
                                end, Tail),                           
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
     gen_process_tree_1(Cs, NewTail, [{C, NewChildren}|Out]).
