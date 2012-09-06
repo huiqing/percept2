@@ -30,6 +30,8 @@
          gen_compressed_process_tree/0
 	]).
  
+-export([is_dummy_pid/1, pid2value/1]).
+
 %% internal export
 -export([trace_spawn/2, trace_exit/2, trace_register/2,
          trace_unregister/2, trace_getting_unlinked/2,
@@ -2251,50 +2253,4 @@ pid2value(Pid) when is_pid(Pid) ->
     {pid, {list_to_integer(P1), 
            list_to_integer(P2),
            list_to_integer(P3)}}.
-
-
-%% fprof:apply(refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]). 
-
-%% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/percept/test"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/percept/test"], 8]}, [])  
-
-%%percept_profile:start({file, "sim_code_v0.dat"}, {refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo/c.erl"], 5, 40, 2, 4, 0.8, [], 8]}, [refac_sim_code_par_v0],[])
-%% percept_profile:start({file, "foo3.dat"}, {foo,a1, [1]}, [foo], []).
-
-
-%% percept2_db:gen_callgraph_img(list_to_pid("<0.1132.0>")).
-
-%% percept2:profile({file, "mergesort.dat"}, {mergesort, msort_lte,[lists:reverse(lists:seq(1,2000))]}, [message, process_scheduling, concurrency,garbagage_collection,{function, [{mergesort, '_','_'}]}]).
-
-%% percept2:analyze("mergesort.dat").
-
-%% percept2:profile({file, "sim_code_v3.dat"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{refac_sim_code_par_v0, '_','_'}]}]).
-
-%% To profile percept itself.
-%% percept2:profile({file, "percept.dat"}, {percept2,analyze, ["sim_code_v2.dat"]},  [message, process_scheduling, concurrency,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
-
- %%percept2:analyze("percept.dat").
-
-
-%%percept2:analyze("dialyzer.dat").
-%% percept2:profile({file, "percept_process_img.dat"}, {percept2_db,gen_process_tree_img, []},  [message, process_scheduling, concurrency,{function, [{percept2_db, '_','_'}, {percept2, '_','_'}]}]).
-%%percept2:analyze("percept_process_img.dat").
-
-
- %% percept2:analyze(["sim_code_v30.dat", "sim_code_v31.dat"]).
-%%percept2_db:select({activity, []}).
-
-
-%% percept2:profile({file, "sim_code_v5"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{refac_sim_code_par_v3, '_','_'}]}]).
-
-%% percept2:profile({file, "sim_code_v6"}, {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{refac_sim_code_par_v3, '_','_'}]}]).
-
-%%percept2:analyze(["sim_code_v50.dat", "sim_code_v51.dat", "sim_code_v52.dat"]).
-
- %% percept2:analyze(["sim_code_v60.dat", "sim_code_v61.dat", "sim_code_v62.dat","sim_code_v63.dat", "sim_code_v64.dat","sim_code_v6.dat", "sim_code_v66.dat", "sim_code_v67.dat","sim_code_v68.dat","sim_code_v69.dat", "sim_code_v610.dat","sim_code_v611.dat","sim_code_v612.dat"]).
-
- %% percept2:analyze(["sim_code_v60.dat", "sim_code_v61.dat", "sim_code_v62.dat","sim_code_v63.dat", "sim_code_v64.dat","sim_code_v65.dat", "sim_code_v66.dat"]).
-
-%% percept2_graph:scheduler_graph(0, "range_min=0.0000&range_max=2.9328&width=532&height=600").
-
-
 

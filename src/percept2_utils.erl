@@ -31,6 +31,8 @@
 
 -export([pmap/2, pforeach/2]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 
 pmap(Fun, List) ->
