@@ -23,8 +23,6 @@ gen_callgraph_img(Pid) ->
             gen_callgraph_img_1(Pid, Tree)
     end.
    
-gen_callgraph_img_1(Pid, CallTree) when is_pid(Pid)->
-    gen_callgraph_img_1(percept2_utils:pid2value(Pid), CallTree);
 gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
     PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
                         "."++integer_to_list(P3),
@@ -276,9 +274,8 @@ format_label(Label) when is_integer(Label) ->
 format_label(_Label) -> "".
 
 
--spec pid2str(Pid :: pid()) ->  string().
-pid2str(Pid) when is_pid(Pid) ->
-    String = lists:flatten(io_lib:format("~p", [Pid])),
-    lists:sublist(String, 2, erlang:length(String)-2);
+-spec pid2str(Pid :: pid()|pid_value()) ->  string().
+pid2str({pid, {P1,P2, P3}}) when is_atom(P2)->
+     integer_to_list(P1)++"."++atom_to_list(P2)++"."++integer_to_list(P3);
 pid2str({pid, {P1, P2, P3}}) ->
     integer_to_list(P1)++"."++integer_to_list(P2)++"."++integer_to_list(P3).
