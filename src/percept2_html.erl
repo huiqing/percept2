@@ -489,7 +489,8 @@ expand_a_pid(Pid) ->
             [Pid]
     end.
 
-is_dummy_pid({pid, {0, 0, _}}) -> true;
+is_dummy_pid({pid, {_, P2, _}}) ->
+    is_atom(P2);
 is_dummy_pid(_) -> false.
 
 
@@ -513,7 +514,6 @@ active_funcs_content_2(_Min, _Max, _StartTs, []) ->
     blink_msg("No function activities recorded for the time interval selected.");
 active_funcs_content_2(Min, Max, StartTs, ActiveFuns) ->
     CleanPid = percept2_db:select({system, nodes})==1,
-    io:format("CleanPid:\n~p\n", [CleanPid]),
     TableContent = [[{td, pid2html(element(1, F#funcall_info.id), CleanPid)},
                      {td, term2html(F#funcall_info.func)},
                      {td, make_image_string(F, {Min, Max})},
@@ -1186,7 +1186,7 @@ calltime_content_1(_Env, Pid) ->
 inter_node_message_content(Env, _Input) ->
     Nodes =percept2_db:select({inter_node, all}),
     case length(Nodes) < 2 of 
-        true -> error_msg("No inter-node message passing has been recorded.");
+        true -> blink_msg("No inter-node message passing has been recorded.");
         _ ->
             inter_node_message_content_1(Env, Nodes)
     end.
@@ -1304,11 +1304,8 @@ visual_link({Pid,undefined, _})->
 %%% --------------------------- %%%
 pid2html(Pid={pid, {_P1, P2, P3}}, true) ->
     PidValue = pid2str(Pid),
-    PidString="<0." ++ integer_to_list(P2)
-                                 ++ "." ++ integer_to_list(P3)
-                                 ++ ">",
-    "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++
-        PidValue++"\">"++PidString++"</a>";
+    PidString= "<"++pid2str({pid, {0, P2, P3}})++">",
+    pid2html_1(Pid, PidString, PidValue);
 pid2html(Other, _) ->
     pid2html(Other).
 
@@ -1317,12 +1314,21 @@ pid2html(Pid)
   when is_pid(Pid); is_tuple(Pid) andalso element(1, Pid)==pid ->
     PidString = term2html(Pid),
     PidValue = pid2str(Pid),
-    "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++
-        PidValue++"\">"++PidString++"</a>";
+    pid2html_1(Pid, PidString, PidValue);
 pid2html(Pid) when is_port(Pid) ->
     term2html(Pid);
 pid2html(_) ->
     "undefined".
+
+pid2html_1(Pid, PidString, PidValue) ->
+    case is_dummy_pid(Pid) of
+        true ->
+            "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++PidValue++"\">"
+                ++"<font color=\"#FF0000\">"++PidString++"</font></a>";
+        _ ->
+            "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++
+                PidValue++"\">"++PidString++"</a>"
+    end.
 
 %% pid2html_with_color(Pid)
 %%   when is_pid(Pid); is_tuple(Pid) andalso element(1, Pid)==pid ->
@@ -1382,6 +1388,8 @@ image_string_tail(Request, [{Type, Value} | Opts], Out) ->
 pid2str(Pid) when is_pid(Pid) ->
     String = lists:flatten(io_lib:format("~p", [Pid])),
     lists:sublist(String, 2, erlang:length(String)-2);
+pid2str({pid, {P1,P2, P3}}) when is_atom(P2)->
+     integer_to_list(P1)++"."++atom_to_list(P2)++"."++integer_to_list(P3);
 pid2str({pid, {P1, P2, P3}}) ->
     integer_to_list(P1)++"."++integer_to_list(P2)++"."++integer_to_list(P3).
 
@@ -1390,7 +1398,10 @@ pid2str({pid, {P1, P2, P3}}) ->
 str_to_internal_pid(PidStr) ->
     [P1,P2,P3] = string:tokens(PidStr,"."),
     {pid, {list_to_integer(P1), 
-           list_to_integer(P2),
+           case hd(P2)==$* of
+               true->list_to_atom(P2);
+               _ -> list_to_integer(P2)
+           end,
            list_to_integer(P3)}}.
 
 string2mfa(String) ->

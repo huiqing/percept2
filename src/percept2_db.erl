@@ -2130,7 +2130,7 @@ compress_process_tree(Trees) ->
 compress_process_tree([], Out)->
     lists:reverse(Out);
 compress_process_tree([T={P, _}|Ts], Out) ->
-    case is_dummy_process_pid(P#information.id) of
+    case is_dummy_pid(P#information.id) of
         true ->
             compress_process_tree(Ts, Out);
         false ->
@@ -2172,8 +2172,9 @@ compress_process_tree_3(ChildrenGroup) ->
                     Num = length(Cs),
                     LastIndex = get(last_index),
                     put(last_index, LastIndex+1),
+                    {pid, {NodeIndex, _, _}} =hd(UnNamedProcs),
                     CompressedChildren=
-                        Info=#information{id={pid, {0,0,LastIndex}},
+                        Info=#information{id={pid, {NodeIndex,list_to_atom("*"++integer_to_list(LastIndex)++"*"),0}},
                                           name=list_to_atom(integer_to_list(Num)++" procs omitted"),
                                           parent=C0#information.parent,
                                           entry = EntryFun,
@@ -2196,9 +2197,10 @@ compress_process_tree_3(ChildrenGroup) ->
             end
     end.
 
-is_dummy_process_pid({pid, {0, 0, _}}) -> true;
-is_dummy_process_pid(_) -> false.
-     
+is_dummy_pid({pid, {_, P2, _}}) ->
+    is_atom(P2);
+is_dummy_pid(_) -> false.
+
 %%% -------------------	%%%
 %%% Utility functionss	%%%
 %%% -------------------	%%%
