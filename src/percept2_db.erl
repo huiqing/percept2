@@ -45,8 +45,6 @@
 
 -define(STOP_TIMEOUT, 1000).
 
--compile(export_all).
-
 %%% ------------------------%%%
 %%% 	Type definitions    %%%
 %%% ------------------------%%%
@@ -532,9 +530,9 @@ insert_profile_trace(SubDBIndex,Trace) ->
             ?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
     end.
 insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, Type) ->
-    ActId = if Type == procs -> percept2_utils:pid2value(Id);
-            true -> Id
-         end,
+    ActId = if Type == procs -> pid2value(Id);
+               true -> Id
+            end,
     update_activity(ProcRegName,
                     #activity{id = ActId,
                               state = State,
@@ -557,17 +555,17 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     InformativeMfa = mfa2informative(Mfa),
     update_information(ProcRegName,
-                       #information{id = percept2_utils:pid2value(Pid), start = TS,
-                                    parent = percept2_utils:pid2value(Parent), entry = InformativeMfa}),
-    update_information_child(ProcRegName, percept2_utils:pid2value(Parent), Pid).
+                       #information{id = pid2value(Pid), start = TS,
+                                    parent = pid2value(Parent), entry = InformativeMfa}),
+    update_information_child(ProcRegName, pid2value(Parent), Pid).
 
 trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-    update_information(ProcRegName, #information{id = percept2_utils:pid2value(Pid), stop = TS}).
+    update_information(ProcRegName, #information{id = pid2value(Pid), stop = TS}).
 
 trace_register(SubDBIndex,_Trace={trace_ts, Pid, register, Name, _Ts}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-    update_information(ProcRegName, #information{id = percept2_utils:pid2value(Pid), name = Name}).
+    update_information(ProcRegName, #information{id = pid2value(Pid), name = Name}).
  
 trace_unregister(_SubDBIndex, _Trace)->
     ok.  
@@ -591,7 +589,7 @@ trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  _MFA, Ts}) when is_pid(Pid)
             ok;
         _ ->
             erlang:put({run_queue, Pid}, Rq),
-            InternalPid = percept2_utils:pid2value(Pid),
+            InternalPid = pid2value(Pid),
             update_information_rq(ProcRegName, InternalPid, {Ts, Rq})
     end;
 trace_in(_SubDBIndex, _Trace) ->
@@ -602,7 +600,7 @@ trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  _MFA, TS}) when is_pid(Pi
         {Rq, InTime} ->
             Elapsed = elapsed(InTime, TS),
             erlang:erase({in,Pid}),
-            InternalPid = percept2_utils:pid2value(Pid),
+            InternalPid = pid2value(Pid),
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
             update_information_element(ProcRegName, InternalPid, {13, Elapsed});
         undefined ->ok;
@@ -655,7 +653,7 @@ trace_open(SubDBIndex, _Trace={trace_ts, Caller, open, Port, Driver, TS})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{
                           id = Port, entry = Driver, start = TS,
-                         parent =  percept2_utils:pid2value(Caller)}).
+                         parent =  pid2value(Caller)}).
 
 trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
@@ -1137,7 +1135,7 @@ update_information_1(#information{id = Id} = NewInfo) ->
     end.
 
 update_information_child_1(Id, ChildPid) ->
-    InternalPid = percept2_utils:pid2value(ChildPid),
+    InternalPid = pid2value(ChildPid),
     case ets:lookup(pdb_info, Id) of
     	[] ->
             ets:insert(pdb_info,#information{
@@ -1153,7 +1151,7 @@ update_information_rq_1(Pid, {TS,RQ}) ->
     case ets:lookup(pdb_info, Pid) of
         [] -> 
             ets:insert(pdb_info, #information{
-                         id = percept2_utils:pid2value(Pid), 
+                         id = pid2value(Pid),
                          rq_history=[{TS,RQ}]}),
             ok; %% this should not happen;
         [I] ->
@@ -1166,7 +1164,7 @@ update_information_rq_1(Pid, {TS,RQ}) ->
 %% and this feature is removed for now.
 update_information_sent_1(From, MsgSize, To, Ts) ->
     update_inter_node_message_tab(From, MsgSize, To, Ts),
-    InternalPid =percept2_utils:pid2value(From),
+    InternalPid =pid2value(From),
     case  ets:lookup(pdb_info, InternalPid) of
         [] -> 
             ets:insert(pdb_info, 
@@ -1193,7 +1191,7 @@ update_inter_node_message_tab(From, MsgSize, To, Ts) ->
 
   
 update_information_received_1(Pid, MsgSize) ->
-    Pid1=percept2_utils:pid2value(Pid),
+    Pid1=pid2value(Pid),
     case  ets:lookup(pdb_info, Pid1) of
         [] -> 
             ets:insert(pdb_info, #information{
@@ -1690,7 +1688,7 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
                                                       {Func, TS1}
                                               end
                                      end,
-            ets:insert(funcall_info, #funcall_info{id={percept2_utils:pid2value(Pid), TS1}, func=Func0, end_ts=TS}),
+            ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), TS1}, func=Func0, end_ts=TS}),
             update_fun_call_count_time({Pid, Func0}, {TS1, TS}),
             update_calltree_info(Pid, {Func0, TS1, TS}, {Caller, CallerStartTs});
          _ -> ok  %% garbage collect or suspend.
@@ -1713,7 +1711,7 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
                    true -> undefined;
                    _ -> StartTS0
                end,
-    Pid1 = percept2_utils:pid2value(Pid),
+    Pid1 = pid2value(Pid),
     case ets:lookup(fun_calltree, {Pid1, Callee, StartTS}) of
         [] ->
             add_new_callee_caller(Pid1, {Callee, StartTS, EndTS},
@@ -2018,11 +2016,11 @@ update_fun_call_count_time({Pid, Func}, {StartTs, EndTs}) ->
     Time = ?seconds(EndTs, StartTs),
     case ets:lookup(fun_info, {Pid, Func}) of 
         [] ->
-            ets:insert(fun_info, #fun_info{id={percept2_utils:pid2value(Pid), Func},
+            ets:insert(fun_info, #fun_info{id={pid2value(Pid), Func},
                                            call_count=1, 
                                            acc_time=Time});
         [FunInfo] ->
-            ets:update_element(fun_info, {percept2_utils:pid2value(Pid), Func},
+            ets:update_element(fun_info, {pid2value(Pid), Func},
                                [{7, FunInfo#fun_info.call_count+1},
                                 {8, FunInfo#fun_info.acc_time+Time}])
     end.
@@ -2033,7 +2031,7 @@ update_fun_call_count_time({Pid, Func}, {StartTs, EndTs}) ->
 update_fun_info({Pid, MFA}, Caller, Called, StartTs, EndTs) ->
     case ets:lookup(fun_info, {Pid, MFA}) of
         [] ->
-            NewEntry=#fun_info{id={percept2_utils:pid2value(Pid), MFA},
+            NewEntry=#fun_info{id={pid2value(Pid), MFA},
                                callers = [Caller],
                                called = Called,
                                start_ts= StartTs, 
@@ -2244,6 +2242,17 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 			TupleList),
     group_by(N,TupleList2,Acc ++ [TupleList1]).
 
+-spec pid2value(Pid :: pid()|pid_value()) -> pid_value().
+pid2value(Pid={pid, {_, _, _}}) -> Pid;
+pid2value(Pid) when is_pid(Pid) ->
+    String = lists:flatten(io_lib:format("~p", [Pid])),
+    PidStr=lists:sublist(String, 2, erlang:length(String)-2),
+    [P1,P2,P3] = string:tokens(PidStr,"."),
+    {pid, {list_to_integer(P1), 
+           list_to_integer(P2),
+           list_to_integer(P3)}}.
+
+
 %% fprof:apply(refac_sim_code_par_v0,sim_code_detection, [["c:/cygwin/home/hl/demo"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo"], 8]). 
 
 %% percept_profile:start({ip, 4711}, {refac_sim_code_par_v4,sim_code_detection, [["c:/cygwin/home/hl/percept/test"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/percept/test"], 8]}, [])  
@@ -2286,3 +2295,6 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
  %% percept2:analyze(["sim_code_v60.dat", "sim_code_v61.dat", "sim_code_v62.dat","sim_code_v63.dat", "sim_code_v64.dat","sim_code_v65.dat", "sim_code_v66.dat"]).
 
 %% percept2_graph:scheduler_graph(0, "range_min=0.0000&range_max=2.9328&width=532&height=600").
+
+
+

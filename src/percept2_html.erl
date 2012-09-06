@@ -36,9 +36,9 @@
          func_callgraph_content/3
         ]).
 
--export([get_option_value/2]).
+-export([get_option_value/2,
+         seconds2ts/2]).
 
--compile(export_all).
 
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -373,8 +373,8 @@ codelocation_content_1(_Env, Input) ->
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    TsMin   = percept2_utils:seconds2ts(Min, StartTs),
-    TsMax   = percept2_utils:seconds2ts(Max, StartTs),
+    TsMin   = seconds2ts(Min, StartTs),
+    TsMax   = seconds2ts(Max, StartTs),
     Acts    = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
     Secs  = [timer:now_diff(A#activity.timestamp,StartTs)/1000 || A <- Acts],
     Delta = cl_deltas(Secs),
@@ -476,22 +476,18 @@ get_pids_to_compare(Input) ->
             lists:append([expand_a_pid(Pid)|| Pid <- Pids]);
         false ->
             [Pid|| Pid <- Pids,
-                   not is_dummy_pid(Pid)]
+                   not percept2_db:is_dummy_pid(Pid)]
     end.
     
 expand_a_pid(Pid) ->
-    case is_dummy_pid(Pid) of
+    case percept2_db:is_dummy_pid(Pid) of
         true ->
             [Info] = percept2_db:select({information, Pid}),            
-            [percept2_utils:pid2value(Pid1)
+            [percept2_db:pid2value(Pid1)
              ||Pid1 <- Info#information.hidden_pids];
         false ->
             [Pid]
     end.
-
-is_dummy_pid({pid, {_, P2, _}}) ->
-    is_atom(P2);
-is_dummy_pid(_) -> false.
 
 
 %%% active functions content page.
@@ -505,8 +501,8 @@ active_funcs_content_1(_Env, Input) ->
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    TsMin   = percept2_utils:seconds2ts(Min, StartTs),
-    TsMax   = percept2_utils:seconds2ts(Max, StartTs),
+    TsMin   = seconds2ts(Min, StartTs),
+    TsMax   = seconds2ts(Max, StartTs),
     ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}]}),
     active_funcs_content_2(Min, Max, StartTs, ActiveFuns).
 
@@ -636,8 +632,8 @@ process_page_header_content_1(_Env, Input) ->
     Min     = get_option_value("range_min", Query),
     Max     = get_option_value("range_max", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    TsMin   = percept2_utils:seconds2ts(Min, StartTs),
-    TsMax   = percept2_utils:seconds2ts(Max, StartTs),
+    TsMin   = seconds2ts(Min, StartTs),
+    TsMax   = seconds2ts(Max, StartTs),
     ProcessTree = percept2_db:gen_compressed_process_tree(),
     ProcessTreeHeader = mk_display_style(ProcessTree),
     Content = processes_content(ProcessTree, {TsMin, TsMax}),
@@ -903,7 +899,7 @@ process_info_content_1(_Env, Input) ->
     InfoTable = html_table
                   ([
                     [{th, "Pid"},        pid2html(I#information.id, CleanPid)],
-                    [{th, "Name"}, term2html(case is_dummy_pid(Pid) of
+                    [{th, "Name"}, term2html(case percept2_db:is_dummy_pid(Pid) of
                                                  true -> dummy_process;
                                                  _ -> I#information.name
                                              end)],
@@ -921,7 +917,7 @@ process_info_content_1(_Env, Input) ->
                      term2html(info_msg_received(I))],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
                      term2html(info_msg_sent(I))]
-                   ] ++ case is_dummy_pid(Pid) of
+                   ] ++ case percept2_db:is_dummy_pid(Pid) of
                             true ->
                                 [[{th, "Compressed Processes"}, lists:flatten(
                                                                  lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
@@ -1321,7 +1317,7 @@ pid2html(_) ->
     "undefined".
 
 pid2html_1(Pid, PidString, PidValue) ->
-    case is_dummy_pid(Pid) of
+    case percept2_db:is_dummy_pid(Pid) of
         true ->
             "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++PidValue++"\">"
                 ++"<font color=\"#FF0000\">"++PidString++"</font></a>";
@@ -1569,3 +1565,28 @@ blink_msg(Message) ->
     "<div style=\"text-align:center;\"><blink><center><h3><p>"
         ++ Message ++"</p></h3></center><blink></div>".
 
+%% seconds2ts(Seconds, StartTs) -> TS
+%% In:
+%%	Seconds = float()
+%%	StartTs = timestamp()
+%% Out:
+%%	TS = timestamp()
+%% @spec seconds2ts(float(), StartTs::{integer(),integer(),integer()}) -> timestamp()
+%% @doc Calculates a timestamp given a duration in seconds and a starting timestamp. 
+seconds2ts(Seconds, {Ms, S, Us}) ->
+    % Calculate mega seconds integer
+    MsInteger = trunc(Seconds) div 1000000 ,
+
+    % Calculate the reminder for seconds
+    SInteger  = trunc(Seconds),
+
+    % Calculate the reminder for micro seconds
+    UsInteger = trunc((Seconds - SInteger) * 1000000),
+
+    % Wrap overflows
+
+    UsOut = (UsInteger + Us) rem 1000000,
+    SOut  = ((SInteger + S) + (UsInteger + Us) div 1000000) rem 1000000,
+    MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
+
+    {MsOut, SOut, UsOut}.

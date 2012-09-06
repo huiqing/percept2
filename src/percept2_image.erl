@@ -40,7 +40,7 @@
 
 graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
-    MinMax = percept2_utils:minmax(Data2),
+    MinMax = minmax(Data2),
     {Xmin, Ymin, Xmax, Ymax} = MinMax, 
     graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
     				lists:min([RYmin, Ymin]),
@@ -61,7 +61,7 @@ graph(Width, Height, []) ->
     error_graph(Width, Height,"No trace data recorded.");
 graph(Width, Height, Data) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
-    Bounds = percept2_utils:minmax(Data2),
+    Bounds = minmax(Data2),
     graf1(Width, Height, Bounds, Data).
 
 error_graph(Width, Height, Text) ->
@@ -450,3 +450,16 @@ draw_cross_graft1(Im, [{X1, Y1}|Data], C={B, _}, GA) ->
     egd:line(Im, {X1, Y1-2}, {X1, Y1+2}, B),  
     draw_cross_graft1(Im, Data, C, GA);
 draw_cross_graft1(_Im, [], _, _) -> ok.
+
+%% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
+%%	X = number()
+%%	Y = number()
+%%	MinX = number()
+%%	MinY = number()
+%%	MaxX = number()
+%%	MaxY = number()
+%% @doc Returns the min and max of a set of 2-dimensional numbers.
+minmax(Data) ->
+    Xs = [ X || {X,_Y} <- Data],
+    Ys = [ Y || {_X, Y} <- Data],
+    {lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}.

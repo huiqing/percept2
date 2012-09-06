@@ -109,8 +109,8 @@ graph_1(_Env, Input, Type) ->
     
      % seconds2ts
     StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_utils:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_utils:seconds2ts(RangeMax, StartTs),
+    TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
     
     % Convert Pids to id option list
     IDs      = [{id, ID} || ID <- Pids],
@@ -150,8 +150,8 @@ scheduler_graph(_Env, Input) ->
     Height   = percept2_html:get_option_value("height", Query),
     
     StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_utils:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_utils:seconds2ts(RangeMax, StartTs),
+    TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
     
 
     Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
@@ -222,8 +222,8 @@ inter_node_message_graph(_Env, Input) ->
     Node1 = percept2_html:get_option_value("node1", Query),
     Node2 = percept2_html:get_option_value("node2", Query),
     StartTs = percept2_db:select({system, start_ts}),
-    MinTs    = percept2_utils:seconds2ts(RangeMin, StartTs),
-    MaxTs    = percept2_utils:seconds2ts(RangeMax, StartTs),
+    MinTs    = percept2_html:seconds2ts(RangeMin, StartTs),
+    MaxTs    = percept2_html:seconds2ts(RangeMax, StartTs),
     Data = percept2_db:select({inter_node, {message_acts, {Node1, Node2, MinTs, MaxTs}}}),
     Data1=[{?seconds(TS, StartTs), Size, 0}||{TS, Size}<-Data],
     percept2_image:inter_node_message_image(Width, Height, RangeMin, RangeMax, Data1).

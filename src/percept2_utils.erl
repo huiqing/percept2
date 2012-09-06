@@ -29,9 +29,9 @@
 
 -module(percept2_utils).
 
--include("../include/percept2.hrl").
+-export([pmap/2, pforeach/2]).
 
--compile(export_all).
+-include("../include/percept2.hrl").
 
 pmap(Fun, List) ->
     Parent = self(),
@@ -71,62 +71,8 @@ pforeach_1(Fun, Self, X) ->
     _ =  (catch Fun(X)),
     Self ! Self.
 
-
 pforeach_wait(_S,0) -> ok;
 pforeach_wait(S,N) ->
     receive
         S -> pforeach_wait(S,N-1)
     end.
-
-
-%% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
-%%	X = number()
-%%	Y = number()
-%%	MinX = number()
-%%	MinY = number()
-%%	MaxX = number()
-%%	MaxY = number()
-%% @doc Returns the min and max of a set of 2-dimensional numbers.
-minmax(Data) ->
-    Xs = [ X || {X,_Y} <- Data],
-    Ys = [ Y || {_X, Y} <- Data],
-    {lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}.
-
-
-%% seconds2ts(Seconds, StartTs) -> TS
-%% In:
-%%	Seconds = float()
-%%	StartTs = timestamp()
-%% Out:
-%%	TS = timestamp()
-%% @spec seconds2ts(float(), StartTs::{integer(),integer(),integer()}) -> timestamp()
-%% @doc Calculates a timestamp given a duration in seconds and a starting timestamp. 
-seconds2ts(Seconds, {Ms, S, Us}) ->
-    % Calculate mega seconds integer
-    MsInteger = trunc(Seconds) div 1000000 ,
-
-    % Calculate the reminder for seconds
-    SInteger  = trunc(Seconds),
-
-    % Calculate the reminder for micro seconds
-    UsInteger = trunc((Seconds - SInteger) * 1000000),
-
-    % Wrap overflows
-
-    UsOut = (UsInteger + Us) rem 1000000,
-    SOut  = ((SInteger + S) + (UsInteger + Us) div 1000000) rem 1000000,
-    MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
-
-    {MsOut, SOut, UsOut}.
-
-
-
--spec pid2value(Pid :: pid()|pid_value()) -> pid_value().
-pid2value(Pid={pid, {_, _, _}}) -> Pid;
-pid2value(Pid) when is_pid(Pid) ->
-    String = lists:flatten(io_lib:format("~p", [Pid])),
-    PidStr=lists:sublist(String, 2, erlang:length(String)-2),
-    [P1,P2,P3] = string:tokens(PidStr,"."),
-    {pid, {list_to_integer(P1), 
-           list_to_integer(P2),
-           list_to_integer(P3)}}.
