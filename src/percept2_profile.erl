@@ -108,16 +108,19 @@ stop() ->
 %% 		Auxiliary functions 
 %%
 %%==========================================================================
--spec profile_to_file(FileName::file:filename(), Opts::[percept_option()])->
+-spec profile_to_file(FileSpec::file:filename()|
+                                {file:filename(), wrap, Suffix::string(),
+                                 WrapSize::pos_integer(), WrapCnt::pos_integer()},
+                      Opts::[percept_option()])->
                              {'ok', port()} | {'already_started', port()}.
-profile_to_file(Filename, Opts) ->
+profile_to_file(FileSpec, Opts) ->
     case whereis(percept_port) of 
 	undefined ->
 	    io:format("Starting profiling.~n", []),
 
 	    erlang:system_flag(multi_scheduling, block),
-	    Port = (dbg:trace_port(file, Filename))(),
-	    % Send start time
+	    Port =  (dbg:trace_port(file, FileSpec))(),
+            % Send start time
 	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
 	    erlang:system_flag(multi_scheduling, unblock),
 		
