@@ -1,7 +1,7 @@
 
 set xlabel "Time (Seconds)"
 set ylabel "Memory Usage (Mega bytes)"
-set title "Message Usage Graph"
+set title "Memory Usage Graph"
 plot "sample_mem_info.dat" using 1:2 title 'Total' with lines lw 3, \
      "sample_mem_info.dat" using 1:3 title 'Process' with lines lw 3, \
      "sample_mem_info.dat" using 1:4 title 'ETS'  with lines lw 3,\
