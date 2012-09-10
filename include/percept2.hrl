@@ -120,7 +120,7 @@
 %%% -------------------	%%%
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
-%%-define(debug, 9).
+-define(debug, 9).
 %%-define(debug, 0). 
 
 -ifdef(debug). 
