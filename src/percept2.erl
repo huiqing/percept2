@@ -16,7 +16,6 @@
 %%
 %% %CopyrightEnd%
 %% 
-
 %% 
 %% @doc Percept2 - Erlang Concurrency Profiling Tool
 %%
@@ -74,26 +73,32 @@ stop(_State) ->
 
 %% profile to a single file, and only profile process/ports concurrency 
 %% activities.
--spec profile(Filename::string()) -> {ok, Port} | {already_started, Port}.
-profile(Filename) ->
-    percept2_profile:start(Filename, [concurrency]).
+-type filespec()::file:filename()|
+                  {file:filename(), wrap, Suffix::string(),
+                   WrapSize::pos_integer(), WrapCnt::pos_integer()}.
+
+-spec profile(FileSpec::filespec())
+             -> {ok, Port} | {already_started, Port}.
+profile(FileSpec) ->
+    percept2_profile:start(FileSpec, [concurrency]).
 
 %% profile to a single file with user-specified profiling/tracing options.
--spec profile(Filename::file:filename(),Options :: [percept_option()]) ->
+-spec profile(FileSpec::filespec(),
+              Options :: [percept_option()]) ->
                      {'ok', port()} | {'already_started', port()}.
-profile(Filename, Options) ->
-    percept2_profile:start(Filename, Options). 
+profile(FileSpec, Options) ->
+    percept2_profile:start(FileSpec, Options). 
 
 %% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) ->
 %%     ok | {already_started, Port} | {error, not_started}
 %% @see percept2_profile
 
--spec profile(Type :: file:filename(),
+-spec profile(FileSpec :: filespec(),
 	      Entry :: {atom(), atom(), list()},
 	      Options :: [percept_option()]) ->
                      'ok' | {'already_started', port()} | {'error', 'not_started'}.
-profile(Type, MFA, Options) ->
-    percept2_profile:start(Type, MFA, Options).
+profile(FileSpec, MFA, Options) ->
+    percept2_profile:start(FileSpec, MFA, Options).
 
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
 %% @see percept2_profile

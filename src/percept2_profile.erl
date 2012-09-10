@@ -47,25 +47,29 @@
 %%
 %%==========================================================================
 
--spec start(FileName :: file:filename(), 
+-spec start(FileSpec::file:filename()|
+                                {file:filename(), wrap, Suffix::string(),
+                                 WrapSize::pos_integer(), WrapCnt::pos_integer()}, 
             Options::[percept_option()]) ->
                    {'ok', port()} | {'already_started', port()}.
-start(FileName, Options) ->
-    profile_to_file(FileName,Options). 
+start(FileSpec, Options) ->
+    profile_to_file(FileSpec,Options). 
 
 %%@doc Starts profiling at the entrypoint specified by the MFA. All events are collected, 
 %%	this means that processes outside the scope of the entry-point are also profiled. 
 %%	No explicit call to stop/0 is needed, the profiling stops when
 %%	the entry function returns.
--spec start(FileName:: file:filename(),
+-spec start(FileSpec::file:filename()|
+                                {file:filename(), wrap, Suffix::string(),
+                                 WrapSize::pos_integer(), WrapCnt::pos_integer()},
 	    Entry :: {atom(), atom(), list()},
             Options :: [percept_option()]) ->
                    'ok' | {'already_started', port_number()} |
                    {'error', 'not_started'}.
-start(FileName, _Entry={Mod, Fun, Args},Options) ->
+start(FileSpec, _Entry={Mod, Fun, Args}, Options) ->
     case whereis(percept_port) of
 	undefined ->
-	    profile_to_file(FileName,Options),
+	    profile_to_file(FileSpec,Options),
             _Res=erlang:apply(Mod, Fun, Args),
             stop();  
 	Port ->
