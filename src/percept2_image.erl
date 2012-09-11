@@ -386,7 +386,8 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     X4 = round(DX*(FunEnd-Start)),
     egd:rectangle(Im, {0,0}, {Width-1, Height-1}, Black),
      if QueryStart > FunStart andalso QueryEnd < FunEnd -> 
-            egd:filledRectangle(Im, {X1, 0}, {X2, Height- 1}, Green),
+            egd:filledRectangle(Im, {0, 0}, {Width-1, Height- 1}, Grey),
+            egd:filledRectangle(Im, {X1, 0}, {X2, Height- 1}, PaleGreen),
             if X2>X1+1 ->
                     egd:rectangle(Im, {X1, 0}, {X2, Height - 1}, Black);
                true ->
