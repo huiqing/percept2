@@ -48,13 +48,20 @@
 %%% --------------------------- %%%
 %%% 	API functions     	%%%
 %%% --------------------------- %%%
+
 -spec(overview_page(pid(), list(), string()) -> ok | {error, term()}).
 overview_page(SessionID, Env, Input) ->
     ?dbg(0, "overview_content input:~p~n", [Input]),
     try
-        Menu = menu(Input),
-        OverviewContent = overview_content(Env, Input),
-        deliver_page(SessionID, Menu, OverviewContent)
+        case percept2_db:is_database_loaded() of 
+           false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                Menu = menu(Input),
+                OverviewContent = overview_content(Env, Input),
+                deliver_page(SessionID, Menu, OverviewContent)
+        end
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -85,9 +92,15 @@ codelocation_page(SessionID, Env, Input) ->
 -spec(active_funcs_page(pid(), list(), string()) -> ok | {error, term()}).
 active_funcs_page(SessionID, Env, Input) ->
     try
-        Menu = menu(Input),
-        Content = active_funcs_content(Env, Input),
-        deliver_page(SessionID, Menu, Content)
+        case percept2_db:is_database_loaded() of 
+            false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                Menu = menu(Input),
+                Content = active_funcs_content(Env, Input),
+                deliver_page(SessionID, Menu, Content)
+        end
     catch
         _E1:_E2->
             error_page(SessionID, Env, Input)
@@ -96,8 +109,14 @@ active_funcs_page(SessionID, Env, Input) ->
 -spec(summary_report_page(pid(), list(), string()) -> ok | {error, term()}).
 summary_report_page(SessionID, Env, Input) ->
     try
-        Menu = menu(Input),
-        deliver_page(SessionID, Menu, summary_report_content())
+        case percept2_db:is_database_loaded() of 
+            false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                Menu = menu(Input),
+                deliver_page(SessionID, Menu, summary_report_content())
+        end
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -105,14 +124,14 @@ summary_report_page(SessionID, Env, Input) ->
     
 -spec(databases_page(pid(), list(), string()) -> ok | {error, term()}).
 databases_page(SessionID, Env, Input) ->
-    try
-        Menu = menu(Input),
+    try 
+        Menu = menu_1(0,0),
         deliver_page(SessionID, Menu, databases_content())
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
-    
+
 -spec(load_database_page(pid(), list(), string()) -> ok | {error, term()}).
 load_database_page(SessionID, Env, Input) ->
     try
@@ -128,12 +147,18 @@ load_database_page(SessionID, Env, Input) ->
 -spec(process_tree_page(pid(), list(), string()) -> ok | {error, term()}).
 process_tree_page(SessionID, Env, Input) ->
     try
-        Menu = menu(Input),
-        {Header, Content} = process_page_header_content(Env, Input),
-        mod_esi:deliver(SessionID, header(Header)),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        case percept2_db:is_database_loaded() of 
+            false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                Menu = menu(Input),
+                {Header, Content} = process_page_header_content(Env, Input),
+                mod_esi:deliver(SessionID, header(Header)),
+                mod_esi:deliver(SessionID, Menu),
+                mod_esi:deliver(SessionID, Content),
+                mod_esi:deliver(SessionID, footer())
+        end
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -142,12 +167,18 @@ process_tree_page(SessionID, Env, Input) ->
 -spec(ports_page(pid(), list(), string()) -> ok | {error, term()}).
 ports_page(SessionID, Env, Input) ->
     try
-        Menu = menu(Input),
-        Content = ports_page_content(Env, Input),
-        mod_esi:deliver(SessionID, header()),
-        mod_esi:deliver(SessionID, Menu),
-        mod_esi:deliver(SessionID, Content),
-        mod_esi:deliver(SessionID, footer())
+        case percept2_db:is_database_loaded() of 
+            false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                Menu = menu(Input),
+                Content = ports_page_content(Env, Input),
+                mod_esi:deliver(SessionID, header()),
+                mod_esi:deliver(SessionID, Menu),
+                mod_esi:deliver(SessionID, Content),
+                mod_esi:deliver(SessionID, footer())
+        end
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -202,10 +233,16 @@ callgraph_visualisation_page(SessionID, Env, Input) ->
 
 inter_node_message_page(SessionID, Env, Input) ->
     try
-        mod_esi:deliver(SessionID, inter_node_message_header()),
-        mod_esi:deliver(SessionID, menu(Input)), 
-        mod_esi:deliver(SessionID, inter_node_message_content(Env, Input)),
-        mod_esi:deliver(SessionID, footer())
+        case percept2_db:is_database_loaded() of 
+            false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                mod_esi:deliver(SessionID, inter_node_message_header()),
+                mod_esi:deliver(SessionID, menu(Input)), 
+                mod_esi:deliver(SessionID, inter_node_message_content(Env, Input)),
+                mod_esi:deliver(SessionID, footer())
+        end
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -229,13 +266,13 @@ deliver_page(SessionID, Menu, Content) ->
     mod_esi:deliver(SessionID, Menu),
     mod_esi:deliver(SessionID, Content),
     mod_esi:deliver(SessionID, footer()).
-
+   
 %%% --------------------------- %%%
 %%% 	loal functions   	%%%
 %%% --------------------------- %%%
 error_page(SessionID, _Env, _Input) ->
     StackTrace = lists:flatten(
-            io_lib:format("~p\n",
+                   io_lib:format("~p\n",
                           [erlang:get_stacktrace()])),
     Str="<div>" ++
         "<h3 style=\"text-align:center;\"> Percept Internal Error </h3>" ++
@@ -1513,6 +1550,9 @@ menu(Input) ->
     Query = httpd:parse_query(Input),
     Min = get_option_value("range_min", Query),
     Max = get_option_value("range_max", Query),
+    menu_1(Min, Max).
+
+menu_1(Min, Max) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
      	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>

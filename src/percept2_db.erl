@@ -27,11 +27,11 @@
          insert/2,
          select/1,
          consolidate_db/0,
-         gen_compressed_process_tree/0,
-         stop_sync/1
+         gen_compressed_process_tree/0
         ]).
- 
--export([is_dummy_pid/1, pid2value/1]).
+
+-export([is_dummy_pid/1, pid2value/1,
+        is_database_loaded/0, stop_sync/1]).
 
 %% internal export
 -export([trace_spawn/2, trace_exit/2, trace_register/2,
@@ -164,6 +164,9 @@ stop_percept_sub_dbs(FileNameSubDBPairs) ->
               true=stop_sync(SubDB)
       end, FileNameSubDBPairs).
     
+is_database_loaded() ->
+    whereis(percept_db)/=undefined.
+
 %% @doc Inserts a trace or profile message to the database.  
 -spec insert(pid()|atom(), tuple()) -> ok.
 insert(SubDB, Trace) -> 
