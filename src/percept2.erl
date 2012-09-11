@@ -42,6 +42,8 @@
 %% Application callback functions.
 -export([start/2, stop/1, parse_and_insert/3]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 
 %%---------------------------------------------------------%%
@@ -160,7 +162,7 @@ start_webserver(Port) when is_integer(Port) ->
     application:load(percept2),
     case whereis(percept_httpd) of
 	undefined ->
-	    {ok, Config} = get_webserver_config("percept", Port),
+	    {ok, Config} = get_webserver_config("percept2", Port),
             inets:start(),
 	    case inets:start(httpd, Config) of
 		{ok, Pid} ->
