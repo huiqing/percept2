@@ -36,9 +36,11 @@
          func_callgraph_content/3
         ]).
 
+
 -export([get_option_value/2,
          seconds2ts/2]).
 
+-compile(export_all).
 
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").

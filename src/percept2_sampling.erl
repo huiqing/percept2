@@ -196,7 +196,11 @@ check_out_dir(Dir) ->
 %%
 %% 3) load the corresponding gnuplot script for the data to be visualised. For 
 %%    example, to visualise the memory usage data in file `sample_mem_info.dat', 
-%%    the gnuplot script to load is `/path/to/sample_mem_info.plt'.
+%%    the gnuplot script to load is `/path/to/sample_mem_info.plt'. The snapshot
+%%    next shows an example output the memory usage graph.
+%%
+%%  <img src="percept2_sample_mem.png"
+%%  alt="the front page of Percept2"  width="850" height="500"> </img>
 
 -spec(sample(Items::[sample_items()], 
              EntryOrTime::entry_mfa()|milliseconds(),

@@ -399,11 +399,13 @@ select_query_inter_node(Query) ->
             Body =  [['$1', '$2']],
             Nodes=ets:select(inter_node, [{Head, Constraints, Body}]),
             sets:to_list(sets:from_list(lists:append(Nodes)));
-        {inter_node, {message_acts, {FromNode, ToNode, MinTs, MaxTs}}} ->
+        {inter_node, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
+            FromNode = list_to_atom(FromNode1),
+            ToNode = list_to_atom(ToNode1),
             Head = #inter_node{timed_from_node={'$0', FromNode},
-                                   to_node = ToNode,
-                                   msg_size = '$2',
-                                   _='_'},
+                               to_node = ToNode,
+                               msg_size = '$2',
+                               _='_'},
             Constraints = [{'>=', '$0', {MinTs}}, {'=<', '$0', {MaxTs}}],
             Body =  [{{'$0', '$2'}}],
             ets:select(inter_node, [{Head, Constraints, Body}]);
