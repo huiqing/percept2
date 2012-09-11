@@ -84,8 +84,8 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
 	_ -> Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 					 SearchPaths, TabWidth),
             %% wrangler_io:format("\nStart displaying results...\n"),
-	    {_T, _}=timer:tc(wrangler_code_search_utils, display_clone_result, [Cs, "Similar"])
-            %% wrangler_io:format("\nTime spent on displaying results: ~p\n", [to_seconds(T)])             
+             wrangler_code_search_utils:display_clone_result(Cs, "Similar")
+             %% wrangler_io:format("\nTime spent on displaying results: ~p\n", [to_seconds(T)])             
     end,
     {ok, "Similar code detection finished."}.
 
@@ -107,8 +107,7 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
     HashPid = start_hash_process(),
    
     %% Clone detection.
-    {_T0, {Cs, {_T1, _T2, _T3}}} = timer:tc(?MODULE, sim_code_detection_1, 
-                                        [Files,Threshold,Tabs, HashPid,SearchPaths,TabWidth]),
+    Cs = sim_code_detection_1(Files,Threshold,Tabs, HashPid,SearchPaths,TabWidth),
     %% ?wrangler_io("\nTime spent on generalisarion and hashing: ~w seconds\n",[to_seconds(T1)]),
     %% ?wrangler_io("\nTime spent on generating initial clone candidates: ~w seconds\n",[to_seconds(T2)]),
     %% ?wrangler_io("\nTime spent on examination of clone candidates: ~w seconds\n",[to_seconds(T3)]),
@@ -120,19 +119,16 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 %% incremental clone detection.
 sim_code_detection_1(Files, Thresholds, Tabs, HashPid, SearchPaths, TabWidth) ->
     ?wrangler_io("\nGeneralise and hash ASTs ...\n", []),
-    {T1, _} =timer:tc(?MODULE, generalise_and_hash_ast, 
-                      [Files, Thresholds, Tabs, HashPid, SearchPaths, TabWidth]),
-    ?wrangler_io("\nGeneralisarion and hashing finished; time used: ~w seconds\n",[to_seconds(T1)]),
+    generalise_and_hash_ast(Files, Thresholds, Tabs, HashPid, SearchPaths, TabWidth),
     
     ?wrangler_io("\nCollecting initial clone candidates ...\n",[]),
-    {T2, Cs}= timer:tc(?MODULE, gen_initial_clone_candidates, [Files, Thresholds,HashPid]),
-    ?wrangler_io("\nCollecting initial candidates finished; time used: ~w seconds\n", [to_seconds(T2)]),
+    Cs= gen_initial_clone_candidates(Files, Thresholds,HashPid),
     ?wrangler_io("\nNumber of initial clone candidates: ~p\n", [length(Cs)]),
     
     ?wrangler_io("\nChecking clone candidates ... \n", []),
-    {T3, Cs4} = timer:tc(?MODULE, check_clone_candidates, [Thresholds, Tabs, HashPid, Cs]),
-    ?wrangler_io("\nChecking clone candidates finshed; time used: ~w seconds \n", [to_seconds(T3)]),
-    {Cs4, {T1, T2, T3}}.
+    Cs4 = check_clone_candidates(Thresholds, Tabs, HashPid, Cs),
+    %%?wrangler_io("\nChecking clone candidates finshed; time used: ~w seconds \n", [to_seconds(T3)]),
+    Cs4.
 
 gen_initial_clone_candidates(Files, Thresholds, HashPid) ->
     %% Generate clone candidates using suffix tree based clone detection techniques.
@@ -344,7 +340,7 @@ check_clone_candidates(Thresholds, Tabs, HashPid, Cs) ->
     CloneCheckerPid = start_clone_check_process(Tabs),
     %% examine each clone candiate and filter false positives.
     Cs2 = examine_clone_candidates(Cs, Thresholds, Tabs, CloneCheckerPid, HashPid),
-    {_T,Cs3} = timer:tc(?MODULE,combine_clones_by_au, [Cs2]),
+    Cs3 = combine_clones_by_au(Cs2),
     %%wrangler_io:format("Time spent on combining clones by au:~p\n", [T]),                       
     stop_clone_check_process(CloneCheckerPid),
     [{R, L, F, C}||{R, L, F, C}<-Cs3, length(R)>=2].
@@ -381,7 +377,7 @@ clone_check_loop(Cs, CandidateClassPairs, Tabs) ->
             clone_check_loop(Clones1 ++ Cs, NewCandidateClassPairs, Tabs);
 	{get_clones, From} ->
             %%wrangler_io:format("\n get processed clones ... \n"),
-	    {_T, Cs0}=timer:tc(?MODULE, remove_sub_clones, [Cs]),
+	    Cs0=remove_sub_clones(Cs),
            %% wrangler_io:format("\nTime spent on removing sub clones:~p\n", [to_seconds(T)]),
 	    Cs1=[{AbsRanges, Len, Freq, AntiUnifier}||
 		    {_, {Len, Freq}, AntiUnifier,AbsRanges}<-Cs0],
