@@ -1,0 +1,89 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>Module percept2</title>
+<link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
+</head>
+<body bgcolor="white">
+<div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<hr>
+
+<h1>Module percept2</h1>
+<ul class="index"><li><a href="#description">Description</a></li><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>Percept2 - Erlang Concurrency Profiling Tool.
+
+<p><b>Behaviours:</b> <a href="application.html"><tt>application</tt></a>.</p>
+
+<h2><a name="description">Description</a></h2><p>Percept2 - Erlang Concurrency Profiling Tool</p>
+ 
+  This module provides the user interface for the application.
+ 
+<h2><a name="types">Data Types</a></h2>
+
+<h3 class="typedecl"><a name="type-filespec">filespec()</a></h3>
+<p><tt>filespec() = <a href="file.html#type-filename">file:filename()</a> | {<a href="file.html#type-filename">file:filename()</a>, wrap, Suffix::string(), WrapSize::pos_integer(), WrapCnt::pos_integer()}</tt></p>
+
+
+<h2><a name="index">Function Index</a></h2>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#profile-1">profile/1</a></td><td></td></tr>
+<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td></td></tr>
+<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td></td></tr>
+<tr><td valign="top"><a href="#start_webserver-0">start_webserver/0</a></td><td>Starts webserver.</td></tr>
+<tr><td valign="top"><a href="#start_webserver-1">start_webserver/1</a></td><td>Starts webserver.</td></tr>
+<tr><td valign="top"><a href="#stop_profile-0">stop_profile/0</a></td><td></td></tr>
+<tr><td valign="top"><a href="#stop_webserver-0">stop_webserver/0</a></td><td>Stops webserver.</td></tr>
+</table>
+
+<h2><a name="functions">Function Details</a></h2>
+
+<h3 class="function"><a name="analyze-1">analyze/1</a></h3>
+<div class="spec">
+<p><tt>analyze(FileNames::[<a href="file.html#type-filename">file:filename()</a>]) -&gt; ok | {error, any()}</tt><br></p>
+</div>
+
+<h3 class="function"><a name="profile-1">profile/1</a></h3>
+<div class="spec">
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>) -&gt; {ok, Port} | {already_started, Port}</tt><br></p>
+</div>
+
+<h3 class="function"><a name="profile-2">profile/2</a></h3>
+<div class="spec">
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Options::[<a href="#type-percept_option">percept_option()</a>]) -&gt; {ok, port()} | {already_started, port()}</tt><br></p>
+</div>
+
+<h3 class="function"><a name="profile-3">profile/3</a></h3>
+<div class="spec">
+<p><tt>profile(Filename::string(), MFA::mfa(), Options::[<a href="#type-percept_option">percept_option()</a>]) -&gt; ok | {already_started, Port} | {error, not_started}</tt><br></p>
+</div>
+<p><b>See also:</b> <a href="percept2_profile.html">percept2_profile</a>.</p>
+
+<h3 class="function"><a name="start_webserver-0">start_webserver/0</a></h3>
+<div class="spec">
+<p><tt>start_webserver() -&gt; {started, Hostname, Port} | {error, Reason}</tt>
+<ul class="definitions"><li><tt>Hostname = string()</tt></li><li><tt>Port = integer()</tt></li><li><tt>Reason = term()</tt></li></ul></p>
+</div><p>Starts webserver.</p>
+
+<h3 class="function"><a name="start_webserver-1">start_webserver/1</a></h3>
+<div class="spec">
+<p><tt>start_webserver(Port::integer()) -&gt; {started, Hostname, AssignedPort} | {error, Reason}</tt>
+<ul class="definitions"><li><tt>Hostname = string()</tt></li><li><tt>AssignedPort = integer()</tt></li><li><tt>Reason = term()</tt></li></ul></p>
+</div><p>Starts webserver. If port number is 0, an available port number will
+ 	be assigned by inets.</p>
+
+<h3 class="function"><a name="stop_profile-0">stop_profile/0</a></h3>
+<div class="spec">
+<p><tt>stop_profile() -&gt; ok | {error, not_started}</tt><br></p>
+</div>
+<p><b>See also:</b> <a href="percept2_profile.html">percept2_profile</a>.</p>
+
+<h3 class="function"><a name="stop_webserver-0">stop_webserver/0</a></h3>
+<div class="spec">
+<p><tt>stop_webserver() -&gt; ok | {error, not_started}</tt><br></p>
+</div><p>Stops webserver.</p>
+<hr>
+
+<div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
+<p><i>Generated by EDoc, Sep 11 2012, 09:15:28.</i></p>
+</body>
+</html>
