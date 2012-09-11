@@ -29,7 +29,7 @@
          consolidate_db/0,
          gen_compressed_process_tree/0
         ]).
-
+ 
 -export([is_dummy_pid/1, pid2value/1,
         is_database_loaded/0, stop_sync/1]).
 
@@ -1697,7 +1697,7 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
                                               end
                                      end,
             ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), TS1}, func=Func0, end_ts=TS}),
-            update_fun_call_count_time({Pid, Func0}, {TS1, TS}),
+            update_fun_call_time({Pid, Func0}, {TS1, TS}),
             update_calltree_info(Pid, {Func0, TS1, TS}, {Caller, CallerStartTs});
          _ -> ok  %% garbage collect or suspend.
     end,
@@ -2020,30 +2020,29 @@ process_a_call_tree_1(CallTree) ->
     end.
 
       
-update_fun_call_count_time({Pid, Func}, {StartTs, EndTs}) ->
+update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
     Time = ?seconds(EndTs, StartTs),
     case ets:lookup(fun_info, {Pid, Func}) of 
         [] ->
             ets:insert(fun_info, #fun_info{id={pid2value(Pid), Func},
-                                           call_count=1, 
                                            acc_time=Time});
         [FunInfo] ->
             ets:update_element(fun_info, {pid2value(Pid), Func},
-                               [{7, FunInfo#fun_info.call_count+1},
-                                {8, FunInfo#fun_info.acc_time+Time}])
+                               [{8, FunInfo#fun_info.acc_time+Time}])
     end.
 
 %% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa()|undefined, non_neg_integer()},
 %%                       [{true_mfa(), non_neg_integer()}], timestamp(), timestamp()) ->true).
              
-update_fun_info({Pid, MFA}, Caller, Called, StartTs, EndTs) ->
+update_fun_info({Pid, MFA}, Caller={_Func, Cnt}, Called, StartTs, EndTs) ->
     case ets:lookup(fun_info, {Pid, MFA}) of
         [] ->
             NewEntry=#fun_info{id={pid2value(Pid), MFA},
                                callers = [Caller],
                                called = Called,
-                               start_ts= StartTs, 
-                               end_ts = EndTs},
+                               start_ts= StartTs,
+                               end_ts = EndTs,
+                               call_count = Cnt},
             ets:insert(fun_info, NewEntry);
         [FunInfo] ->
             NewFunInfo=
@@ -2052,7 +2051,8 @@ update_fun_info({Pid, MFA}, Caller, Called, StartTs, EndTs) ->
                                  FunInfo#fun_info.callers),
                   called = add_to(Called,FunInfo#fun_info.called),
                   start_ts = lists:min([FunInfo#fun_info.start_ts,StartTs]),
-                  end_ts = lists:max([FunInfo#fun_info.end_ts,EndTs])},
+                  end_ts = lists:max([FunInfo#fun_info.end_ts,EndTs]),
+                  call_count =FunInfo#fun_info.call_count+Cnt},
             ets:insert(fun_info, NewFunInfo)
     end.
 
