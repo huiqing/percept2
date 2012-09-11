@@ -4,7 +4,6 @@
 
 init() -> init(server_node()).
 init(Node) ->
-    erlang:set_cookie(node(),inviso),
     application:start(runtime_tools),
     net_kernel:connect_node(Node).
 server_node() ->
@@ -23,6 +22,7 @@ put_to_server(Ting) ->
     end.
 
 test(InputFile) ->
+    init(),
     case file:open(InputFile, [read]) of 
         {error, Reason} ->
             error(Reason);

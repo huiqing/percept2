@@ -1380,7 +1380,9 @@ pforeach_wait(S,N) ->
 %% percept:profile("bbb.dat", {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/demo_backup"], 5, 40, 2, 4, 0.8, ["c:/cygwin/home/hl/demo/demo_backup"], 8]}, []).
 
 
-%% percept2:analyze(["sim_code0.dat", "sim_code1.dat", 
-%% "sim_code2.dat", "sim_code3.dat",  "sim_code4.dat", "sim_code5.dat","sim_code6.dat"]).
+%% percept2:analyze(["sim_code0.dat", "sim_code1.dat","sim_code2.dat", "sim_code3.dat",  "sim_code4.dat", "sim_code5.dat","sim_code6.dat"]).
 
-%% percept2:profile({"sim_code", wrap, ".dat", 10000000, 10}, {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{sim_code, '_','_'}]}]).
+%% percept2:profile({"sim_code", wrap, ".dat", 20000000, 10}, {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{sim_code, '_','_'}]}]).
+
+
+%% percept2:profile("sim_code.dat", {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{sim_code, '_','_'}]}]).
