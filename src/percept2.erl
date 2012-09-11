@@ -40,7 +40,7 @@
 	analyze/1]).
 
 %% Application callback functions.
--export([start/2, stop/1]).
+-export([start/2, stop/1, parse_and_insert/3]).
 
 -include("../include/percept2.hrl").
 
@@ -115,22 +115,30 @@ analyze(FileNames) ->
             analyze_par_1(FileNameSubDBPairs)
     end.
 
-analyze_par_1(FileNameSubDBPairs) ->
-    try  percept2_utils:pmap(
-           fun({FileName, SubDBPid}) ->
-                   parse_and_insert(FileName, SubDBPid)
-           end, FileNameSubDBPairs),
-         percept2_db:consolidate_db(),
-         io:format("    ~p created processes.~n",
-                   [percept2_db:select({information, procs_count})]),
-         io:format("    ~p opened ports.~n", 
-                   [percept2_db:select({information, ports_count})])
-    catch
-        E1:E2 ->
-             {error, {E1, E2}}
+analyze_par_1(FileNamesSubDBPairs) ->
+    Self = self(),
+    Pids = [spawn_link(?MODULE, parse_and_insert, [FileName, SubDBPid, Self])||
+               {FileName, SubDBPid}<-FileNamesSubDBPairs],
+    loop_analyzer_par(Pids).
+    
+loop_analyzer_par(Pids) ->
+    receive 
+        {Pid, done} ->
+            case Pids -- [Pid] of 
+                [] ->
+                    percept2_db:consolidate_db(),
+                    io:format("    ~p created processes.~n",
+                              [percept2_db:select({information, procs_count})]),
+                    io:format("    ~p opened ports.~n", 
+                              [percept2_db:select({information, ports_count})]);
+                PidsLeft ->
+                    loop_analyzer_par(PidsLeft)
+            end;
+        {error, Reason} ->
+            percept2_db:stop(percept_db),
+            {error, Reason}
     end.
-   
-
+            
 %% @spec start_webserver() -> {started, Hostname, Port} | {error, Reason}
 %%	Hostname = string()
 %%	Port = integer()
@@ -222,19 +230,20 @@ stop_webserver(Port) ->
 
 %% parse_and_insert
 
-parse_and_insert(Filename,SubDB) ->
+parse_and_insert(Filename,SubDB, Parent) ->
     io:format("Parsing: ~p ~n", [Filename]),
     T0 = erlang:now(),
     Parser = mk_trace_parser(self(), SubDB),
     Pid=dbg:trace_client(file, Filename, Parser), 
     Ref = erlang:monitor(process, Pid), 
-    parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0).
+    parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0, Parent).
    
-parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0) ->
+parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0, Parent) ->
     receive
 	{'DOWN',Ref,process, Pid, noproc} ->
-	    io:format("Incorrect file or malformed trace file: ~p~n", [Filename]),
-	    {error, file};
+	    Msg=lists:flatten(io_lib:format(
+                                "Incorrect file or malformed trace file: ~s~n", [Filename])),
+            Parent ! {error, Msg};
     	{parse_complete, {Pid, Count}} ->
             Pid ! {ack, self()},
             receive 
@@ -243,10 +252,14 @@ parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0) ->
             end,
             T1 = erlang:now(),
 	    io:format("Parsed ~p entries from ~p in ~p s.~n", [Count, Filename, ?seconds(T1, T0)]),
-            ok;
-	{'DOWN',Ref, process, Pid, normal} -> parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0);
-	{'DOWN',Ref, process, Pid, Reason} -> {error, Reason};
-        Msg -> io:format("parse and insert loop, unhandled message:~p\n", [Msg])
+            Parent ! {self(), done};
+	{'DOWN',Ref, process, Pid, normal} -> 
+            parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0,Parent);
+	{'DOWN',Ref, process, Pid, Reason} -> 
+            Parent ! {error, Reason};
+        Msg -> 
+            io:format("parse_and_insert_loop, unhandled: ~p\n", [Msg]), 
+            parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0,Parent)
     end.
 
 mk_trace_parser(Parent, SubDB) ->

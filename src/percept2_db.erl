@@ -27,8 +27,9 @@
          insert/2,
          select/1,
          consolidate_db/0,
-         gen_compressed_process_tree/0
-	]).
+         gen_compressed_process_tree/0,
+         stop_sync/1
+        ]).
  
 -export([is_dummy_pid/1, pid2value/1]).
 
