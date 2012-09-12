@@ -117,11 +117,16 @@ analyze(FileNames) ->
             analyze_par_1(FileNameSubDBPairs)
     end.
 
-analyze_par_1(FileNamesSubDBPairs) ->
+analyze_par_1(FileNameSubDBPairs) ->
     Self = self(),
     process_flag(trap_exit, true),
-    Pids = [spawn_link(?MODULE, parse_and_insert, [FileName, SubDBPid, Self])||
-               {FileName, SubDBPid}<-FileNamesSubDBPairs],
+    Pids = lists:foldl(fun({File, SubDBPid}, Acc) ->
+                               Pid=spawn_link(?MODULE, parse_and_insert, [File, SubDBPid, Self]),
+                               receive 
+                                   {started, {File, SubDBPid}} ->
+                                       [Pid|Acc]
+                               end
+                       end, [], FileNameSubDBPairs),
     loop_analyzer_par(Pids).
     
 loop_analyzer_par(Pids) ->
@@ -140,7 +145,7 @@ loop_analyzer_par(Pids) ->
         {error, Reason} ->
             percept2_db:stop(percept2_db),
             {error, Reason};
-        Other ->
+        _Other ->
             loop_analyzer_par(Pids)            
     end.
             
@@ -239,8 +244,12 @@ parse_and_insert(Filename,SubDB, Parent) ->
     io:format("Parsing: ~p ~n", [Filename]),
     T0 = erlang:now(),
     Parser = mk_trace_parser(self(), SubDB),
-    Pid=dbg:trace_client(file, Filename, Parser), 
-    Ref = erlang:monitor(process, Pid), 
+    ?dbg(0,"Parser Pid:\n~p\n", [Parser]),
+    Pid=dbg:trace_client(file, Filename, Parser),
+    ?dbg(0,"Trace client Pid:\n~p\n", [Pid]),
+    Ref = erlang:monitor(process, Pid),
+    ?dbg(0, "Trace client Ref:\n~p\n",[{Pid, Ref}]),
+    Parent!{started, {Filename, SubDB}},
     parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0, Parent).
    
 parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0, Parent) ->
