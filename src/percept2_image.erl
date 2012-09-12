@@ -417,11 +417,15 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     egd:destroy(Im),
     Binary.
 
+inter_node_message_image(Width, Height, _, _, []) ->
+    error_graph(Width, Height,"No message communication data recorded.");
 inter_node_message_image(Width, Height, Xmin, Xmax, Data) ->
     Ymin = 0, 
-    Ymax = lists:max(element(2,lists:unzip3(Data))),
-     
-    % Calculate areas
+    Ymax = case Data of
+               [] -> 0;
+               _ -> lists:max(element(2,lists:unzip3(Data)))
+            end,
+        % Calculate areas
     HO = 20,
     GrafArea   = #graph_area{x = HO, y = 4, width = Width - 2*HO, height = Height - 17},
     XticksArea = #graph_area{x = HO, y = Height - 13, width = Width - 2*HO, height = 13},
@@ -430,8 +434,8 @@ inter_node_message_image(Width, Height, Xmin, Xmax, Data) ->
     %% Initiate Image
     Image = egd:create(Width, Height),
     Black = egd:color(Image, {0, 0, 0}),
-    Green = egd:color(Image, {0, 255, 0}),
-    draw_cross_graf(Image, Data, {Green, Green}, GrafArea, {Xmin, Ymin, Xmax, Ymax}),
+    Red = egd:color(Image, {255, 0, 0}),
+    draw_cross_graf(Image, Data, {Red, Red}, GrafArea, {Xmin, Ymin, Xmax, Ymax}),
     draw_xticks(Image, Black, XticksArea, {Xmin, Xmax}, Data),
     draw_yticks(Image, Black, YticksArea, {Ymin, Ymax}),
     Binary = egd:render(Image, png),
@@ -447,8 +451,8 @@ draw_cross_graf(Im, Data, Colors, GA = #graph_area{x = X0, y = Y0, width = Width
     draw_cross_graft1(Im, Plotdata, Colors, GA).
 
 draw_cross_graft1(Im, [{X1, Y1}|Data], C={B, _}, GA) ->
-    egd:line(Im, {X1-2, Y1}, {X1+2, Y1}, B),
-    egd:line(Im, {X1, Y1-2}, {X1, Y1+2}, B),  
+    egd:line(Im, {X1-3, Y1}, {X1+2, Y1}, B),
+    egd:line(Im, {X1, Y1-3}, {X1, Y1+2}, B),  
     draw_cross_graft1(Im, Data, C, GA);
 draw_cross_graft1(_Im, [], _, _) -> ok.
 

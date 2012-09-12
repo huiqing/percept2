@@ -224,9 +224,11 @@ inter_node_message_graph(_Env, Input) ->
     StartTs = percept2_db:select({system, start_ts}),
     MinTs    = percept2_html:seconds2ts(RangeMin, StartTs),
     MaxTs    = percept2_html:seconds2ts(RangeMax, StartTs),
-    Data = percept2_db:select({inter_node, {message_acts, {Node1, Node2, MinTs, MaxTs}}}),
-    Data1=[{?seconds(TS, StartTs), Size, 0}||{TS, Size}<-Data],
-    percept2_image:inter_node_message_image(Width, Height, RangeMin, RangeMax, Data1).
+    FromData = percept2_db:select({inter_node, {message_acts, {Node1, Node2, MinTs, MaxTs}}}),
+    %% ToData = percept2_db:select({inter_node, {message_acts, {Node2, Node1, MinTs, MaxTs}}}),
+    FromData1=[{?seconds(TS, StartTs), Size, 0}||{TS, Size}<-FromData],
+    %% ToData1 =[{?seconds(TS, StartTs), Size, 0}||{TS, Size}<-ToData],
+    percept2_image:inter_node_message_image(Width, Height, RangeMin, RangeMax, FromData1).
     
 header() ->
     "Content-Type: image/png\r\n\r\n".

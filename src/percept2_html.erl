@@ -608,7 +608,8 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
                     "<input name=range_max value=" ++ term2html(float(Max)) ++">"
                     "<input type=submit value=Update>"
                    ]) ++
-    	"</table>",
+        "</table>",
+    
     MainTable = 
 	"<table>" ++
 	table_line([div_tag_graph("percept_graph")]) ++
@@ -1235,8 +1236,8 @@ inter_node_message_content_1(_Env, Nodes) ->
 	<form name=inter_node_message method=POST action=/cgi-bin/percept2_html/inter_node_message_graph_page>
 	<center>
          <table>
-	    <tr><td width=200>Select node 1:</td>
-                <td width=200>Select node 2:</td></tr>
+	    <tr><td width=200>From node:</td>
+                <td width=200>To node:</td></tr>
 	    <tr><td><select name=\"node1\">"++NodeList ++
             "</select></td>
             <td><select name=\"node2\">"++NodeList++
