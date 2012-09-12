@@ -82,7 +82,7 @@
 -spec start([file:filename()]) ->{started, [{file:filename(), pid()}]} | 
                             {restarted, [{file:filename(), pid()}]}.
 start(TraceFileNames) ->
-    case erlang:whereis(percept_db) of
+    case erlang:whereis(percept2_db) of
     	undefined ->
 	    {started, do_start(TraceFileNames)};
 	PerceptDB ->
@@ -105,7 +105,7 @@ do_start(TraceFileNames)->
                              init_percept_db(Parent, TraceFileNames)
                      end),
     receive
-        {percept_db, started, FileNameSubDBPairs} ->
+        {percept2_db, started, FileNameSubDBPairs} ->
             FileNameSubDBPairs
     end.
     
@@ -165,7 +165,7 @@ stop_percept_sub_dbs(FileNameSubDBPairs) ->
       end, FileNameSubDBPairs).
     
 is_database_loaded() ->
-    whereis(percept_db)/=undefined.
+    whereis(percept2_db)/=undefined.
 
 %% @doc Inserts a trace or profile message to the database.  
 -spec insert(pid()|atom(), tuple()) -> ok.
@@ -205,15 +205,15 @@ insert(SubDB, Trace) ->
                     term().
                   
 select(Query) ->
-    percept_db ! {select, self(), Query},
+    percept2_db ! {select, self(), Query},
     receive {result, Match} ->
             Match 
     end.
 
 consolidate_db() ->
-    percept_db ! {action, self(), consolidate_db},
+    percept2_db ! {action, self(), consolidate_db},
     receive
-        {percept_db, consolidate_done} ->
+        {percept2_db, consolidate_done} ->
             ok
     end.
 
@@ -224,7 +224,7 @@ consolidate_db() ->
 -spec init_percept_db(pid(), [filename()]) -> any().
 init_percept_db(Parent, TraceFileNames) ->
     process_flag(trap_exit, true),
-    register(percept_db, self()),
+    register(percept2_db, self()),
     ets:new(pdb_warnings, [named_table, public, {keypos, 1}, ordered_set]),
     ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set]),
     ets:new(pdb_system, [named_table, public, {keypos, 1}, set]),
@@ -237,7 +237,7 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(inter_node, [named_table, public, 
                                  {keypos,#inter_node.timed_from_node}, ordered_set]), 
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
-    Parent!{percept_db, started, FileNameSubDBPairs},
+    Parent!{percept2_db, started, FileNameSubDBPairs},
     loop_percept_db(FileNameSubDBPairs).
 
 loop_percept_db(FileNameSubDBPairs) ->
@@ -250,7 +250,7 @@ loop_percept_db(FileNameSubDBPairs) ->
             stop_percept_db(FileNameSubDBPairs);
 	{action, From, consolidate_db} ->
             consolidate_db(FileNameSubDBPairs),
-            From ! {percept_db, consolidate_done},
+            From ! {percept2_db, consolidate_done},
 	    loop_percept_db(FileNameSubDBPairs);
         {operate, Pid, {Table, {Fun, Start}}} ->
 	    Result = ets:foldl(Fun, Start, Table),
@@ -632,18 +632,18 @@ trace_out_exiting(_SubDBIndex, _Trace) ->
 trace_in_exiting(_SubDBIndex, _Trace) ->
     ok.
 
-trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', MsgSize, _Ts}) ->
+trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, _Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_received(ProcRegName, Pid, erlang:external_size(MsgSize));
+            update_information_received(ProcRegName, Pid, byte_size(term_to_binary(Msg)));
        true ->
             ok
     end.
 
-trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, MsgSize, To, Ts}) ->
+trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_sent(ProcRegName, Pid, erlang:external_size(MsgSize), To, Ts);
+            update_information_sent(ProcRegName, Pid, byte_size(term_to_binary(Msg)), To, Ts);
        true ->
             ok
     end.
@@ -652,7 +652,7 @@ trace_send_to_non_existing_process(SubDBIndex,
                                    _Trace={trace_ts, Pid, send_to_non_existing_process, Msg, _To, Ts})->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_sent(ProcRegName,Pid, erlang:external_size(Msg), none, Ts);
+            update_information_sent(ProcRegName,Pid, byte_size(term_to_binary(Msg)), none, Ts);
        true ->
             ok
     end.
@@ -1414,16 +1414,21 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                     pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs],PrevStacks, Done})
             end;
         %% the current trace file gets to the end.
-        {_Parent, end_of_trace_file} ->
+        {Parent, end_of_trace_file} ->
             Self = self(),
-            [Proc!{Self, end_of_trace_file}
-             ||{_, Proc}<-ChildrenProcs],
             NextFuncRegName = mk_proc_reg_name("pdb_func", SubDBIndex+1),
             case whereis(NextFuncRegName) of 
                 undefined -> ok;
                 NextPid ->
                     [NextPid ! {end_of_trace_file, {SubDBIndex, Pid, Stack}}
                      ||{Pid, Stack}<-PrevStacks]
+            end,
+            case ChildrenProcs  of 
+                [] -> 
+                    SubDB ! {SubDBIndex,done};
+                _ ->
+                    [Proc!{Self, end_of_trace_file}
+                     ||{_, Proc}<-ChildrenProcs]
             end,
             pdb_func_loop({SubDB, SubDBIndex,ChildrenProcs,[], true});
         {Pid, done} ->
@@ -1657,6 +1662,7 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
                         {Func1, TS1}
                 end,
             update_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
+            update_fun_call_time({Pid, Func1}, {TS1, TS}),
             trace_return_to_2(Pid, Caller, TS, Stack);
         _ when Caller == undefined ->
             trace_return_to_2(Pid, Caller, TS, Stack);

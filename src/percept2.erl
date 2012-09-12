@@ -119,6 +119,7 @@ analyze(FileNames) ->
 
 analyze_par_1(FileNamesSubDBPairs) ->
     Self = self(),
+    process_flag(trap_exit, true),
     Pids = [spawn_link(?MODULE, parse_and_insert, [FileName, SubDBPid, Self])||
                {FileName, SubDBPid}<-FileNamesSubDBPairs],
     loop_analyzer_par(Pids).
@@ -137,8 +138,10 @@ loop_analyzer_par(Pids) ->
                     loop_analyzer_par(PidsLeft)
             end;
         {error, Reason} ->
-            percept2_db:stop(percept_db),
-            {error, Reason}
+            percept2_db:stop(percept2_db),
+            {error, Reason};
+        Other ->
+            loop_analyzer_par(Pids)            
     end.
             
 %% @spec start_webserver() -> {started, Hostname, Port} | {error, Reason}
@@ -248,10 +251,6 @@ parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0, Parent) ->
             Parent ! {error, Msg};
     	{parse_complete, {Pid, Count}} ->
             Pid ! {ack, self()},
-            receive 
-                {'DOWN', Ref, process, Pid, normal} -> 
-                    ok 
-            end,
             T1 = erlang:now(),
 	    io:format("Parsed ~p entries from ~p in ~p s.~n", [Count, Filename, ?seconds(T1, T0)]),
             Parent ! {self(), done};
