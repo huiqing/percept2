@@ -122,12 +122,28 @@ graph_1(_Env, Input, Type) ->
             percept2_image:graph(Width, Height, Counts);
         false ->                
             Options  = [{ts_min, TsMin},{ts_max, TsMax}],
+            Options1 = [{ts_min, StartTs},{ts_max, TsMax}],
             Counts = case Type of 
                          procs_ports ->
-                             [{?seconds(TS, StartTs), Procs, Ports}||
-                                     {TS, {Procs, Ports}}
-                                         <-percept2_db:select(
-                                             {activity,{runnable_counts, Options}})];
+                             Counts1=[{?seconds(TS, StartTs), Procs, Ports}||
+                                         {TS, {Procs, Ports}}
+                                             <-percept2_db:select(
+                                                 {activity,{runnable_counts, Options}})],
+                             case Counts1 of 
+                                 [] ->
+                                     case [{?seconds(TS, StartTs), Procs, Ports}||
+                                              {TS, {Procs, Ports}}
+                                                  <-percept2_db:select(
+                                                      {activity,{runnable_counts, Options1}})] of 
+                                         [] -> [];
+                                         Res-> 
+                                             {_TS, X, Y} =lists:last(Res),
+                                             [{RangeMin, X, Y}, {RangeMax, X, Y}]
+                                     end;
+                                 [{_, X, Y}] ->
+                                     [{RangeMin, X, Y}, {RangeMax, X, Y}];
+                                 _ -> Counts1
+                             end;                                     
                          procs ->
                              [{?seconds(TS, StartTs), Procs, 0}||
                                  {TS, {Procs, _Ports}}
@@ -139,7 +155,7 @@ graph_1(_Env, Input, Type) ->
                                      <-percept2_db:select(
                                          {activity,{runnable_counts, Options}})]
                      end,
-            percept2_image:graph(Width, Height, Counts)
+            percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts)
     end.
 
 scheduler_graph(_Env, Input) ->
@@ -152,11 +168,10 @@ scheduler_graph(_Env, Input) ->
     StartTs  = percept2_db:select({system, start_ts}),
     TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
     TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
-    
-
+   
     Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
     Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts],
-    percept2_image:graph(Width, Height, Counts).
+    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts).
 
 memory_graph(Env, Input) ->
     scheduler_graph(Env, Input). %% change this!

@@ -75,7 +75,7 @@ error_graph(Width, Height, Text) ->
 
     
 graf1(Width, Height, {Xmin, Ymin, Xmax, Ymax}, Data) ->
-    % Calculate areas
+       % Calculate areas
     HO = 20,
     GrafArea   = #graph_area{x = HO, y = 4, width = Width - 2*HO, height = Height - 17},
     XticksArea = #graph_area{x = HO, y = Height - 13, width = Width - 2*HO, height = 13},
@@ -196,7 +196,7 @@ draw_yticks(Im, Color, TickArea, {_,Ymax}) ->
     egd:filledRectangle(Im, {X, trunc(0 + Y0)}, {X, trunc(Y0 + Height)}, Color),
     draw_yticks0(Im, Font, Color, 0, Yts, Ymax, {X, Height, Dy}).
 
-draw_yticks0(Im, Font, Color, Yi, Yts, Ymax, Area) when Yi < Ymax -> 
+draw_yticks0(Im, Font, Color, Yi, Yts, Ymax, Area) when Yi =< Ymax -> 
     {X, Height, Dy} = Area, 
     Y = round(Height - (Yi*Dy) + 3),
 
