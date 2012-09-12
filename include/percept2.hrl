@@ -121,7 +121,7 @@
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
 %%-define(debug, 9).
-%% -define(debug, 0). 
+%%-define(debug, 0). 
 
 -ifdef(debug). 
 dbg(Level, F, A) when Level >= ?debug ->
