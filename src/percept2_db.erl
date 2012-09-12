@@ -325,22 +325,13 @@ start_child_process(ProcRegName, Fun) ->
 
 -spec stop_a_percept_sub_db(integer()) -> true.
 stop_a_percept_sub_db(SubDBIndex) ->
+    io:format("stop a percept sub db\n"),
     Scheduler = mk_proc_reg_name("pdb_scheduler", SubDBIndex),
     Activity = mk_proc_reg_name("pdb_activity", SubDBIndex),
     ProcessInfo = mk_proc_reg_name("pdb_info", SubDBIndex),
     System = mk_proc_reg_name("pdb_system", SubDBIndex),
     FuncInfo = mk_proc_reg_name("pdb_func", SubDBIndex),
     Warnings = mk_proc_reg_name("pdb_warnings", SubDBIndex),
-    case ets:info(Scheduler) of 
-        undefined -> 
-            ok;
-        _ ->                     
-            ets:delete(Scheduler)
-    end,
-    case ets:info(Activity) of 
-        undefined -> ok;
-        _ -> ets:delete(Activity)
-    end,
     true = stop_sync(Scheduler),
     true = stop_sync(Activity),
     true = stop_sync(ProcessInfo),
@@ -535,7 +526,8 @@ insert_profile_trace(SubDBIndex,Trace) ->
                                                     SubDBIndex),
             update_scheduler(SchedulerProcRegName, Act);
         _Unhandled ->
-            ?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
+            %%?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
+            ok
     end.
 insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, Type) ->
     ActId = if Type == procs -> pid2value(Id);
@@ -710,7 +702,7 @@ init_pdb_activity(ProcRegName, Parent) ->
                           {keypos, #activity.timestamp},
                           ordered_set]),
     Parent !{ProcRegName, started},
-    pdb_activity_loop().
+    pdb_activity_loop(ProcRegName).
 
 update_activity(ProcRegName, Activity) ->
     ProcRegName ! {update_activity, {ProcRegName, Activity}}.
@@ -735,18 +727,21 @@ select_query_activity(FileNameSubDBPairs, Query) ->
             lists:append(Res)
     end.
 
-pdb_activity_loop()->
+pdb_activity_loop(ProcRegName)->
     receive 
         {update_activity, {SubTab,Activity}} ->
             ets:insert(SubTab, Activity),
-            pdb_activity_loop();
+            pdb_activity_loop(ProcRegName);
         {consolidate_runnability, {From, SubDBIndex, {ActiveProcs, ActivePorts, RunnableStates}}} ->
             {ok, {NewActiveProcs, NewActivePorts, NewRunnableStates}}=
                 do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts}, RunnableStates), 
             From!{self(), done, {NewActiveProcs, NewActivePorts, NewRunnableStates}},
-            pdb_activity_loop();
+            pdb_activity_loop(ProcRegName);
         {action, stop} ->
-            ok            
+            case ets:info(ProcRegName) of 
+                undefined -> ok;
+                _ -> ets:delete(ProcRegName)
+            end            
     end.
 do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts},RunnableStates) ->
     Tab=mk_proc_reg_name("pdb_activity", SubDBIndex),
@@ -1003,7 +998,7 @@ init_pdb_scheduler(ProcRegName, Parent) ->
                           {keypos, #scheduler.timestamp},
                           ordered_set]),
     Parent ! {ProcRegName, started},    
-    pdb_scheduler_loop().
+    pdb_scheduler_loop(ProcRegName).
     
 update_scheduler(SchedulerProcRegName,Activity) ->
     SchedulerProcRegName ! {update_scheduler, 
@@ -1020,13 +1015,18 @@ select_query_scheduler(FileNameSubDBPairs, Query) ->
             end, FileNameSubDBPairs),
     lists:append(Res).
 
-pdb_scheduler_loop()->
+pdb_scheduler_loop(ProcRegName)->
     receive
         {update_scheduler, {SchedulerProcRegName,Activity}} ->
             ets:insert(SchedulerProcRegName, Activity),
-            pdb_scheduler_loop();
+            pdb_scheduler_loop(ProcRegName);
         {action, stop} ->
-            ok
+            case ets:info(ProcRegName) of 
+                undefined -> 
+                    ok;
+                _ ->                     
+                    ets:delete(ProcRegName)
+            end
     end.
 
 select_query_scheduler_1(SubDBIndex, Query) ->
@@ -1414,7 +1414,7 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                     pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs],PrevStacks, Done})
             end;
         %% the current trace file gets to the end.
-        {Parent, end_of_trace_file} ->
+        {_Parent, end_of_trace_file} ->
             Self = self(),
             NextFuncRegName = mk_proc_reg_name("pdb_func", SubDBIndex+1),
             case whereis(NextFuncRegName) of 
@@ -1460,8 +1460,10 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                     %% has finished.
                     pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, [{Pid, Stack}|PrevStacks], Done})
             end;
+        {action, stop} ->
+            ok;
         Unhandled ->
-            io:format("function pdb_fun_loop, unhandled:~p~n", [Unhandled]),
+            io:format("function pdb_func_loop, unhandled:~p~n", [Unhandled]),
             pdb_func_loop({SubDB,SubDBIndex,ChildrenProcs, PrevStacks, Done})                
     end.
 
@@ -1519,7 +1521,7 @@ mk_proc_reg_name(RegNamePrefix,Index) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 trace_call_1(Pid, MFA, TS, CP, Stack) ->
     Func = mfarity(MFA),
-    ?dbg(0, "trace_call(~p, ~p, ~p, ~p, ~p)~n", 
+    ?dbg(-1, "trace_call(~p, ~p, ~p, ~p, ~p)~n", 
 	 [Pid, Stack, Func, TS, CP]),
     case Stack of 
         [[{Func1,TS1}, dummy]|Stack1] when Func1=/=CP ->
@@ -1538,7 +1540,7 @@ trace_call_1(Pid, MFA, TS, CP, Stack) ->
 trace_call_2(Pid, Func, TS, CP, Stack) ->
     case Stack of
 	[] ->
-            ?dbg(0, "empty stack\n", []),
+            ?dbg(-1, "empty stack\n", []),
             OldStack = 
 		if CP =:= undefined ->
 			Stack;
@@ -1557,13 +1559,13 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
         [[{CP, _} | _], [{CP, _} | _] | _] ->
             trace_call_shove(Pid,Func, TS, Stack);
         [[{CP, _} | _] | _] when Func==CP ->
-            ?dbg(0, "Current function becomes new stack top.\n", []),
+            ?dbg(-1, "Current function becomes new stack top.\n", []),
             Stack;
 	[[{CP, _} | _] | _] ->
-            ?dbg(0, "Current function becomes new stack top.\n", []),
+            ?dbg(-1, "Current function becomes new stack top.\n", []),
             [[{Func, TS}] | Stack];
         [_, [{CP, _} | _] | _] ->
-           ?dbg(0, "Stack top unchanged, no push.\n", []),
+           ?dbg(-1, "Stack top unchanged, no push.\n", []),
            trace_call_shove(Pid, Func, TS, Stack); 
         [[{Func0, _} | _], [{Func0, _} | _], [{CP, _} | _] | _] ->
             trace_call_shove(Pid, Func, TS,
@@ -1598,7 +1600,7 @@ trace_call_collapse([_] = Stack) ->
 trace_call_collapse([_, _] = Stack) ->
      Stack;
 trace_call_collapse([_ | Stack1] = Stack) ->
-    ?dbg(0, "collapse_trace_state(~p)~n", [Stack]),
+    ?dbg(-1, "collapse_trace_state(~p)~n", [Stack]),
     trace_call_collapse_1(Stack, Stack1, 1).
 
 
@@ -1642,7 +1644,7 @@ trace_call_collapse_2(_Stack, [], _N) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 trace_return_to_1(Pid, Func, TS, Stack) ->
     Caller = mfarity(Func),
-    ?dbg(0, "trace_return_to(~p, ~p, ~p)~n~p~n", 
+    ?dbg(-1, "trace_return_to(~p, ~p, ~p)~n~p~n", 
 	 [Pid, Caller, TS, Stack]),
     case Stack of
 	[[{suspend, _} | _] | _] ->
