@@ -56,6 +56,12 @@
 %%==========================================================================
 
 size(Font) ->
+    case ets:info(egd_font_table) of 
+        undefined->
+            Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
+            egd_font:load(Filename);
+        _ -> ok
+    end,
     [{_Key, _Description, Size}] = ets:lookup(egd_font_table,{Font,information}),
     Size.
 
