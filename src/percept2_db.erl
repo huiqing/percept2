@@ -110,10 +110,12 @@ do_start(TraceFileNames)->
             FileNameSubDBPairs
     end.
     
+%% @doc stops the percept2_db database.
+-spec stop()->'not_started' | {'stopped', pid()}.
 stop()->
     stop(percept2_db).
 
-%% @doc Stops the percept database.
+%% @doc Stops a percept database.
 -spec stop(pid()|atom()) -> 'not_started' | {'stopped', pid()}.
 stop(Pid) when is_pid(Pid) ->
     Pid! {action, stop},
