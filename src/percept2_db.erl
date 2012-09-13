@@ -23,6 +23,7 @@
 -module(percept2_db).
 
 -export([start/1,
+         stop/0,
          stop/1,
          insert/2,
          select/1,
@@ -109,6 +110,9 @@ do_start(TraceFileNames)->
             FileNameSubDBPairs
     end.
     
+stop()->
+    stop(percept2_db).
+
 %% @doc Stops the percept database.
 -spec stop(pid()|atom()) -> 'not_started' | {'stopped', pid()}.
 stop(Pid) when is_pid(Pid) ->
@@ -325,7 +329,6 @@ start_child_process(ProcRegName, Fun) ->
 
 -spec stop_a_percept_sub_db(integer()) -> true.
 stop_a_percept_sub_db(SubDBIndex) ->
-    io:format("stop a percept sub db\n"),
     Scheduler = mk_proc_reg_name("pdb_scheduler", SubDBIndex),
     Activity = mk_proc_reg_name("pdb_activity", SubDBIndex),
     ProcessInfo = mk_proc_reg_name("pdb_info", SubDBIndex),
