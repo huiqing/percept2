@@ -10,11 +10,30 @@
 <hr>
 
 <h1>Module percept2</h1>
-<ul class="index"><li><a href="#description">Description</a></li><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>Percept2 - Erlang Concurrency Profiling Tool.
+<ul class="index"><li><a href="#description">Description</a></li><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>Percept2 - An Enhance Version of the Erlang Concurrency Profiling Tool Percept.
 
 <p><b>Behaviours:</b> <a href="application.html"><tt>application</tt></a>.</p>
 
-<h2><a name="description">Description</a></h2><p>Percept2 - Erlang Concurrency Profiling Tool</p>
+<h2><a name="description">Description</a></h2><p>Percept2 - An Enhance Version of the Erlang Concurrency Profiling Tool Percept.</p>
+ 
+ Percept2 extends Percept in two aspects: functionality and scalability. Among the new functionalities added to Percept are:
+  <ul>
+  <li> Scheduler activity: the number of active schedulers at any time. </li>
+  <li> Process migration information: the migration history of a process between run queues. </li>
+  <li> Statistics data about message passing between processes: the number of messages, and the average message size, sent/received by a process.</li>
+  <li> Accumulated runtime per-process: the accumulated time when a process is in a running state.</li>
+  <li> Process tree: the hierarchy structure indicating the parent-child relationships between processes.</li>
+  <li> Dynamic function call graph/count/time: the hierarchy structure showing the calling
+  relationships between functions during the program run, and the amount of time spent on a function.</li>
+  <li> Active functions: the functions that are active during a specific time interval.</li>
+  <li> Inter-node message passing: the sending of messages from one node to another.
+  </li>
+  </ul>
+  The following techniques have been used to improved the scalability of Percept.
+  <ul>
+  <li> Compressed process tree/function call graph representation: an approach to reducing the number of processes/function call paths presented without losing important information.</li>
+  <li> Parallelisation of Percept: the processing of profile data has been parallelised so that multiple data files can be processed at the same time </li>
+  </ul>
  
   This module provides the user interface for the application.
  
@@ -24,14 +43,28 @@
 <p><tt>filespec() = <a href="file.html#type-filename">file:filename()</a> | {<a href="file.html#type-filename">file:filename()</a>, wrap, Suffix::string(), WrapSize::pos_integer(), WrapCnt::pos_integer()}</tt></p>
 
 
+<h3 class="typedecl"><a name="type-percept_option">percept_option()</a></h3>
+<p><tt>percept_option() = concurreny | message | process_scheduling | {function, [mfa()]} | <a href="#type-trace_flags">trace_flags()</a> | <a href="#type-profile_flags">profile_flags()</a></tt></p>
+
+
+<h3 class="typedecl"><a name="type-profile_flags">profile_flags()</a></h3>
+<p><tt>profile_flags() = runnable_procs | runnable_ports | scheduler | exclusive</tt></p>
+
+
+<h3 class="typedecl"><a name="type-trace_flags">trace_flags()</a></h3>
+<p><tt>trace_flags() = all | send | 'receive' | procs | call | silent | return_to | running | exiting | garbage_collection | timestamp | cpu_timestamp | arity | set_on_spawn | set_on_first_spawn | set_on_link | set_on_first_link</tt></p>
+
+
 <h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#profile-1">profile/1</a></td><td></td></tr>
-<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td></td></tr>
-<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td></td></tr>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td>Analyse the trace data collected.</td></tr>
+<tr><td valign="top"><a href="#profile-1">profile/1</a></td><td>Profile to file(s) and only profile process/ports concurrency
+  activities.</td></tr>
+<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td>Profile to file(s) with user-specified profiling/tracing options.</td></tr>
+<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>Profile to file(s) with user-specified profiling/tracing options.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-0">start_webserver/0</a></td><td>Starts webserver.</td></tr>
-<tr><td valign="top"><a href="#start_webserver-1">start_webserver/1</a></td><td>Starts webserver.</td></tr>
-<tr><td valign="top"><a href="#stop_profile-0">stop_profile/0</a></td><td></td></tr>
+<tr><td valign="top"><a href="#start_webserver-1">start_webserver/1</a></td><td>Starts webserver with a given port number.</td></tr>
+<tr><td valign="top"><a href="#stop_db-0">stop_db/0</a></td><td>Stops the percept2 database.</td></tr>
+<tr><td valign="top"><a href="#stop_profile-0">stop_profile/0</a></td><td>Stops the profling.</td></tr>
 <tr><td valign="top"><a href="#stop_webserver-0">stop_webserver/0</a></td><td>Stops webserver.</td></tr>
 </table>
 
@@ -40,42 +73,52 @@
 <h3 class="function"><a name="analyze-1">analyze/1</a></h3>
 <div class="spec">
 <p><tt>analyze(FileNames::[<a href="file.html#type-filename">file:filename()</a>]) -&gt; ok | {error, any()}</tt><br></p>
-</div>
+</div><p>Analyse the trace data collected. See the <a href="overview-summary.html">Overview</a> page for examples.</p>
 
 <h3 class="function"><a name="profile-1">profile/1</a></h3>
 <div class="spec">
 <p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>) -&gt; {ok, Port} | {already_started, Port}</tt><br></p>
-</div>
+</div><p>Profile to file(s) and only profile process/ports concurrency
+  activities.</p>
+<p><b>See also:</b> <a href="#stop_profile-0">stop_profile/0</a>.</p>
 
 <h3 class="function"><a name="profile-2">profile/2</a></h3>
 <div class="spec">
 <p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Options::[<a href="#type-percept_option">percept_option()</a>]) -&gt; {ok, port()} | {already_started, port()}</tt><br></p>
-</div>
+</div><p>Profile to file(s) with user-specified profiling/tracing options.</p>
+<p><b>See also:</b> <a href="#stop_profile-0">stop_profile/0</a>.</p>
 
 <h3 class="function"><a name="profile-3">profile/3</a></h3>
 <div class="spec">
 <p><tt>profile(Filename::string(), MFA::mfa(), Options::[<a href="#type-percept_option">percept_option()</a>]) -&gt; ok | {already_started, Port} | {error, not_started}</tt><br></p>
-</div>
-<p><b>See also:</b> <a href="percept2_profile.html">percept2_profile</a>.</p>
+</div><p>Profile to file(s) with user-specified profiling/tracing options.
+  The profiling starts with executing the entry function given, and goes
+  on for the whole duration until the entry function retures and the
+  the profiling has concluded.</p>
 
 <h3 class="function"><a name="start_webserver-0">start_webserver/0</a></h3>
 <div class="spec">
 <p><tt>start_webserver() -&gt; {started, Hostname, Port} | {error, Reason}</tt>
 <ul class="definitions"><li><tt>Hostname = string()</tt></li><li><tt>Port = integer()</tt></li><li><tt>Reason = term()</tt></li></ul></p>
-</div><p>Starts webserver.</p>
+</div><p>Starts webserver. An available port number will be assigned by inets.</p>
 
 <h3 class="function"><a name="start_webserver-1">start_webserver/1</a></h3>
 <div class="spec">
 <p><tt>start_webserver(Port::integer()) -&gt; {started, Hostname, AssignedPort} | {error, Reason}</tt>
 <ul class="definitions"><li><tt>Hostname = string()</tt></li><li><tt>AssignedPort = integer()</tt></li><li><tt>Reason = term()</tt></li></ul></p>
-</div><p>Starts webserver. If port number is 0, an available port number will
+</div><p>Starts webserver with a given port number. If port number is 0, an available port number will
  	be assigned by inets.</p>
+
+<h3 class="function"><a name="stop_db-0">stop_db/0</a></h3>
+<div class="spec">
+<p><tt>stop_db() -&gt; ok</tt><br></p>
+</div><p>Stops the percept2 database.</p>
 
 <h3 class="function"><a name="stop_profile-0">stop_profile/0</a></h3>
 <div class="spec">
 <p><tt>stop_profile() -&gt; ok | {error, not_started}</tt><br></p>
-</div>
-<p><b>See also:</b> <a href="percept2_profile.html">percept2_profile</a>.</p>
+</div><p>Stops the profling.</p>
+<p><b>See also:</b> <a href="#profile-1">profile/1</a>, <a href="#profile-2">profile/2</a>.</p>
 
 <h3 class="function"><a name="stop_webserver-0">stop_webserver/0</a></h3>
 <div class="spec">
@@ -84,6 +127,6 @@
 <hr>
 
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc, Sep 11 2012, 09:15:28.</i></p>
+<p><i>Generated by EDoc, Sep 13 2012, 12:35:41.</i></p>
 </body>
 </html>

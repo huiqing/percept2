@@ -3,24 +3,25 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
 <title>Percept2: an Erlang concurrency profiling tool.
-</title>
+</title>
 <link rel="stylesheet" type="text/css" href="stylesheet.css" title="EDoc">
 </head>
 <body bgcolor="white">
 <div class="navbar"><a name="#navbar_top"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
 <h1>Percept2: an Erlang concurrency profiling tool.
-</h1>
+</h1>
 <p>Percept2 is an enhanced version of the Erlang concurrency profiling tool Percept.</p>
 
-<h3><a name="Contents">Contents</a></h3>
+<h2> Contents </h2>
 <ol> 
-  <li><a href="#Introduction">Introduction</a></li>
-  <li><a href="#Getting_Started">Getting Started</a></li>
-  <li><a href="#Acknowledgements">Acknowledgements</a></li>
+  <li><a href="#Intro">Introduction</a></li>
+  <li><a href="#Start">Getting Started</a></li>
+  <li><a href="#Ack">Acknowledgements</a></li>
 </ol>
 
-<h3><a name="Introduction">Introduction</a></h3><p>
-<a href="http://www.erlang.org/doc/man/percept.html">Percept</a> is a tool to visualise application Erlang application level concurrency and identity concurrency bottlenecks. It is part of the Erlang standard distribution.</p>
+<p><a name="Intro"><h3> Introduction </h3></a></p>
+
+<p><a href="http://www.erlang.org/doc/man/percept.html">Percept</a> is a tool to visualise application Erlang application level concurrency and identity concurrency bottlenecks. It is part of the Erlang standard distribution.</p>
 
 <p>Percept is an event-based profiling tool; it utilizes Erlang trace information and profiler events to form a picture of the processes and ports runnability. Briefly, Percept uses <a href="http://www.erlang.org/doc/man/erlang.html#trace-3">erlang:trace/3</a> and 
 <a href="http://www.erlang.org/doc/man/erlang.html#system_profile-2">erlang:system_profile/2</a> to monitor events from 
@@ -48,10 +49,11 @@ The following techniques have been used to improved the scalability of Percept.
 <li> Parallelisation of Percept: the processing of profile data has been parallelised so that multiple data files can be processed at the same time </li>
 </ul>
 
-<h3><a name="Getting_Started">Getting Started</a></h3>
+<p><a name="Start"><h3> Getting Started </h3></a></p>
 
-<h4><a name="Profiling">Profiling</a></h4><p>
-There are a few ways to start the profiling of a specific code. The function <a href="percept2:profile-3">percept2:profile/3</a>
+<h4> Profiling </h4>
+
+<p>There are a few ways to start the profiling of a specific code. The function <a href="percept2:profile-3">percept2:profile/3</a>
 is the prefered way. </p>
 
 <p>The function <a href="percept2:profile-3">percept2:profile/3</a> takes 3 parameters. A file specification for the data destination as the first argument. The file specification can be a filename (which is the case for Percept) or a wrap file specification as what is used by the <code>dbg</code> library. If a single filename is specified, all the trace messages are saved in this file; if a wrap files specification is used, then the trace is written 
@@ -66,20 +68,31 @@ are enabled: <code>[call, return_to, arity]</code>.</p>
 
 <p>To illustrate how the tool works, let's take a <em>similar code detection </em>algorithm for Erlang programs as an example. The similar code detection program takes a list of directories/files and some threshold values as parameters, and returns the similar code fragments found in those Erlang files.</p>
 
-We use the following command to start the profiling of the similar code detection process.  
-<pre>    percept2:profile({"sim_code", wrap, ".dat", 20000000, 10}, 
+<p>We could the following command to start the profiling of the similar code detection process:</p>
+
+<pre>    percept2:profile("sim_code.dat", 
          {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},
          [message, process_scheduling, concurrency,{function, [{sim_code, '_','_'}]}])</pre>
 
 <p>In this example, we choose to profile the message passing between processes, the scheduling and states of processes/ports, and also the call/return_to activities of those functions exported by module <code>sim_code</code> (as a matter of fact, all the functions defined in this module are exported).</p>
 
-<p>Percept2 sets up the trace and profiling facilities to listen for the traced event. It then stores these events to files: sim_code0.dat, sim_code1.dat, etc. The profiling will go on for the whole duration until the function sim_code:sim_code_detection/8 returns and the profiling has concluded.</p>
+<p>Percept2 sets up the trace and profiling facilities to listen for the traced event. It then stores these events to the file: sim_code.dat. </p>
 
-<p>For this example, 4 data files are generated, i.e. from <code>sim_code0.dat</code> to <code>sim_code3.dat</code>.</p>
+<p>Alternatively, we could use the following command to have multiple data files to store the trace data:</p>
+
+<pre>    percept2:profile({"sim_code", wrap, ".dat", 20000000, 10}, 
+         {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},
+         [message, process_scheduling, concurrency,{function, [{sim_code, '_','_'}]}])</pre>
+
+<p>In the latter case, Percept2 stores trace events to files: sim_code0.dat, sim_code1.dat, etc. The actual run of the profiling command generated 
+4 data files: i.e. <code>sim_code0.dat</code>, <code>sim_code1.dat</code>, <code>sim_code2.dat</code> and <code>sim_code3.dat</code>.</p>
+
+<p>The profiling will go on for the whole duration until the function sim_code:sim_code_detection/8 returns and the profiling has concluded.</p>
 
 <p>To analyze the data files generated, we use the function <a href="percept2:analyze-1">percept2:analyze/3</a>, which takes a list of data file names as input. This function will parse and data files in parallel, and insert all events into a RAM database. To analyse the trace data from the previous example, we run the following command:</p>
 
-<pre>(test@hl-lt)2&gt; percept2:analyze(["sim_code0.dat", "sim_code1.dat", 
+<pre>   
+(test@hl-lt)2&gt; percept2:analyze(["sim_code0.dat", "sim_code1.dat", 
 "sim_code2.dat", "sim_code3.dat"]).
 Parsing: "sim_code0.dat" 
 Parsing: "sim_code1.dat" 
@@ -94,10 +107,11 @@ Consolidating...
     97 opened ports.
 ok</pre>
 
-<h4><a name="Data_Viewing">Data Viewing</a></h4>
+<h4>Data Viewing </h4>
 
 To view the data, we start the web-server using <code>percept2:start_webserver/1</code>. This command will return the hostname and a port where we should direct the web browser.
-<pre>(test@hl-lt)3&gt; percept2:start_webserver(8888).
+<pre>   
+(test@hl-lt)3&gt; percept2:start_webserver(8888).
 {started,"hl-lt",8888}
 (test@hl-lt)4&gt;</pre>
 
@@ -105,8 +119,9 @@ To view the data, we start the web-server using <code>percept2:start_webserver/1
 
 <p><img src="percept2_index.png" alt="the front page of Percept2" width="850" height="500"></p>
 
-<h5><a name="overview">overview</a></h5><p>
-If we click on the <code>overview</code> button in the menu, Percept2 will generate a graph of the concurrency, as shown in the next snapshot, and send it to the web browser. While this overview gives a rather big picture of  the number of active processes/ports at any time during the profiling, we can also zoom in on different areas of the graph either using the mouse to select an area or by specifying <code>min</code> and <code>max</code> ranges in the edit boxes.</p>
+<h5>overview</h5>
+
+<p>If we click on the <code>overview</code> button in the menu, Percept2 will generate a graph of the concurrency, as shown in the next snapshot, and send it to the web browser. While this overview gives a rather big picture of  the number of active processes/ports at any time during the profiling, we can also zoom in on different areas of the graph either using the mouse to select an area or by specifying <code>min</code> and <code>max</code> ranges in the edit boxes.</p>
 
 
 <p><img src="percept2_overview_process.png" alt="the front page of Percept2" width="850" height="500"> </p>
@@ -115,11 +130,11 @@ If we click on the <code>overview</code> button in the menu, Percept2 will gener
 
 <p><img src="percept2_scheduler.png" alt="overview active schedulers" width="850" height="500"> </p>
 
-<h5><a name="Processes">Processes</a></h5>
+<h5> Processes </h5>
 
 <p>To get a more detailed description about processes, we can select the process view by clicking on the <code>processes</code> button in the menu. The table in the next snapshot shows the processes in an expandable/collapsible tree structure. The process ids shown in the table are click-able, and clicking on a process id will direct you the process information page. The lifetime bar presents a rough estimate about when the process was alive during profiling. If a process has a registered name, then the name is shown in the <code>Name</code> column, otherwise <code>undefined</code> is shown. The <code>Parent</code> column shows the parent pid of a process, and <code>Entrypiont</code> column shows the entry MFA of a process if it is known. </p>
 
-<p>The column of <code>#RQ_chgs</code> shows the number of times a process migrated between run-queues during the profiling; the column <code>#msgs_recieved</code> shows the number of messages received by a process(the first element of the tuple}, as well as the average size of all these messages received (the second element of the tuple}; similarly, the column <code>#msgs_sent</code> shows the number of messages sent by a process, as well as the average size of all these messages sent.</p>
+<p>The column of <code>#RQ_chgs</code> shows the number of times a process migrated between run-queues during the profiling; the column <code>#msgs_recieved</code> shows the number of messages received by a process(the first element of the tuple), as well as the average size of all these messages received (the second element of the tuple); similarly, the column <code>#msgs_sent</code> shows the number of messages sent by a process, as well as the average size of all these messages sent.</p>
  
 <p><img src="percept2_processes.png" alt="overview of the process tree" width="850" height="500"> </p>
 
@@ -145,29 +160,30 @@ from the next snapshot. With the current version, how linkage relationships betw
 
 <p><img src="percept2_function_info.png" alt="process call graph" width="850" height="450"> </p>
 
-<h4><a name="Ports">Ports</a></h4><p>
-To get a more detailed description about ports, we can select the ports view by clicking on the <code>ports</code> button in the menu. Information about the lifetime, parent process pid, etc, are shown in the table, see the next snapshot.</p>
+<h5> Ports </h5>
+
+<p>To get a more detailed description about ports, we can select the ports view by clicking on the <code>ports</code> button in the menu. Information about the lifetime, parent process pid, etc, are shown in the table, see the next snapshot.</p>
 
 <p><img src="percept2_ports.png" alt="process call graph" width="850" height="450"> </p>
 
-<h4><a name="Function_Activities">Function Activities</a></h4>
+<h5> Function Activities </h5>
 
 <p>If functions are traces, clicking on the function activities button will direct us to 
 a webpage showing the functions that are active during the time interval selected. A time 
 interval is selected from the <code>overview</code> page by first either selecting an area along the time line, or by specifying <code>min</code> and <code>max</code> ranges in the edit boxes, then press the <code>update</code> button. </p>
 
 <p>As shown in the next snapshot, the function activities table shows how the lifetime of a 
-active overlaps with the time interval selected. In the activity bar, the green part shows the time interval selected, light green shows the overlapping between the function lifetime and the time interval selected. The grey part means that the function is active, but the time is out of the time interval selected. (Note: I will change the white part to grey, and update the snapshot).</p>
+active overlaps with the time interval selected. In the activity bar, the green part shows the time interval selected, light green shows the overlapping between the function lifetime and the time interval selected. The grey part means that the function is active, but the time is out of the time interval selected. </p>
 
 <p><img src="percept2_functions.png" alt="process call graph" width="850" height="450"> </p>
 
-<h4><a name="Support_for_Distribution">Support for Distribution</a></h4>
+<h5> Support for Distribution </h5>
 
 <p>Percept2 provides limited support for tracing distributed nodes so far, but one thing Percept2 can report is the message passing activities between nodes. The tracing of inter-node communication can be set up using Erlang's inviso library. Once the trace data has been collected, the trace files can be passed to Percept2, and Percept2 will then analyze the data and extract those message passing activity between nodes. </p>
 
 <p>When multiple nodes have been profiled, clicking on the <em>inter-node messaging </em> button in the menu will direct us to a page like the snapshot shown next.</p>
 
-<p><img src="percept2_inter_node_interface.png" alt="process call graph" width="850" height="400"> </p>
+<p><img src="percept2_inter_node_interface.png" alt="process call graph" width="850" height="250"> </p>
 
  <p>From this page, the we 
 can selects the two nodes that we are interested, <code>Node1</code> and <code>Node2</code> say, and click on the <code>Generate Graph</code> button, then Percept2 will generate a graph showing the message passing activities from <code>Node1</code> to <code>Node2</code>. In this The X-axis of the graph represents the time line, and the Y-axis of the graph represents the size of the message sent.</p>
@@ -175,13 +191,13 @@ can selects the two nodes that we are interested, <code>Node1</code> and <code>N
 <p><img src="percept2_inter_node_message.png" alt="process call graph" width="850" height="400"> </p>
 
 
-<h3><a name="Acknowledgments">Acknowledgments</a></h3>
+<p><a name="Ack"><h3> Acknowledgments </h3></a></p>
 
 The work is sponsored by the European Union Seventh Framework Programme(FP7).
 We are very grateful that we were able to extend the <a href="http://www.erlang.org/doc/man/percept.html">Percept</a> tool.
 
 <hr>
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc, Sep 11 2012, 09:17:12.</i></p>
+<p><i>Generated by EDoc, Sep 13 2012, 12:35:41.</i></p>
 </body>
 </html>

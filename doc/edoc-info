@@ -1,2 +1,2 @@
 {packages,[]}.
-{modules,[percept2_sampling]}.
+{modules,[percept2,percept2_sampling]}.
