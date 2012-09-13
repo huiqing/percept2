@@ -17,11 +17,29 @@
 %% %CopyrightEnd%
 %% 
 %% 
-%% @doc Percept2 - Erlang Concurrency Profiling Tool
+%% @doc Percept2 - An Enhance Version of the Erlang Concurrency Profiling Tool Percept.
+%%
+%%Percept2 extends Percept in two aspects: functionality and scalability. Among the new functionalities added to Percept are: 
+%% <ul>
+%% <li> Scheduler activity: the number of active schedulers at any time. </li>
+%% <li> Process migration information: the migration history of a process between run queues. </li>
+%% <li> Statistics data about message passing between processes: the number of messages, and the average message size, sent/received by a process.</li>
+%% <li> Accumulated runtime per-process: the accumulated time when a process is in a running state.</li>
+%% <li> Process tree: the hierarchy structure indicating the parent-child relationships between processes.</li> 
+%% <li> Dynamic function call graph/count/time: the hierarchy structure showing the calling 
+%% relationships between functions during the program run, and the amount of time spent on a function.</li>
+%% <li> Active functions: the functions that are active during a specific time interval.</li>
+%% <li> Inter-node message passing: the sending of messages from one node to another.
+%% </li>
+%% </ul> 
+%% The following techniques have been used to improved the scalability of Percept. 
+%% <ul>
+%% <li> Compressed process tree/function call graph representation: an approach to reducing the number of processes/function call paths presented without losing important information.</li>
+%% <li> Parallelisation of Percept: the processing of profile data has been parallelised so that multiple data files can be processed at the same time </li>
+%% </ul>
 %%
 %% This module provides the user interface for the application.
 %% 
-
 -module(percept2).
 
 -behaviour(application).
@@ -37,14 +55,31 @@
 	stop_webserver/0, 
 	stop_webserver/1, 
 
-	analyze/1]).
+	analyze/1,
+        stop_db/0]).
 
 %% Application callback functions.
 -export([start/2, stop/1, parse_and_insert/3]).
 
--compile(export_all).
-
 -include("../include/percept2.hrl").
+
+-type trace_flags() :: 
+        'all' | 'send' |'receive' |'procs'|'call'|'silent'|
+        'return_to' |'running'|'exiting'|'garbage_collection'|
+        'timestamp'|'cpu_timestamp'|'arity'|'set_on_spawn'|
+        'set_on_first_spawn'|'set_on_link'|'set_on_first_link'.
+
+-type profile_flags():: 
+        'runnable_procs'|'runnable_ports'|'scheduler'|'exclusive'.
+
+-type percept_option() ::
+      'concurreny' | 'message'| 'process_scheduling'
+      |{'function', [mfa()]}
+      |trace_flags()|profile_flags().
+
+-type filespec()::file:filename()|
+                  {file:filename(), wrap, Suffix::string(),
+                   WrapSize::pos_integer(), WrapCnt::pos_integer()}.
 
 %%---------------------------------------------------------%%
 %%                                                         %%
@@ -67,24 +102,28 @@ stop(_State) ->
     %% stop web browser service
     stop_webserver(0).
 
+%% @doc Stops the percept2 database.
+-spec stop_db() -> ok.
+stop_db() ->
+    percept2_db:stop(),
+    ok.
+
 %%---------------------------------------------------------%%
 %%                                                         %%
 %% 		Interface functions                        %%
 %%                                                         %%
 %%---------------------------------------------------------%%
 
-%% profile to a single file, and only profile process/ports concurrency 
+%%@doc Profile to file(s) and only profile process/ports concurrency 
 %% activities.
--type filespec()::file:filename()|
-                  {file:filename(), wrap, Suffix::string(),
-                   WrapSize::pos_integer(), WrapCnt::pos_integer()}.
-
+%%@see stop_profile/0
 -spec profile(FileSpec::filespec())
              -> {ok, Port} | {already_started, Port}.
 profile(FileSpec) ->
     percept2_profile:start(FileSpec, [concurrency]).
 
-%% profile to a single file with user-specified profiling/tracing options.
+%%@doc Profile to file(s) with user-specified profiling/tracing options.
+%%@see stop_profile/0
 -spec profile(FileSpec::filespec(),
               Options :: [percept_option()]) ->
                      {'ok', port()} | {'already_started', port()}.
@@ -93,8 +132,10 @@ profile(FileSpec, Options) ->
 
 %% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) ->
 %%     ok | {already_started, Port} | {error, not_started}
-%% @see percept2_profile
-
+%%@doc Profile to file(s) with user-specified profiling/tracing options. 
+%% The profiling starts with executing the entry function given, and goes 
+%% on for the whole duration until the entry function retures and the 
+%% the profiling has concluded.
 -spec profile(FileSpec :: filespec(),
 	      Entry :: {atom(), atom(), list()},
 	      Options :: [percept_option()]) ->
@@ -102,11 +143,14 @@ profile(FileSpec, Options) ->
 profile(FileSpec, MFA, Options) ->
     percept2_profile:start(FileSpec, MFA, Options).
 
+%%@doc Stops the profling.
+%%@see profile/1
+%%@see profile/2.
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
-%% @see percept2_profile
 stop_profile() ->
     percept2_profile:stop().
 
+%%@doc Analyse the trace data collected. See the <a href="overview-summary.html">Overview</a> page for examples.
 -spec analyze(FileNames :: [file:filename()]) ->
                      'ok' | {'error', any()}.
 analyze(FileNames) ->
@@ -153,7 +197,7 @@ loop_analyzer_par(Pids) ->
 %%	Hostname = string()
 %%	Port = integer()
 %%	Reason = term() 
-%% @doc Starts webserver.
+%% @doc Starts webserver. An available port number will be assigned by inets.
 -spec start_webserver() ->{'started', string(), pos_integer()} | {'error', any()}.
 start_webserver() ->
     start_webserver(0).
@@ -162,7 +206,7 @@ start_webserver() ->
 %%	Hostname = string()
 %%	AssignedPort = integer()
 %%	Reason = term() 
-%% @doc Starts webserver. If port number is 0, an available port number will 
+%% @doc Starts webserver with a given port number. If port number is 0, an available port number will 
 %%	be assigned by inets.
 -spec start_webserver(Port :: non_neg_integer()) ->
                              {'started', string(), pos_integer()} | {'error', any()}.
@@ -239,7 +283,7 @@ stop_webserver(Port) ->
 %%==========================================================================
 
 %% parse_and_insert
-
+%%@hidden
 parse_and_insert(Filename,SubDB, Parent) ->
     io:format("Parsing: ~p ~n", [Filename]),
     T0 = erlang:now(),

@@ -41,6 +41,20 @@
 %%==========================================================================
 -type port_number() :: integer().
 
+-type trace_flags() :: 
+        'all' | 'send' |'receive' |'procs'|'call'|'silent'|
+        'return_to' |'running'|'exiting'|'garbage_collection'|
+        'timestamp'|'cpu_timestamp'|'arity'|'set_on_spawn'|
+        'set_on_first_spawn'|'set_on_link'|'set_on_first_link'.
+
+-type profile_flags():: 
+        'runnable_procs'|'runnable_ports'|'scheduler'|'exclusive'.
+
+-type percept_option() ::
+      'concurreny' | 'message'| 'process_scheduling'
+      |{'function', [mfa()]}
+      |trace_flags()|profile_flags().
+
 %%==========================================================================
 %%
 %% 		Interface functions
