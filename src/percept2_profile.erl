@@ -67,7 +67,7 @@ start(FileSpec, Options) ->
                    'ok' | {'already_started', port_number()} |
                    {'error', 'not_started'}.
 start(FileSpec, _Entry={Mod, Fun, Args}, Options) ->
-    case whereis(percept_port) of
+    case whereis(percept2_port) of
 	undefined ->
 	    profile_to_file(FileSpec,Options),
             _Res=erlang:apply(Mod, Fun, Args),
@@ -97,7 +97,7 @@ stop() ->
     erlang:trace(all, false, [all]),
     erlang:trace_pattern({'_', '_', '_'}, false, [local]),
     deliver_all_trace(), 
-    case whereis(percept_port) of
+    case whereis(percept2_port) of
     	undefined -> 
 	    {error, not_started};
 	Port ->
@@ -118,7 +118,7 @@ stop() ->
                       Opts::[percept_option()])->
                              {'ok', port()} | {'already_started', port()}.
 profile_to_file(FileSpec, Opts) ->
-    case whereis(percept_port) of 
+    case whereis(percept2_port) of 
 	undefined ->
 	    io:format("Starting profiling.~n", []),
 
@@ -129,7 +129,7 @@ profile_to_file(FileSpec, Opts) ->
 	    erlang:system_flag(multi_scheduling, unblock),
 		
 	    %% Register Port
-    	    erlang:register(percept_port, Port),
+    	    erlang:register(percept2_port, Port),
 	    set_tracer(Port, Opts), 
 	    {ok, Port};
 	Port ->
