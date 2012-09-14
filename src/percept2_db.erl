@@ -607,7 +607,7 @@ trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  _MFA, TS}) when is_pid(Pi
             erlang:erase({in,Pid}),
             InternalPid = pid2value(Pid),
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_element(ProcRegName, InternalPid, {13, Elapsed});
+            update_information_acc_time(ProcRegName, {InternalPid, Elapsed});
         undefined ->ok;
         _ -> erlang:erase({in, Pid})    
     end;
@@ -1096,6 +1096,8 @@ update_information_received(ProcRegName, Pid, MsgSize)->
 update_information_element(ProcRegName, Key, {Pos, Value}) ->
     ProcRegName! {update_information_element, {Key, {Pos, Value}}}.
 
+update_information_acc_time(ProcRegName, {Key, Elapsed}) ->
+    ProcRegName ! {update_information_acc_time, {Key, Elapsed}}.
 
 pdb_info_loop()->
     receive
@@ -1117,8 +1119,19 @@ pdb_info_loop()->
         {update_information_element, {Key, {Pos, Value}}} ->
             ets:update_element(pdb_info, Key, {Pos, Value}),
             pdb_info_loop();
+        {update_information_acc_time, {Key, Value}} ->
+            update_information_acc_time_1(Key, Value),
+            pdb_info_loop();
         {action,stop} ->
             ok
+    end.
+
+update_information_acc_time_1(Key, Value) ->
+    case ets:lookup(pdb_info, Key) of 
+        [] ->
+            ets:insert(pdb_info, #information{id=Key, accu_runtime=Value});
+        [_Info] ->
+            ets:update_counter(pdb_info, Key, {13, Value})
     end.
 
 update_information_1(#information{id = Id} = NewInfo) ->
