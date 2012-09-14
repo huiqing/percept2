@@ -26,7 +26,7 @@
 -export([eps/1]).
 -compile(inline).
 
--include("egd.hrl").
+-include("../include/egd.hrl").
 -define('DummyC',0).
 
 binary(Image) ->

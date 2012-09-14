@@ -231,6 +231,8 @@ start_webserver(Port) when is_integer(Port) ->
                         _ ->
                             ets:delete_all_objects(history_html)
                     end,
+                    Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
+                    egd_font:load(Filename),
                     {started, Host, AssignedPort};
 		{error, Reason} ->
 		    {error, {inets, Reason}}
@@ -267,6 +269,7 @@ do_stop(Port, Pid)->
         Pid2 ->
             Pid ! quit,
             rm_tmp_files(),
+            ets:delete(egd_font_table),
             inets:stop(httpd, Pid2)
     end.
 

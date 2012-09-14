@@ -29,6 +29,7 @@
 
 -record(graph_area, {x = 0, y = 0, width, height}).
 
+-compile(export_all).
 -compile(inline).
 
 -include("../include/percept2.hrl").
@@ -67,7 +68,7 @@ graph(Width, Height, Data) ->
 error_graph(Width, Height, Text) ->
     %% Initiate Image
     Image = egd:create(round(Width/2), round(Height/2)),
-    Font = load_font(),
+    Font = get_font(),
     egd:text(Image, {200, 100}, Font, Text,  egd:color(Image, {255, 0, 0})),
     Binary = egd:render(Image, png),
     egd:destroy(Image),
@@ -154,7 +155,7 @@ draw_xticks(Image, Color, XticksArea, {Xmin, Xmax}, Data) ->
     DX = Width/(Xmax - Xmin),
     Offset = X0 - Xmin*DX, 
     Y = trunc(Y0),
-    Font = load_font(),
+    Font = get_font(),
     {FontW, _FontH} = egd_font:size(Font),
     egd:filledRectangle(Image, {trunc(X0), Y}, {trunc(X0 + Width), Y}, Color), 
     lists:foldl(
@@ -186,7 +187,7 @@ draw_xticks(Image, Color, XticksArea, {Xmin, Xmax}, Data) ->
 
 draw_yticks(Im, Color, TickArea, {_,Ymax}) ->
     #graph_area{x = X0, y = Y0, width = Width, height = Height} = TickArea,
-    Font = load_font(),
+    Font = get_font(),
     X = trunc(X0 + Width),
     Dy = (Height)/(Ymax),
     Yts = if 
@@ -310,8 +311,8 @@ proc_lifetime(Width, Height, Start, End, ProfileTime) ->
 %%% Percentage should be 0.0 -> 1.0
 %%% -------------------------------------
 percentage(Width, Height, Percentage) ->
+    Font = get_font(),
     Im = egd:create(round(Width), round(Height)),
-    Font = load_font(),
     Black = egd:color(Im, {0, 0, 0}),
     Green = egd:color(Im, {0, 255, 0}),
 
@@ -338,7 +339,7 @@ percentage(Width, Height, Percentage) ->
 
 calltime_percentage(Width, Height, CallTime, Percentage) ->
     Im = egd:create(round(Width), round(Height)),
-    Font = load_font(),
+    Font = get_font(),
     Black = egd:color(Im, {0, 0, 0}),
     Green = egd:color(Im, {0, 255, 0}),
     Grey = egd:color(Im, {128, 128, 128}),
@@ -361,10 +362,10 @@ calltime_percentage(Width, Height, CallTime, Percentage) ->
     Binary.
 
 
-load_font() ->
-    Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
-    egd_font:load(Filename).
-    
+get_font() ->
+    {Font, _} =ets:first(egd_font_table),
+    Font.
+   
 text(Image, {X,Y}, Font, Text, Color) ->
     egd:text(Image, {X,Y-2}, Font, Text, Color).
 
