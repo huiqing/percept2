@@ -48,10 +48,6 @@
 -export([init/5]).
 
 %%@hidden
--type timestamp() :: {non_neg_integer(), 
-                      non_neg_integer(), 
-                      non_neg_integer()}.
-
 -type sample_items():: 
         'run_queue'|'run_queues'|'scheduler_utilisation'|
         'process_count'| 'schedulers_online'|'mem_info'|
@@ -62,40 +58,40 @@
 -type milliseconds()::non_neg_integer().
 
 -record(run_queue_info,
-        {timestamp::timestamp(), 
+        {timestamp::float(), 
          run_queue=0::non_neg_integer()
         }).
 
 -record(run_queues_info,
-        {timestamp::timestamp(),
+        {timestamp::float(),
          run_queues::non_neg_integer()
         }).
 
 -record(scheduler_utilisation_info,
-        {timestamp::timestamp(),
+        {timestamp::float(),
          scheduler_utilisation::float()
         }).
    
 -record(process_count_info, {
-          timestamp::timestamp(),
+          timestamp::float(),
           process_count::non_neg_integer()}).
 
 -record(schedulers_online_info, {
-          timestamp::timestamp(),
+          timestamp::float(),
           schedulers_online::non_neg_integer()}).
 
 -record(mem_info, {
-          timestamp   ::timestamp(),
-          total       ::non_neg_integer(),
-          processes   ::non_neg_integer(),
-          ets         ::non_neg_integer(),
-          atom        ::non_neg_integer(),
-          code        ::non_neg_integer(),
-          binary      ::non_neg_integer()
+          timestamp   ::float(),
+          total       ::float(),
+          processes   ::float(),
+          ets         ::float(),
+          atom        ::float(),
+          code        ::float(),
+          binary      ::float()
          }).
  
 -record(message_queue_len_info, {
-          timestamp ::timestamp(),
+          timestamp ::float(),
           message_queue_len ::non_neg_integer()}).
 
 
@@ -202,9 +198,9 @@ check_out_dir(Dir) ->
 %%  <img src="percept2_sample_mem.png"
 %%  alt="the front page of Percept2"  width="850" height="500"> </img>
 
--spec(sample(Items::[sample_items()], 
+-spec(sample(Items::[any()],  %%[sample_items()],
              EntryOrTime::entry_mfa()|milliseconds(),
-             OutDir::file:direname())
+             OutDir::file:filename())
       ->ok).
 sample(Items, Time, OutDir) when is_integer(Time)->
     sample(Items, Time, ?INTERVAL,
@@ -216,9 +212,9 @@ sample(Items, Entry={_Mod, _Fun, _Args},OutDir) ->
 %%
 %% Different from <a href="percept2_sampling.html#sample-2">sample/2</a>,
 %% the function allows the user to specify the time interval.
--spec(sample(Items::[sample_items()], 
+-spec(sample(Items::[any()],  %%[sample_items()],
              EntryOrTime::entry_mfa()|milliseconds(),
-             TimeInterval::milliseconds(), OutDir::file:dirname())->ok).         
+             TimeInterval::milliseconds(), OutDir::file:filename())->ok).         
 sample(Items, Time, TimeInterval, OutDir) when is_integer(Time)->
     sample(Items, Time, TimeInterval,fun(_) -> true end, OutDir);
 sample(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
@@ -230,11 +226,11 @@ sample(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
 %% function also allows the user to supply a filter function, so that 
 %% only those data that satisfy certain condition are logged.
 %% See <a href="percept2_sampling.html#sample-2">sample/2</a>.
--spec(sample(Items::[sample_items()], 
+-spec(sample(Items::[any()],  %%[sample_items()],
              EntryOrTime::entry_mfa()|milliseconds(),
              TimeInterval::milliseconds(),
              fun((_)-> boolean()),
-                OutDir::file:dirname()) -> ok).
+                OutDir::file:filename()) -> ok).
 sample(Items, _Entry={Mod, Fun, Args}, TimeInterval, FilterFun, OutDir) ->
     ok=check_out_dir(OutDir),
     ok=check_sample_items(Items),
@@ -455,7 +451,7 @@ write_data([], _) ->
 to_megabytes(Bytes) ->
     Bytes/1000000.
 
-%% Example command
+%% Example commands
 %% percept2_sampling:sample( ['run_queue','run_queues','scheduler_utilisation',
 %%                            'process_count', 'schedulers_online','mem_info'],
 %%                          {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, 
