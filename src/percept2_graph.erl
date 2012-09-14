@@ -29,8 +29,6 @@
          memory_graph/3,
          inter_node_message_graph/3]).
 
--compile(export_all).
-
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
 

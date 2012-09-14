@@ -29,7 +29,6 @@
 
 -record(graph_area, {x = 0, y = 0, width, height}).
 
--compile(export_all).
 -compile(inline).
 
 -include("../include/percept2.hrl").
