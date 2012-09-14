@@ -59,7 +59,7 @@
           children = []		 :: [pid_value()]|special_atom(),
           msgs_received ={0, 0}  :: {non_neg_integer(), non_neg_integer()}|special_atom(),
           msgs_sent     ={0, 0}  :: {non_neg_integer(), non_neg_integer()}|special_atom(),
-          accu_runtime = 0.0     :: float()|special_atom(),
+          accu_runtime = 0       :: integer()|special_atom(),
           hidden_pids = []       :: [pid_value()]|special_atom()
 	}).
  
