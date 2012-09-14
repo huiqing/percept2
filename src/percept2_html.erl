@@ -919,8 +919,6 @@ process_info_content_1(_Env, Input) ->
     ArgumentString = case I#information.entry of
                          {_, _, Arguments} when is_list(Arguments)-> 
                              lists:flatten(io_lib:write(Arguments, 10));
-                             %% lists:flatten([term2html(Arg) ++ "<br>" ||
-                             %%                   Arg <- Arguments]);
                          _                 ->
                              ""
                      end,
@@ -956,7 +954,9 @@ process_info_content_1(_Env, Input) ->
                     [{th, "{#msg_received, <br>avg_msg_size}"},
                      term2html(info_msg_received(I))],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
-                     term2html(info_msg_sent(I))]
+                     term2html(info_msg_sent(I))],
+                    [{th, "accumulated runtime <br>(in microseconds)"},
+                     term2html(I#information.accu_runtime)]
                    ] ++ case percept2_db:is_dummy_pid(Pid) of
                             true ->
                                 [[{th, "Compressed Processes"}, lists:flatten(
