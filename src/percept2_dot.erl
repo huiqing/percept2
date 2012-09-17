@@ -247,10 +247,11 @@ format_process_tree_vertex({{Pid={pid, {_P1, P2, P3}}, Name, Entry}, CleanPid}) 
                _ -> Pid
            end,
     PidStr =  "<" ++ pid2str(Pid1) ++ ">",
-    lists:flatten(io_lib:format("~s; ~p;\\n~p",
-                                [PidStr, Name, Entry]));
+    lists:flatten(io_lib:format("~s; ~p;\\n", [PidStr, Name])) ++
+        format_entry(Entry);
+
 format_process_tree_vertex(Other)  ->
-     io_lib:format("~p", [Other]).
+    io_lib:format("~p", [Other]).
     
 format_process_tree_edge(V1, V2, Label, CleanPid) ->
     String = ["\"",format_process_tree_vertex({V1, CleanPid}),"\"", " -> ",
@@ -258,6 +259,20 @@ format_process_tree_edge(V1, V2, Label, CleanPid) ->
     [String, " [", "label=", "\"", format_label(Label),
      "\"",  "fontsize=20 fontname=\"Verdana\"", "];\n"].
 
+
+format_entry(undefined) ->
+    "undefined";
+format_entry({M, F, A}) ->
+    MStr = atom_to_list(M),
+    FStr = atom_to_list(F),
+    case length(MStr)>25 orelse length(FStr)>25 of 
+        true ->
+            "{"++MStr++",\\n"++FStr++","
+                ++integer_to_list(A)++"}";
+        false ->
+            "{"++MStr++","++FStr++","
+                ++integer_to_list(A)++"}"
+    end.
 
 calc_dim(String) ->
   calc_dim(String, 1, 0, 0).
