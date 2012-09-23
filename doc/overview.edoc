@@ -145,54 +145,57 @@ listing all these 51 processes, Percept2 only shows  information about one proce
 <img src="percept2_processes1.png"
  alt="overview of the process tree" width="850" height="500"> </img>
 
-If we click on the `Visualise Process Tree' link at the bottom of the table, a graph representation of all the process trees listed in the table will be shown, as what we can see 
-from the next snapshot. Currently, the linkage relationships between parent/children processes are not reflected, but will be added in the future. <em> Note that percept2 use the `dot' command from Graphviz to generate the graph visualisation, so make sure that Graphviz works on you machine</em>.
+If we click on the `Visualise Process Tree' link at the bottom of the table, a graph representation of all the process trees listed in the table will be shown, as in the next snapshot. Currently, the linkage relationships between parent/children processes are not reflected, but will be added in the future. <em> Note that percept2 use the `dot' command from Graphviz to generate the graph visualisation, so make sure that Graphviz works on your machine</em>.
 
 <img src="percept2_process_tree_graph.png"
  alt="process tree graph" width="850" height="500"> </img>
 
-If functions are traced for a process, the link `show callgraph/time' will direct us to the dynamic callgraph/time information page of the associated process. The snapshot next shows the callgraph/time page of the process `<0.36.0>'. In the callgraph, the edge label indicates how many times a function is called by its calling function during the profiling. Note that only functions that are actually traced 
-are included in the callgraph, and a callgraph is not generated if no functions are traced for a process, or 
-if some functions are traced for a process, but there is no calls between these functions. If there is  no callgraph generated for a process, 
-clicking on the `show callgraph/time' link will lead to a page saying `No data generated'. 
+If functions are traced for a process, and those functions form a callgraph, then a 'show callgraph/time' 
+link is shown in the <em>Callgraph</em> column of the process table; otherwise `no callgraph/time' is shown.  
+The snapshot next shows the callgraph/time page of the process `<0.2398.0>'. In this callgraph, 
+the edge label indicates how many times a function is called by its calling function during the profiling. 
+Note that only functions that are actually traced are included in the callgraph, i.e. a function that is not 
+traced is not included in the callgraph even if this function is called during the execution of the application.
 
-Underneath the callgraph is a table indicating the accumulated time on each function shown in the callgraph, as shown in the next snapshot. 
+Underneath the callgraph is a table, as shown in the next snapshot, indicating the accumulated time on each function traced. 
 
 <img src="percept2_process_call_graph.png"
  alt="process call graph"  width="850" height="500"> </img>
 
-Underneath the callgraph is a table indicating the accumulated time on each function shown in the callgraph, as what we see in the next snapshot.
+Underneath the callgraph is a table, as shown in the next snapshot, indicating the accumulated time on each function traced. 
 
 <img src="percept2_calltime.png"
  alt="process call graph"  width="850" height="500"> </img>
  
-Function names shown in the accumulated calltime table are click-able, and clicking on a function name will direct us to the information page for this function. The snapshot next shows the information about the function `sim_code:sim_code_detection/4' executed by the process `<0.36.0>'.
+Function names shown in the accumulated calltime table are click-able, and clicking on a function name will direct us to the information page for this function. The snapshot next shows the information about the function `sim_code:sim_code_detection/4' executed by the process `<0.2398.0>'.
 
 <img src="percept2_function_info.png"
- alt="process call graph"  width="850" height="450"> </img>
+ alt="process call graph"  width="850" height="300"> </img>
 
 <h5> Ports </h5>
 
 To get a more detailed description about ports, we can select the ports view by clicking on the `ports' button in the menu. Information about the lifetime, parent process pid, etc, are shown in the table, see the next snapshot.
 
 <img src="percept2_ports.png"
- alt="process call graph"  width="850" height="450"> </img>
+ alt="process call graph"  width="850" height="400"> </img>
 
 <h5> Function Activities </h5>
 
-If functions are traced, clicking on the `function activities' button will direct us to 
+If functions are traced, clicking on the `function activities' button will direct to 
 a webpage showing the functions that are active during the time interval selected. A time 
-interval is selected from the `overview' page by first either selecting an area along the time line, or by specifying `min' and `max' ranges in the edit boxes, then press the `update' button. 
+interval is selected from the `overview' page by first either selecting an area along the time line, or by specifying `min' and `max' ranges in the edit boxes, then press the `update' button. The default time interval is the whole profiling period.
 
 As shown in the next snapshot, the function activities table shows how the lifetime of an 
-active function overlaps with the time interval selected. In the activity bar, the green part shows the time interval selected, light green shows the overlapping between the function lifetime and the time interval selected. The grey part means that the function is active, but the time is out of the time interval selected. 
+active function overlaps with the time interval selected. In the activity bar, the green part shows the time 
+interval selected, light green shows the overlapping between the function's lifetime and the time interval 
+selected. The grey part means that the function is active, but the time is out of the time interval selected. 
 
 <img src="percept2_functions.png"
- alt="process call graph" width="850" height="450"> </img>
+ alt="process call graph" width="850" height="300"> </img>
 
 <h5> Support for Distribution </h5>
 
-Percept2 provides limited support for tracing distributed nodes so far, but one thing Percept2 can report is the message passing activities between nodes. The tracing of inter-node communication can be set up using Erlang's ttb/inviso library. Once the trace data has been collected, the trace files can be passed to Percept2, and Percept2 will then analyze the data and extract those message passing activity between nodes. 
+Percept2 provides limited support for tracing distributed nodes so far, but one thing Percept2 can report is the message passing activities between nodes. The tracing of inter-node communication can be set up using Erlang's ttb/inviso library. Once the trace data has been collected, the trace files can be passed to Percept2, which will then analyze the data and extract those message passing activity between nodes. 
 
 When multiple nodes have been profiled, clicking on the <em>inter-node messaging </em> button in the menu will direct us to a page like the snapshot shown next.
 
