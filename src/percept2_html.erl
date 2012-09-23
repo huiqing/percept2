@@ -1146,6 +1146,7 @@ function_info_content_1(_Env, Input) ->
     MFA = get_option_value("mfa", Query),
     [I] = percept2_db:select({information, Pid}),
     [F] = percept2_db:select({funs, {Pid, MFA}}),
+    CleanPid = percept2_db:select({system, nodes})==1,
     CallersTable = html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                   [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
                                       {C, Count}<-F#fun_info.callers]), 
@@ -1153,7 +1154,7 @@ function_info_content_1(_Env, Input) ->
                                 [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
                                     {C, Count}<-F#fun_info.called]),
     InfoTable = html_table([
-                            [{th, "Pid"},         pid2html(Pid)],
+                            [{th, "Pid"},         pid2html(Pid, CleanPid)],
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
                             [{th, "M:F/A"},       mfa2html_with_link({Pid, MFA})],
                             [{th, "Call count"}, term2html(F#fun_info.call_count)],
