@@ -1198,8 +1198,8 @@ update_information_sent_1(From, MsgSize, To, Ts) ->
                                     msgs_sent={1, MsgSize}
                                    });            
         [I] ->
-            {No, Size} =  I#information.msgs_sent, 
-            ets:update_element(pdb_info, From, 
+            {No, Size} =  I#information.msgs_sent,
+            ets:update_element(pdb_info, InternalPid, 
                                {12, {No+1, Size+MsgSize}})
     end.
 
