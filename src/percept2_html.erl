@@ -742,8 +742,7 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
               end, [], ProcessTree),
     if 
 	length(ProcsHtml) > 0 ->
-            "<tr><td><b>Processes</b></td></tr>
-	    <tr><td>
+            " <tr><td>
  	   <table align=center width=1000 cellspacing=10 border=0>
 		<tr>
 		<td align=middle width=40><b>Select</b></td>
@@ -776,7 +775,7 @@ ports_page_content_1(_Env, _Input) ->
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
     Ports = percept2_db:select({information, ports}),
-    PortsHtml = mk_ports_html(Ports, ProfileTime),
+    PortsHtml = mk_ports_html(lists:reverse(lists:keysort(2, Ports)), ProfileTime),
     "<div id=\"content\"> <table>" ++
         PortsHtml ++ 
         "</table>" ++
@@ -1330,12 +1329,31 @@ mfa2html_with_link(_) ->
     "undefined".
 
 visual_link({Pid,{M,F,A}, _})->
-    MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [M, F, A])), 
-    "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_pagepid=" ++ 
-        pid2str(Pid) ++ "&mfa=" ++ MFAValue ++ "\">" ++ "show call graph/time" ++ "</a>";
+    case has_callgraph(Pid) of 
+        true ->
+            MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [M, F, A])), 
+            "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_page?pid=" ++ 
+                pid2str(Pid) ++ "&mfa=" ++ MFAValue ++ "\">" ++ "show call graph/time" ++ "</a>";
+        false ->
+            "No callgraph/time"
+    end;
 visual_link({Pid,undefined, _})->
-    "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_page?pid=" ++ 
-        pid2str(Pid) ++ "&mfa=" ++ "undefined" ++ "\">" ++ "show callgraph/time" ++ "</a>".
+    case has_callgraph(Pid) of 
+        true ->
+            "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_page?pid=" ++ 
+                pid2str(Pid) ++ "&mfa=" ++ "undefined" ++ "\">" ++ "show callgraph/time" ++ "</a>";
+        false ->
+            "No callgraph/time"
+    end.
+
+has_callgraph(Pid) ->
+    CallTree=ets:select(fun_calltree, 
+                        [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+                          [],
+                          ['$_']
+                         }]), 
+    CallTree/=[].
+
 %%% --------------------------- %%%
 %%% 	to html          	%%%
 %%% --------------------------- %%%
