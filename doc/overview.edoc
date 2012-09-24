@@ -140,7 +140,7 @@ The column `#RQ_chgs' shows the number of times a process migrated between run-q
  alt="overview of the process tree" width="850" height="500"> </img>
 
 The next snapshot shows the process tree when the `+' sign next to the Pid `<0.23.0>' is clicked on. This snapshot shows that 51 processes were spawned by process `<0.23.0>'. In this case, all the 51 processes have the same entry point. Instead of 
-listing all these 51 processes, Percept2 only shows  information about one process,  `<0.781.0>' in this case, and all the remaining processes are <em>compressed</em> into one single dummy process. Only unregistered processes with the same parent and the same entry function can be compressed, and if this happens, the values of `#RQ_chgs', `#msgs_received' and `#msgs_sent' are the sum of all the processes represented by the dummy process. 
+listing all these 51 processes, Percept2 only shows  information about one process,  `<0.2413.0>' in this case, and all the remaining processes are <em>compressed</em> into one single dummy process. Only unregistered processes with the same parent and the same entry function can be compressed, and if this happens, the values of `#RQ_chgs', `#msgs_received' and `#msgs_sent' are the sum of all the processes represented by the dummy process. 
 
 <img src="percept2_processes1.png"
  alt="overview of the process tree" width="850" height="500"> </img>
