@@ -278,11 +278,11 @@ calc_dim(String) ->
   calc_dim(String, 1, 0, 0).
 
 calc_dim("\\n" ++ T, H, TmpW, MaxW) ->
-    calc_dim(T, H + 1, 0, wrangler_misc:max(TmpW, MaxW));
+    calc_dim(T, H + 1, 0, lists:max([TmpW, MaxW]));
 calc_dim([_| T], H, TmpW, MaxW) ->
     calc_dim(T, H, TmpW+1, MaxW);
 calc_dim([], H, TmpW, MaxW) ->
-    {wrangler_misc:max(TmpW, MaxW), H}.
+    {lists:max([TmpW, MaxW]), H}.
 
 format_label(Label) when is_integer(Label) ->
     io_lib:format("~p", [Label]);
