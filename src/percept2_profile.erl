@@ -50,11 +50,11 @@
 -type profile_flags():: 
         'runnable_procs'|'runnable_ports'|'scheduler'|'exclusive'.
 
+-type module_name()::atom().
 -type percept_option() ::
       'concurreny' | 'message'| 'process_scheduling'
-      |{'function', [mfa()]}
-      |trace_flags()|profile_flags().
-
+      |{'mods', [module_name()]}.
+    
 %%==========================================================================
 %%
 %% 		Interface functions
@@ -152,9 +152,9 @@ profile_to_file(FileSpec, Opts) ->
     end.
 -spec(set_tracer(pid()|port(), [percept_option()]) -> ok).
 set_tracer(Port, Opts) ->
-    {TraceOpts, ProfileOpts, MatchSpecMFAs} = parse_profile_options(Opts),
+    {TraceOpts, ProfileOpts, Mods} = parse_profile_options(Opts),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
-    [erlang:trace_pattern(MFA, MatchSpec, [local])||MFA<-MatchSpecMFAs],
+    _Res=[erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
     erlang:trace(all, true, [{tracer, Port}, timestamp, call, return_to, 
                              set_on_spawn, procs| TraceOpts]),
     erlang:system_profile(Port, ProfileOpts),
@@ -169,7 +169,7 @@ parse_profile_options(Opts) ->
 
 parse_profile_options([], Out) ->
     Out;
-parse_profile_options([Head|Tail],{TraceOpts, ProfileOpts, FuncOpts}) ->
+parse_profile_options([Head|Tail],{TraceOpts, ProfileOpts, ModOpts}) ->
     [Opt|Others] = get_flags(Head),
     NewOpts = Others ++ Tail,
     case Opt of
@@ -177,36 +177,36 @@ parse_profile_options([Head|Tail],{TraceOpts, ProfileOpts, FuncOpts}) ->
 	    parse_profile_options(
               NewOpts, 
               {[procs|TraceOpts],
-               [runnable_procs|ProfileOpts], FuncOpts});
+               [runnable_procs|ProfileOpts], ModOpts});
 	ports ->
 	    parse_profile_options(
               NewOpts,
               {[ports|TraceOpts],
-               [runnable_ports|ProfileOpts], FuncOpts});
+               [runnable_ports|ProfileOpts], ModOpts});
         scheduler ->
 	    parse_profile_options(
               NewOpts, 
               {TraceOpts,
-               [scheduler|ProfileOpts], FuncOpts});
+               [scheduler|ProfileOpts], ModOpts});
         exclusive ->
 	    parse_profile_options(
               NewOpts, 
               {TraceOpts,
-               [exclusive| ProfileOpts], FuncOpts});
-        {function, MFAs} ->
+               [exclusive| ProfileOpts], ModOpts});
+        {mods, Mods} ->
             parse_profile_options(
               NewOpts, 
               {[call, return_to, arity|TraceOpts],
-               ProfileOpts, MFAs ++ FuncOpts});
+               ProfileOpts, Mods ++ ModOpts});
 	_ -> 
             case lists:member(Opt, trace_flags()) orelse
                 lists:member(Opt, profile_flags()) of
                 true ->
                     parse_profile_options(
-                      NewOpts, {[Opt|TraceOpts], ProfileOpts, FuncOpts});
+                      NewOpts, {[Opt|TraceOpts], ProfileOpts, ModOpts});
                 false ->
                     parse_profile_options(
-                      NewOpts, {TraceOpts, ProfileOpts, FuncOpts})
+                      NewOpts, {TraceOpts, ProfileOpts, ModOpts})
             end
     end.
 
@@ -218,7 +218,7 @@ get_flags(message) ->
     [send, 'receive'];
 get_flags(gc) ->
     [garbage_collection];
-get_flags(Flag={'function', _MFAs}) ->
+get_flags(Flag={'mods', _MFAs}) ->
     [Flag];
 get_flags(Flag) ->
     [Flag].
