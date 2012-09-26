@@ -43,28 +43,18 @@
 <p><tt>filespec() = <a href="file.html#type-filename">file:filename()</a> | {<a href="file.html#type-filename">file:filename()</a>, wrap, Suffix::string(), WrapSize::pos_integer(), WrapCnt::pos_integer()}</tt></p>
 
 
-<h3 class="typedecl"><a name="type-percept_option">percept_option()</a></h3>
-<p><tt>percept_option() = concurreny | message | process_scheduling | {function, [mfa()]} | <a href="#type-trace_flags">trace_flags()</a> | <a href="#type-profile_flags">profile_flags()</a></tt></p>
-
-
-<h3 class="typedecl"><a name="type-profile_flags">profile_flags()</a></h3>
-<p><tt>profile_flags() = runnable_procs | runnable_ports | scheduler | exclusive</tt></p>
-
-
-<h3 class="typedecl"><a name="type-trace_flags">trace_flags()</a></h3>
-<p><tt>trace_flags() = all | send | 'receive' | procs | call | silent | return_to | running | exiting | garbage_collection | timestamp | cpu_timestamp | arity | set_on_spawn | set_on_first_spawn | set_on_link | set_on_first_link</tt></p>
+<h3 class="typedecl"><a name="type-module_name">module_name()</a></h3>
+<p><tt>module_name() = atom()</tt></p>
 
 
 <h2><a name="index">Function Index</a></h2>
 <table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td>Analyse the trace data collected.</td></tr>
-<tr><td valign="top"><a href="#profile-1">profile/1</a></td><td>Profile to file(s) and only profile process/ports concurrency
-  activities.</td></tr>
-<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td>Profile to file(s) with user-specified profiling/tracing options.</td></tr>
-<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>Profile to file(s) with user-specified profiling/tracing options.</td></tr>
+<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td>Profile to file.</td></tr>
+<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>Profile to file.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-0">start_webserver/0</a></td><td>Starts webserver.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-1">start_webserver/1</a></td><td>Starts webserver with a given port number.</td></tr>
 <tr><td valign="top"><a href="#stop_db-0">stop_db/0</a></td><td>Stops the percept2 database.</td></tr>
-<tr><td valign="top"><a href="#stop_profile-0">stop_profile/0</a></td><td>Stops the profling.</td></tr>
+<tr><td valign="top"><a href="#stop_profile-0">stop_profile/0</a></td><td>Stops the profiling.</td></tr>
 <tr><td valign="top"><a href="#stop_webserver-0">stop_webserver/0</a></td><td>Stops webserver.</td></tr>
 </table>
 
@@ -75,23 +65,26 @@
 <p><tt>analyze(FileNames::[<a href="file.html#type-filename">file:filename()</a>]) -&gt; ok | {error, any()}</tt><br></p>
 </div><p>Analyse the trace data collected. See the <a href="overview-summary.html">Overview</a> page for examples.</p>
 
-<h3 class="function"><a name="profile-1">profile/1</a></h3>
-<div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>) -&gt; {ok, Port} | {already_started, Port}</tt><br></p>
-</div><p>Profile to file(s) and only profile process/ports concurrency
-  activities.</p>
-<p><b>See also:</b> <a href="#stop_profile-0">stop_profile/0</a>.</p>
-
 <h3 class="function"><a name="profile-2">profile/2</a></h3>
 <div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Options::[<a href="#type-percept_option">percept_option()</a>]) -&gt; {ok, port()} | {already_started, port()}</tt><br></p>
-</div><p>Profile to file(s) with user-specified profiling/tracing options.</p>
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Modules::[<a href="#type-module_name">module_name()</a>]) -&gt; {ok, Port} | {already_started, Port}</tt><br></p>
+</div><p><p>Profile to file. Process/scheduler/port activities are
+  traced; <code>Modules</code> specifies the list of module names whose
+  functions (both exported and local functions) should be traced.
+  No functions will be traced if <code>Modules</code> is an empty list.</p>
+ 
+  The profiling starts when the function is called, and goes no until
+  <code>stop_profile/0</code> is called.</p>
 <p><b>See also:</b> <a href="#stop_profile-0">stop_profile/0</a>.</p>
 
 <h3 class="function"><a name="profile-3">profile/3</a></h3>
 <div class="spec">
-<p><tt>profile(Filename::string(), MFA::mfa(), Options::[<a href="#type-percept_option">percept_option()</a>]) -&gt; ok | {already_started, Port} | {error, not_started}</tt><br></p>
-</div><p>Profile to file(s) with user-specified profiling/tracing options.
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Entry::{atom(), atom(), list()}, Modules::[<a href="#type-module_name">module_name()</a>]) -&gt; ok | {already_started, port()} | {error, not_started}</tt><br></p>
+</div><p><p>Profile to file. Process/scheduler/port activities are
+  traced; <code>Modules</code> specifies the list of module names whose
+  functions (both exported and local functions) should be traced.
+  No functions will be traced if <code>Modules</code> is an empty list.</p>
+ 
   The profiling starts with executing the entry function given, and goes
   on for the whole duration until the entry function retures and the
   the profiling has concluded.</p>
@@ -117,7 +110,7 @@
 <h3 class="function"><a name="stop_profile-0">stop_profile/0</a></h3>
 <div class="spec">
 <p><tt>stop_profile() -&gt; ok | {error, not_started}</tt><br></p>
-</div><p>Stops the profling.</p>
+</div><p>Stops the profiling.</p>
 <p><b>See also:</b> <a href="#profile-1">profile/1</a>, <a href="#profile-2">profile/2</a>.</p>
 
 <h3 class="function"><a name="stop_webserver-0">stop_webserver/0</a></h3>
@@ -127,6 +120,6 @@
 <hr>
 
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc, Sep 24 2012, 11:08:26.</i></p>
+<p><i>Generated by EDoc, Sep 26 2012, 10:00:53.</i></p>
 </body>
 </html>
