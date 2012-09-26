@@ -45,8 +45,7 @@
 -behaviour(application).
 
 -export([
-	profile/1, 
-	profile/2, 
+        profile/2, 
 	profile/3,
         stop_profile/0, 
 
@@ -63,20 +62,8 @@
 
 -include("../include/percept2.hrl").
 
--type trace_flags() :: 
-        'all' | 'send' |'receive' |'procs'|'call'|'silent'|
-        'return_to' |'running'|'exiting'|'garbage_collection'|
-        'timestamp'|'cpu_timestamp'|'arity'|'set_on_spawn'|
-        'set_on_first_spawn'|'set_on_link'|'set_on_first_link'.
-
--type profile_flags():: 
-        'runnable_procs'|'runnable_ports'|'scheduler'|'exclusive'.
-
--type percept_option() ::
-      'concurreny' | 'message'| 'process_scheduling'
-      |{'function', [mfa()]}
-      |trace_flags()|profile_flags().
-
+-type module_name()::atom().
+ 
 -type filespec()::file:filename()|
                   {file:filename(), wrap, Suffix::string(),
                    WrapSize::pos_integer(), WrapCnt::pos_integer()}.
@@ -113,37 +100,42 @@ stop_db() ->
 %% 		Interface functions                        %%
 %%                                                         %%
 %%---------------------------------------------------------%%
-
-%%@doc Profile to file(s) and only profile process/ports concurrency 
-%% activities.
+%%@doc Profile to file. Process/scheduler/port activities are 
+%% traced; `Modules' specifies the list of module names whose 
+%% functions (both exported and local functions) should be traced.
+%% No functions will be traced if `Modules' is an empty list.
+%%
+%% The profiling starts when the function is called, and goes no until 
+%% `stop_profile/0' is called.
 %%@see stop_profile/0
--spec profile(FileSpec::filespec())
+-spec profile(FileSpec::filespec(), Modules::[module_name()])
              -> {ok, Port} | {already_started, Port}.
-profile(FileSpec) ->
-    percept2_profile:start(FileSpec, [concurrency]).
+profile(FileSpec, Modules) ->
+    percept2_profile:start(FileSpec, 
+                           ['concurrency',
+                            'message',
+                            'process_scheduling',
+                            {mods, Modules}]).
 
-%%@doc Profile to file(s) with user-specified profiling/tracing options.
-%%@see stop_profile/0
--spec profile(FileSpec::filespec(),
-              Options :: [percept_option()]) ->
-                     {'ok', port()} | {'already_started', port()}.
-profile(FileSpec, Options) ->
-    percept2_profile:start(FileSpec, Options). 
 
-%% @spec profile(Filename::string(), MFA::mfa(), [percept_option()]) ->
-%%     ok | {already_started, Port} | {error, not_started}
-%%@doc Profile to file(s) with user-specified profiling/tracing options. 
+%%@doc Profile to file. Process/scheduler/port activities are 
+%% traced; `Modules' specifies the list of module names whose 
+%% functions (both exported and local functions) should be traced.
+%% No functions will be traced if `Modules' is an empty list.
+%%
 %% The profiling starts with executing the entry function given, and goes 
 %% on for the whole duration until the entry function retures and the 
 %% the profiling has concluded.
 -spec profile(FileSpec :: filespec(),
 	      Entry :: {atom(), atom(), list()},
-	      Options :: [percept_option()]) ->
+	      Modules:: [module_name()]) ->
                      'ok' | {'already_started', port()} | {'error', 'not_started'}.
-profile(FileSpec, MFA, Options) ->
-    percept2_profile:start(FileSpec, MFA, Options).
+profile(FileSpec, MFA, Modules) ->
+    percept2_profile:start(FileSpec, MFA, 
+              ['concurrency', 'message',
+               'process_scheduling', {mods, Modules}]).
 
-%%@doc Stops the profling.
+%%@doc Stops the profiling.
 %%@see profile/1
 %%@see profile/2.
 -spec stop_profile() -> 'ok' | {'error', 'not_started'}.
