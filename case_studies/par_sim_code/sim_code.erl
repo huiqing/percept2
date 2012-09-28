@@ -38,7 +38,7 @@
           generalise_and_hash_ast/6,
           check_clone_candidates/4]).
 
--compile(export_all).
+-export([ hash_loop/1, pforeach_0/3, clone_check_loop/3, pmap_1/3, pforeach_1/3]).
 
 -include_lib("wrangler/include/wrangler_internal.hrl").
 
