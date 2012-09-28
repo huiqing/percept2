@@ -133,7 +133,9 @@ If we select 'schedulers' from the droplist option, the graph will show the numb
 
 To get a more detailed description about processes, we can select the process view by clicking on the `processes' button in the menu. The table in the next snapshot shows the processes in an expandable/collapsible tree structure. The process ids shown in the table are click-able, and clicking on a process id will direct you to the process information page. The lifetime bar presents a rough estimate about when the process was alive during profiling. If a process has a registered name, then the name is shown in the `Name' column, otherwise `undefined' is shown. The `Parent' column shows the parent pid of a process, and `Entrypiont' column shows the entry MFA of a process if it is known. 
 
-The column `#RQ_chgs' shows the number of times a process migrated between run-queues during the profiling; the column `#msgs_recieved' shows the number of messages received by a process (the first element of the tuple), as well as the average size of all these messages received (the second element of the tuple); similarly, the column `#msgs_sent' shows the number of messages sent by a process, as well as the average size of all these messages sent.
+The column `#RQ_chgs' shows the number of times a process migrated between run-queues during the profiling, and the actual migration history from one run queue to another is available from  the process info information, which can be directed to by clicking on the process id. The migration history is shown as a list of integers. For example, a list `[1,2,1]' tells us that the process migrates from run queue 1 to run queue 2, then back to run queue 1.
+
+The column `#msgs_recieved' shows the number of messages received by a process (the first element of the tuple), as well as the average size of all these messages received (the second element of the tuple). In a similar way, the column `#msgs_sent' shows the number of messages sent by a process, as well as the average size of all these messages sent.
  
 <img src="percept2_processes.png"
  alt="overview of the process tree" width="850" height="500"> </img>
