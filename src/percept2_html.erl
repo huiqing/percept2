@@ -1005,12 +1005,9 @@ process_tree_content(_Env, _Input) ->
             %% file already generated, so reuse.
             Content;  
         false -> 
-            case percept2_dot:gen_process_tree_img() of
-                ok ->
-                    Content;
-                no_image ->
-                    blink_msg("No process tree generated.")
-            end
+            GenImgRes=percept2_dot:gen_process_tree_img(),
+            io:format("GenImgRes:\n~p\n", [GenImgRes]),
+            process_gen_graph_img_result(Content, GenImgRes)
     end.
  
 %%% function callgraph content
@@ -1186,16 +1183,30 @@ callgraph_time_content(Env, Input) ->
     case filelib:is_regular(ImgFullFilePath) of 
         true -> Content;  %% file already generated.
         false -> 
-            case percept2_dot:gen_callgraph_img(Pid) of
-                ok ->
-                    Content;
-                no_image ->
-                    "<div style=\"text-align:center;\">" ++
-                        "<h3 style=\"text-align:center;\">" ++ pid2html(Pid, CleanPid)++"</h3>"++ 
-                        "<blink><center><h3><p>No data generated </p></h3></center><blink>" ++
-                        "</div>"
-            end
+            GenImgRes=percept2_dot:gen_callgraph_img(Pid),
+            process_gen_graph_img_result(Content, GenImgRes)
     end.
+
+process_gen_graph_img_result(Content, GenImgRes) ->
+    case GenImgRes of
+        ok ->
+            Content;
+        no_image ->
+            Msg = "No data generated",
+            graph_img_error_page(Msg);
+        dot_not_found ->
+            Msg = "Percept2 cound not find the 'dot' executable from Graphviz; please make sure Graphviz is installed.",
+            graph_img_error_page(Msg);
+        gen_svg_failed ->
+            Msg = "Percept2 failed to use the 'dot' command (from Graphviz) to generate a .svg file.",
+            graph_img_error_page(Msg)
+    end.
+
+graph_img_error_page(Msg) ->
+    "<div style=\"text-align:center;\">" ++
+        "<blink><center><h3><p>" ++ Msg ++ "</p></h3></center><blink>" ++
+    "</div>".
+
         
 calltime_content(Env, Pid)->
     CacheKey = "calltime" ++ integer_to_list(erlang:crc32(pid2str(Pid))),

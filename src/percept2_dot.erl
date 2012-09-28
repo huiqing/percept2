@@ -10,7 +10,7 @@
 %%% --------------------------------%%%
 %%% 	Callgraph Image generation  %%%
 %%% --------------------------------%%%
--spec(gen_callgraph_img(Pid::pid_value()) -> ok|no_image).
+-spec(gen_callgraph_img(Pid::pid_value()) -> ok|no_image|dot_not_found|gen_svg_failed).
 gen_callgraph_img(Pid) ->
     Res=ets:select(fun_calltree, 
                       [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
@@ -32,9 +32,7 @@ gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
                     [code:priv_dir(percept2), "server_root",
                      "images", BaseName++".svg"]),
     fun_callgraph_to_dot(CallTree,DotFileName),
-    os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
-    file:delete(DotFileName),
-    ok.
+    dot_to_svg(DotFileName, SvgFileName).
 
 fun_callgraph_to_dot(CallTree, DotFileName) ->
     Edges=gen_callgraph_edges(CallTree),
@@ -175,9 +173,23 @@ gen_process_tree_img(ProcessTrees, CleanPid) ->
                     [code:priv_dir(percept2), "server_root",
                      "images", BaseName++".svg"]),
     ok=process_tree_to_dot(ProcessTrees,DotFileName, CleanPid),
-    os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
-    file:delete(DotFileName),
-    ok.
+    dot_to_svg(DotFileName, SvgFileName).
+
+dot_to_svg(DotFileName, SvgFileName) ->
+    case os:find_executable(dot) of
+        false ->
+            dot_not_found;
+        _ ->
+            os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
+            case filelib:is_file(SvgFileName) of 
+                true ->
+                    file:delete(DotFileName),
+                    ok;
+                false ->
+                    gen_svg_failed
+            end
+    end.
+  
             
 process_tree_to_dot(ProcessTrees, DotFileName, CleanPid) ->
     {Nodes, Edges} = gen_process_tree_nodes_edges(ProcessTrees),
