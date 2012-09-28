@@ -1333,8 +1333,8 @@ write_file(File, Data) ->
 	    file:write_file(File, Data)
     end.
 
-to_seconds(MicroSeconds) ->
-    MicroSeconds/1000000.
+%% to_seconds(MicroSeconds) ->
+%%     MicroSeconds/1000000.
 
 
 %% functions added for parallisation.
