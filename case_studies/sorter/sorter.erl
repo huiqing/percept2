@@ -1,8 +1,6 @@
 -module(sorter).
 -export([go/3,loop/0,main/4]).
 
--compile(export_all).
-
 go(I,N,M) ->
     spawn(?MODULE, main, [I,N,M,self()]),
     receive done -> ok end.
