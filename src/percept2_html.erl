@@ -553,18 +553,21 @@ active_funcs_content_2(Min, Max, StartTs, ActiveFuns) ->
                      {td, term2html(F#funcall_info.func)},
                      {td, make_image_string(F, {Min, Max})},
                      {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
-                                     ?seconds((F#funcall_info.end_ts), StartTs)})},
-                     {td, term2html({Min, Max})}]
+                                     ?seconds((F#funcall_info.end_ts), StartTs)})}]
+                  %%   {td, term2html({Min, Max})}]
                     || F <- ActiveFuns, ?seconds((F#funcall_info.end_ts),
                                                  (element(2, F#funcall_info.id))) > 0.01],
+    InfoTable = "<table>" ++ 
+        table_line(["Min. range:", Min])++
+        table_line(["Max. range:", Max])++
+        "</table>",
     Table = html_table(
               [[{th, " pid "},
                 {th, "module:function/arity"},
                 {th, "activity"}, 
-                {th, "function start/end secs"},
-                {th, "monitor start/end secs"}]] ++
-                  TableContent),
-    "<div id=\"content\">" ++ Table ++ "</div>".
+                {th, "function start/end secs"}]
+              ] ++TableContent, " class=\"sortable\""),
+    "<div id=\"content\">" ++ InfoTable++"<br></br>"++ Table ++ "</div>".
 
 make_image_string(F, {QueryStart, QueryEnd})->
     SystemStartTS = percept2_db:select({system, start_ts}),
@@ -1571,6 +1574,7 @@ common_header(HeaderData)->
     <script type=\"text/javascript\" src=\"/javascript/percept_error_handler.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_select_all.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_area_select.js\"></script>
+    <script type=\"text/javascript\" src=\"/javascript/sorttable.js\"></script>
     <script type=\"text/javascript\">
            function toggle(lnkid, tbid)
            {
