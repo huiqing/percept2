@@ -941,7 +941,7 @@ process_info_content_1(_Env, Input) ->
                                                  _ -> I#information.name
                                              end)],
                     [{th, "Entrypoint"}, mfa2html(I#information.entry)],
-                            [{th, "Arguments"},  ArgumentString],
+                    [{th, "Arguments"},  ArgumentString],
                     [{th, "Timetable"},  TimeTable],
                     [{th, "Parent"},     pid2html(I#information.parent, CleanPid)],
                     [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> 
@@ -955,7 +955,8 @@ process_info_content_1(_Env, Input) ->
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
                      term2html(info_msg_sent(I))],
                     [{th, "accumulated runtime <br>(in microseconds)"},
-                     term2html(I#information.accu_runtime)]
+                     term2html(I#information.accu_runtime)],
+                    [{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined})]
                    ] ++ case percept2_db:is_dummy_pid(Pid) of
                             true ->
                                 [[{th, "Compressed Processes"}, lists:flatten(
@@ -996,9 +997,9 @@ process_tree_content(_Env, _Input) ->
                          "images", ImgFileName]),
     Content = "<div style=\"text-align:center; align:center\">" ++
         "<h3 style=\"text-align:center;\">Process Tree</h3>"++ 
-        "<iframe src=\"/images/"++ImgFileName++"\" type=\"image/svg+xml\""++
-        "frameborder=\"0\" scrolling=\"auto\" marginheight=\"0\" width=\"80\%\" height=\"75\%\""++
-        "></iframe>"++
+        "<object data=\"/images/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
         "</div>",
     case filelib:is_regular(ImgFullFilePath) of 
         true -> 
@@ -1006,7 +1007,6 @@ process_tree_content(_Env, _Input) ->
             Content;  
         false -> 
             GenImgRes=percept2_dot:gen_process_tree_img(),
-            io:format("GenImgRes:\n~p\n", [GenImgRes]),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
  
@@ -1162,6 +1162,7 @@ function_info_content_1(_Env, Input) ->
      InfoTable ++ "<br>" ++
          "</div>".
 
+
 callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     Query = httpd:parse_query(Input),
@@ -1171,11 +1172,11 @@ callgraph_time_content(Env, Input) ->
                     [code:priv_dir(percept2), "server_root",
                      "images", ImgFileName]),
     Table = calltime_content(Env,Pid),
-    Content = "<div style=\"text-align:center; align:center\">" ++
+    Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
         "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++ 
-        "<iframe src=\"/images/"++ImgFileName++"\" type=\"image/svg+xml\""++
-        "frameborder=\"0\" scrolling=\"auto\" marginheight=\"0\" width=\"80\%\" height=\"75\%\""++
-        "></iframe>"++
+        "<object data=\"/images/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
         "<h3 style=\"text-align:center;\">" ++ "Accumulated Calltime"++"</h3>"++
         Table++
         "<br></br><br></br>"++
@@ -1186,6 +1187,7 @@ callgraph_time_content(Env, Input) ->
             GenImgRes=percept2_dot:gen_callgraph_img(Pid),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
+
 
 process_gen_graph_img_result(Content, GenImgRes) ->
     case GenImgRes of
@@ -1217,7 +1219,16 @@ calltime_content_1(_Env, Pid) ->
     Elems = lists:reverse(lists:keysort(1, Elems0)),
     SystemStartTS = percept2_db:select({system, start_ts}),
     SystemStopTS = percept2_db:select({system, stop_ts}),
-    ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
+    [PidInfo] = percept2_db:select({information, Pid}),
+    ProcStartTs = case PidInfo#information.start of 
+                    undefined -> SystemStartTS;
+                    StartTs -> StartTs
+                end,
+    ProcStopTs = case PidInfo#information.stop of 
+                  undefined -> SystemStopTS;
+                  StopTs -> StopTs
+              end,
+    ProcLifeTime = ?seconds(ProcStopTs, ProcStartTs),
     Props = " align=center",
     html_table(
       [[{th, "module:function/arity"},
@@ -1226,7 +1237,9 @@ calltime_content_1(_Env, Pid) ->
        [[{td, mfa2html_with_link({Pid,Func})},
          {td, term2html(CallCount)},
          {td, image_string(calltime_percentage, 
-                           [{width,200}, {height, 10}, {calltime, CallTime}, {percentage, CallTime/ProfileTime}])}]
+                           [{width,200}, {height, 10}, 
+                            {calltime, CallTime}, 
+                            {percentage, CallTime / ProcLifeTime}])}]
         ||{{_Pid, CallTime}, Func, CallCount}<-Elems]], Props).
    
 
