@@ -767,7 +767,7 @@ consolidate_runnability_loop(Tab, Key, RunnableStates) ->
                 NewRunnableStates when is_port(Id)->
                     Rc = get_runnable_count(ports, State),
                     ets:update_element(Tab, Key, {#activity.runnable_count, 
-                                                  {get({runnable, ports}), Rc}}),
+                                                  {get({runnable, procs}), Rc}}),
                     consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates);
                 NewRunnableStates when is_tuple(Id) andalso  element(1, Id)==pid->
                     Rc = get_runnable_count(procs, State),
