@@ -1355,20 +1355,11 @@ mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_in
 mfa2html_with_link(_) ->
     "undefined".
 
-visual_link({Pid,{M,F,A}, _})->
-    case has_callgraph(Pid) of 
-        true ->
-            MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [M, F, A])), 
-            "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_page?pid=" ++ 
-                pid2str(Pid) ++ "&mfa=" ++ MFAValue ++ "\">" ++ "show call graph/time" ++ "</a>";
-        false ->
-            "No callgraph/time"
-    end;
-visual_link({Pid,undefined, _})->
+visual_link({Pid,_, _})->
     case has_callgraph(Pid) of 
         true ->
             "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_page?pid=" ++ 
-                pid2str(Pid) ++ "&mfa=" ++ "undefined" ++ "\">" ++ "show callgraph/time" ++ "</a>";
+                pid2str(Pid) ++ "\">" ++ "show call graph/time" ++ "</a>";
         false ->
             "No callgraph/time"
     end.
