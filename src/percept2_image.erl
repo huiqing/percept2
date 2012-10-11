@@ -29,6 +29,8 @@
 
 -record(graph_area, {x = 0, y = 0, width, height}).
 
+-compile(export_all).
+
 -compile(inline).
 
 -include("../include/percept2.hrl").
@@ -263,21 +265,44 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ width = Width }, Acts) ->
 
 draw_activity(_, _, _, _, _, []) -> ok;
 draw_activity(_, _, _, _, _, [_]) -> ok;
-draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }, {Cw, Cg, Cb}, Dx, [{Xa1, State}, {Xa2, Act2} | Acts]) ->
+draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }, {Cw, Cg, Cb}, Dx, 
+              [{Xa1, State, InOutXas1}, {Xa2, Act2, InOutXas2} | Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa2 - Xmin*Dx),
-
     case State of
 	inactive ->
-	    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cw),
-	    egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb);
+            egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cw),
+            egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
+            draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+                          Dx, [{Xa2, Act2, InOutXas2} | Acts]);
 	active ->
-	    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg),
-	    egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb)
-    end,
-    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, Dx, [{Xa2, Act2} | Acts]).
-
- 
+            Cr = egd:color(Image, {255, 0, 0}),
+            draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
+                                   Dx, Xa1, Xa2, InOutXas1),
+            egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
+            draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+                          Dx, [{Xa2, Act2, InOutXas2} | Acts])
+    end.
+  
+draw_in_out_activities(Image, Xmin, X0, Height, {Cg, _Cr}, Dx, Xa1, Xa2, []) ->
+    X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
+    X2 = erlang:trunc(X0 + Dx*Xa2 - Xmin*Dx),
+    if  X1 < X2 ->
+            egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg);
+        true -> ok
+    end;
+draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa1, Xa2, [{in, Xa}|Acts]) ->
+    X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
+    X2 = erlang:trunc(X0 + Dx*Xa - Xmin*Dx),
+    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg),
+    draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, Acts);
+draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa1, Xa2, [{out, Xa}|Acts]) ->
+    X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
+    X2 = erlang:trunc(X0 + Dx*Xa - Xmin*Dx),
+    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cr),
+    draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, Acts).
+    
+    
 
 %%% -------------------------------------
 %%% Process lifetime
@@ -362,8 +387,16 @@ calltime_percentage(Width, Height, CallTime, Percentage) ->
 
 
 get_font() ->
-    {Font, _} =ets:first(egd_font_table),
-    Font.
+    case ets:info(egd_font_table) of 
+        undefined ->
+            Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
+            egd_font:load(Filename),
+            {Font, _} =ets:first(egd_font_table),
+            Font;
+        _ ->
+            {Font, _} =ets:first(egd_font_table),
+            Font
+    end.
    
 text(Image, {X,Y}, Font, Text, Color) ->
     egd:text(Image, {X,Y-2}, Font, Text, Color).
