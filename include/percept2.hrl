@@ -37,7 +37,8 @@
           id 			 :: pid_value() | port()|special_atom(),
           state = undefined	 :: state() | 'undefined'|special_atom(),
           where = undefined	 :: true_mfa() | 'undefined'|special_atom(),
-          runnable_count = {0,0} :: {non_neg_integer(), non_neg_integer()}|special_atom()
+          runnable_count = {0,0} :: {non_neg_integer(), non_neg_integer()}|special_atom(),
+          in_out = []            :: [{atom, timestamp()}]|special_atom()
          }).
 
 -record(scheduler, {
