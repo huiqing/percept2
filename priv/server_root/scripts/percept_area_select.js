@@ -44,6 +44,25 @@ function load_image() {
 	}
 }
 
+function load_concurrency_image() {
+	var percept_graph = document.getElementById("percept_graph");
+	if (percept_graph) {
+	    percept_content = document.getElementById("content");
+	    var width  = percept_content.offsetWidth - 50;
+	    var height = max(screen.height - 550, 600); 
+	    var rmin   = document.form_area.data_min.value;
+	    var rmax   = document.form_area.data_max.value;
+            var pids   = document.form_area.pids.value;
+	    percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/graph" +
+		"?range_min=" + rmin + 
+		"&range_max=" + rmax +
+		"&width=" + width + 
+		"&height=" + height +
+                "&pids=" +  pids + "')";
+	    percept_graph.style.width = width;
+	    percept_graph.style.height = height;
+	}
+}
 function load_message_image() {
 	var percept_graph = document.getElementById("percept_graph");
 	if (percept_graph) {
@@ -65,6 +84,8 @@ function load_message_image() {
 		percept_graph.style.height = height;
 	}
 }
+
+
 function select_image() {
 	var Graph = document.getElementById("percept_graph");
 	if (Graph) {
