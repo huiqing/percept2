@@ -33,6 +33,7 @@
          summary_report_page/3,
          process_tree_visualisation_page/3,
          callgraph_visualisation_page/3,
+         callgraph_slice_visualisation_page/3,
          func_callgraph_content/3
         ]).
 
@@ -70,9 +71,10 @@ overview_page(SessionID, Env, Input) ->
 -spec(concurrency_page(pid(), list(), string()) -> ok | {error, term()}).
 concurrency_page(SessionID, Env, Input) ->
     try
-        Menu = menu(Input),
-        Content = concurrency_content(Env, Input),
-        deliver_page(SessionID, Menu, Content)
+        mod_esi:deliver(SessionID, concurrency_header()),
+        mod_esi:deliver(SessionID, menu(Input)),
+        mod_esi:deliver(SessionID, concurrency_content(Env, Input)),
+        mod_esi:deliver(SessionID, footer())
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -225,6 +227,19 @@ callgraph_visualisation_page(SessionID, Env, Input) ->
         mod_esi:deliver(SessionID, header()),
         mod_esi:deliver(SessionID, menu(Input)), 
         mod_esi:deliver(SessionID, callgraph_time_content(Env, Input)),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
+-spec(callgraph_slice_visualisation_page(pid(), list(), string()) -> 
+             ok | {error, term()}).
+callgraph_slice_visualisation_page(SessionID, Env, Input) ->
+    try
+        mod_esi:deliver(SessionID, header()),
+        mod_esi:deliver(SessionID, menu(Input)), 
+        mod_esi:deliver(SessionID, callgraph_slice_content(Env, Input)),
         mod_esi:deliver(SessionID, footer())
     catch
         _E1:_E2 ->
@@ -487,20 +502,33 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                         ])
           end, [], IDs),
     PidsRequest = pids2request(IDs),
-    ConcurrencyGraph = image_string_head(
-                         "graph",[{"pids", PidsRequest}, 
-                                  {range_min, T0}, 
-                                  {range_max, T1}, 
-                                  {height, 400}], []),
-    "<div id=\"content\">  <table cellspacing=0 cellpadding=0 border=0>" ++
-        table_line([
-                    "",
-                    "<img onload=\"size_image(this, '" ++
-                        ConcurrencyGraph ++
-                        "')\" src=/images/white.png border=0 />"
-                   ]) ++
-        ActivityBarTable ++
-        "</table></div>\n".
+    Header = "
+     <div id=\"content\">
+     <form name=form_area method=POST action=/cgi-bin/percept2_html/active_funcs_page>
+     <input name=data_min type=hidden value=" ++ term2html(T0) ++ ">
+     <input name=data_max type=hidden value=" ++ term2html(T1) ++ ">
+     <input name=height   type=hidden value=" ++ term2html(400) ++ ">
+     <input name=pids     type=hidden value=" ++ term2html(PidsRequest) ++ ">
+     \n",  
+    FuncActs = "<table>"++table_line(
+                            [
+                             "Min:",
+                             "<input name=range_min value=" ++ term2html(float(T0)) ++">",
+                             "",
+                             "Max:", 
+                             "<input name=range_max value=" ++ term2html(float(T1)) ++">",
+                             "",
+                             "<input type=submit value=\"Function Activities\">"])
+        ++"</table>",
+    MainTable = 
+        "<table cellspacing=0 cellpadding=0 border=0>" ++ 
+        table_line([div_tag_graph("percept_graph")]) ++
+        table_line([FuncActs])++
+        table_line(["<table>" ++ [ActivityBarTable]++"</table>"]) ++
+        "</table>",
+    Footer = "</div></form>",
+    Header ++ MainTable ++ Footer.
+
 
 -spec(get_pids_to_compare(string()) ->[pid()]).
 get_pids_to_compare(Input) ->
@@ -522,13 +550,22 @@ expand_a_pid(Pid) ->
     case percept2_db:is_dummy_pid(Pid) of
         true ->
             [Info] = percept2_db:select({information, Pid}),            
-            [percept2_db:pid2value(Pid1)
-             ||Pid1 <- Info#information.hidden_pids];
+            PidLists=[[percept2_db:pid2value(Pid2)||Pid2<-process_tree_pids(Pid1)]
+                      ||Pid1 <- Info#information.hidden_pids],
+            lists:append(PidLists);
         false ->
             [Pid]
     end.
 
-
+process_tree_pids(Pid) ->
+    [Info] = percept2_db:select({information, Pid}),
+    case Info#information.children of 
+        [] -> [Pid];
+        ChildrenPids ->
+            [Pid|lists:append([process_tree_pids(ChildPid)
+                               ||ChildPid<-ChildrenPids])]
+    end.              
+             
 %%% active functions content page.
 -spec(active_funcs_content(list(), string()) -> string()).
 active_funcs_content(Env, Input) ->
@@ -542,32 +579,62 @@ active_funcs_content_1(_Env, Input) ->
     StartTs = percept2_db:select({system, start_ts}),
     TsMin   = seconds2ts(Min, StartTs),
     TsMax   = seconds2ts(Max, StartTs),
-    ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}]}),
-    active_funcs_content_2(Min, Max, StartTs, ActiveFuns).
+    Pids = get_option_value("pids", Query),
+    ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}, {pids, Pids}]}),
+    active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids).
 
-active_funcs_content_2(_Min, _Max, _StartTs, []) ->
+active_funcs_content_2(_Min, _Max, _StartTs, [], _) ->
     blink_msg("No function activities recorded for the time interval selected.");
-active_funcs_content_2(Min, Max, StartTs, ActiveFuns) ->
+active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     TableContent = [[{td, pid2html(element(1, F#funcall_info.id), CleanPid)},
-                     {td, term2html(F#funcall_info.func)},
+                     {td, mfa2html_with_link({element(1,F#funcall_info.id), F#funcall_info.func})},
                      {td, make_image_string(F, {Min, Max})},
                      {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
                                      ?seconds((F#funcall_info.end_ts), StartTs)})}]
-                  %%   {td, term2html({Min, Max})}]
                     || F <- ActiveFuns, ?seconds((F#funcall_info.end_ts),
                                                  (element(2, F#funcall_info.id))) > 0.01],
     InfoTable = "<table>" ++ 
         table_line(["Min. range:", Min])++
         table_line(["Max. range:", Max])++
         "</table>",
+    PidsWithCallgraph = [Pid||Pid<-Pids, has_callgraph(Pid)],
     Table = html_table(
               [[{th, " pid "},
                 {th, "module:function/arity"},
                 {th, "activity"}, 
                 {th, "function start/end secs"}]
               ] ++TableContent, " class=\"sortable\""),
-    "<div id=\"content\">" ++ InfoTable++"<br></br>"++ Table ++ "</div>".
+    case PidsWithCallgraph of 
+        [] ->
+            "<div id=\"content\">" ++ InfoTable++"<br></br>"++ Table ++ "</div>";
+        _  ->
+            PidList = lists:foldl(
+                        fun(Pid, Out) ->
+                                Out ++ "<option value=\""++
+                                    pid2str(Pid)++"\">"++
+                                    term2html(Pid)++"</option>"
+                        end, "", PidsWithCallgraph),
+            Header =
+                "<div id=\"content\">
+        	<form name=callgraph_slice method=POST action=/cgi-bin/percept2_html/callgraph_slice_visualisation_page>
+                 <input name=range_min type=hidden value=" ++ term2html(Min) ++ ">
+                 <input name=range_max type=hidden value=" ++ term2html(Max) ++ ">
+                \n",
+            Header ++
+                InfoTable ++
+                "<br></br>" ++
+                "<table>
+	           <tr><td><select name=\"pid\">"++PidList ++
+                "</select></td>
+                 <td width=200><input type=submit value=\"Call Graph\" /></td></tr>
+        	</table>" 
+                ++"<br></br>"
+                ++ Table ++
+                "</div></form>"
+    end.
+
+            
 
 make_image_string(F, {QueryStart, QueryEnd})->
     SystemStartTS = percept2_db:select({system, start_ts}),
@@ -1170,7 +1237,7 @@ callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
-    ImgFileName="callgraph" ++ pid2str(Pid) ++ ".svg",
+    ImgFileName="callgraph" ++ pid2str(Pid) ++".svg",
     ImgFullFilePath = filename:join(
                     [code:priv_dir(percept2), "server_root",
                      "images", ImgFileName]),
@@ -1188,6 +1255,30 @@ callgraph_time_content(Env, Input) ->
         true -> Content;  %% file already generated.
         false -> 
             GenImgRes=percept2_dot:gen_callgraph_img(Pid),
+            process_gen_graph_img_result(Content, GenImgRes)
+    end.
+
+
+callgraph_slice_content(_Env, Input) ->
+    io:format("Input:\n~p\n", [Input]),
+    Query = httpd:parse_query(Input),
+    Pid = get_option_value("pid", Query),
+    Min = get_option_value("range_min", Query),
+    Max = get_option_value("range_max", Query),
+    ImgFileName="callgraph" ++ pid2str(Pid) ++
+        term2html(Min)++"_"++term2html(Max)++ ".svg",
+    ImgFullFilePath = filename:join(
+                    [code:priv_dir(percept2), "server_root",
+                     "images", ImgFileName]),
+    Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
+        "<object data=\"/images/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
+        "</div>",
+    case filelib:is_regular(ImgFullFilePath) of 
+        true -> Content;  
+        false -> 
+            GenImgRes=percept2_dot:gen_callgraph_slice_img(Pid,Min,Max),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 
@@ -1554,6 +1645,13 @@ inter_node_message_header() ->
     common_header([])++ 
    "<body onLoad=\"load_message_image()\">
    <div id=\"header\"><a href=/index.html>percept2</a></div>\n".
+
+-spec concurrency_header() -> string().
+concurrency_header() ->
+    common_header([])++ 
+   "<body onLoad=\"load_concurrency_image()\">
+   <div id=\"header\"><a href=/index.html>percept2</a></div>\n".
+
 
 common_header(HeaderData)->
     "Content-Type: text/html\r\n\r\n" ++
