@@ -183,7 +183,9 @@ activity_bar(_Env, Input, StartTs) ->
     Height = percept2_html:get_option_value("height", Query),
     
     Data    = percept2_db:select({activity, [{id, Pid}]}),
-    Activities = [{?seconds(Ts, StartTs), State} || #activity{timestamp = Ts, state = State} <- Data],
+    Activities = [{?seconds(Ts, StartTs), State, [{InOut, ?seconds(InOutTs, StartTs)}
+                                                  ||{InOut, InOutTs}<-lists:reverse(InOuts)]} 
+                  || #activity{timestamp = Ts, state = State, in_out=InOuts} <- Data],
     percept2_image:activities(Width, Height, {Min,Max}, Activities).
 
 proc_lifetime(_Env, Input) ->
@@ -245,3 +247,18 @@ inter_node_message_graph(_Env, Input) ->
     
 header() ->
     "Content-Type: image/png\r\n\r\n".
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% activity_data() ->
+%%     StartTs = percept2_db:select({system, start_ts}),
+%%     StopTs = percept2_db:select({system, stop_ts}),
+%%     Options =  [{ts_min, StartTs},{ts_max, StopTs}],
+%%     Counts1=[{?seconds(TS, StartTs), Procs, Ports}||
+%%                 {TS, {Procs, Ports}}
+%%                     <-percept2_db:select(
+%%                         {activity,{runnable_counts, Options}})],
+%%     Str = lists:flatten([io_lib:format("{~f, {~p,~p}}.\n", [Sec, Procs, Counts])||{Sec, Procs,Counts}<-Counts1]),
+%%     file:write_file("activity.txt", list_to_binary(Str)).
+    
