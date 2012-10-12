@@ -261,7 +261,10 @@ do_stop(Port, Pid)->
         Pid2 ->
             Pid ! quit,
             rm_tmp_files(),
-            ets:delete(egd_font_table),
+            case ets:info(egd_font_table) of 
+                undefined -> ok;
+                _  ->ets:delete(egd_font_table)
+            end,
             inets:stop(httpd, Pid2)
     end.
 
