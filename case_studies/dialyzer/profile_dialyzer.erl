@@ -4,28 +4,31 @@
 
 -include_lib("kernel/include/file.hrl").
 
+-compile(export_all).
 
 percept_profile(Dir) ->
     percept2:profile("dialyzer.dat", {profile_dialyzer, run_dialyzer, [Dir]},
                      [message, process_scheduling, concurrency,{function, [{dialyzer_succ_typings, '_','_'}]}]).
 
 %%sample:
-%% profile:dialyzer:sample_profile(["/proj/wrangler"]).
-%% profile:dialyzer:percept_profile(["/proj/wrangler"]).
-sample_profile(Dir)->
+%% profile_dialyzer:sample_profile(["/proj/wrangler"]).
+%% profile_dialyzer:percept_profile(["/proj/wrangler"]).
+sample_profile(Dirs)->
     percept2_sampling:sample(['run_queue','run_queues','scheduler_utilisation',
                               'process_count','schedulers_online','mem_info'],
-                             {profile_dialyzer, run_dialyzer, [Dir]}).
+                             {profile_dialyzer, run_dialyzer, [Dirs]}, ".").
 
-run_dialyzer(Dir) ->
-    {ok, Files} = list_dir(Dir, ".erl"),
-    
+run_dialyzer(Dirs) ->
+    {ok, Files} = list_dirs(Dirs, ".erl"),
     try dialyzer:run([{files, Files},{from, src_code},
                       {check_plt, false}])
     catch E1:{dialyzer_error,E2} -> 
             io:format("Error:\n~p\n", [{E1,{dialyzer_error, lists:flatten(E2)}}])
-    end.
+    end. 
 
+list_dirs(Dirs, Ext) ->
+    {_, FilesLists}=lists:unzip([list_dir(Dir,Ext)||Dir<-Dirs]),
+    {ok, lists:append(FilesLists)}.
 
 list_dir(Dir, Extension) ->
     case file:list_dir(Dir) of
