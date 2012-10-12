@@ -28,6 +28,7 @@
          insert/2,
          select/1,
          consolidate_db/0,
+         gen_process_tree/0,
          gen_compressed_process_tree/0
         ]).
  
@@ -425,9 +426,22 @@ select_query_func(Query) ->
             Body =  ['$_'],
             MinTs = proplists:get_value(ts_min, Options, undefined),
             MaxTs = proplists:get_value(ts_max, Options, undefined),
+            Pids =  proplists:get_value(pids, Options, undefined),
             Constraints = [{'not', {'orelse', {'>=',{const, MinTs},'$3'},
                                     {'>=', '$2', {const,MaxTs}}}}],
-            ets:select(funcall_info, [{Head, Constraints, Body}]);
+            case Pids of 
+                [] ->
+                    Head = #funcall_info{
+                      id={'$1', '$2'}, 
+                      end_ts='$3',
+                      _='_'},
+                    ets:select(funcall_info, [{Head, Constraints, Body}]);
+                _ ->
+                    MS = [{#funcall_info{id={Pid, '$2'}, end_ts='$3', _='_'},
+                           Constraints,
+                           Body} || Pid<- Pids],
+                    ets:select(funcall_info, MS)
+            end;
         {funs, Options} when Options==[] ->
             Head = #fun_info{
               id={'$1','$2'}, 
@@ -514,9 +528,9 @@ insert_profile_trace(SubDBIndex,Trace) ->
             SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
             update_system_stop_ts(SystemProcRegName,Ts);
         {profile, Id, State, Mfa, TS} when is_pid(Id) ->
-            ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-            insert_profile_trace_1(ActivityProcRegName, Id,
-                                   State,Mfa,TS,procs);
+             ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+             insert_profile_trace_1(ActivityProcRegName, Id,
+                                    State,Mfa,TS,procs);
         {profile, Id, State, Mfa, TS} when is_port(Id) ->
             ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
             insert_profile_trace_1(ActivityProcRegName, Id, State, Mfa, TS, ports);
@@ -538,6 +552,10 @@ insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, Type) ->
     ActId = if Type == procs -> pid2value(Id);
                true -> Id
             end,
+    if Type ==procs andalso State==active->
+            erlang:put({active, Id}, TS);
+       true -> ok
+    end,
     update_activity(ProcRegName,
                     #activity{id = ActId,
                               state = State,
@@ -586,30 +604,48 @@ trace_link(_SubDBIndex,_Trace) ->
 trace_unlink(_SubDBIndex, _Trace) ->
     ok.
 
-trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  _MFA, Ts}) when is_pid(Pid)->
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  MFA, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-    erlang:put({in, Pid}, {Rq, Ts}),
+    erlang:put({in, Pid}, {Rq, TS}),
+    InternalPid = pid2value(Pid),
     case erlang:get({run_queue, Pid}) of 
         Rq ->
             ok;
         _ ->
             erlang:put({run_queue, Pid}, Rq),
-            InternalPid = pid2value(Pid),
-            update_information_rq(ProcRegName, InternalPid, {Ts, Rq})
-    end;
+            update_information_rq(ProcRegName, InternalPid, {TS, Rq})
+    end,
+    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case erlang:get({active, Pid}) of 
+        undefined ->
+            %%io:format("In:active entry does not exist!\n"),
+            ok;
+        TS1 ->
+            update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
+        end;
 trace_in(_SubDBIndex, _Trace) ->
     ok.
-            
-trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  _MFA, TS}) when is_pid(Pid) ->
+
+trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  MFA, TS}) when is_pid(Pid) ->    
     case erlang:get({in, Pid}) of 
         {Rq, InTime} ->
             Elapsed = elapsed(InTime, TS),
             erlang:erase({in,Pid}),
             InternalPid = pid2value(Pid),
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_acc_time(ProcRegName, {InternalPid, Elapsed});
-        undefined ->ok;
-        _ -> erlang:erase({in, Pid})    
+            update_information_acc_time(ProcRegName, {InternalPid, Elapsed}),
+            case erlang:get({active, Pid}) of
+                undefined ->
+                    %%io:format("Out:active entry does not exist!\n"),
+                    ok;
+                TS1 ->
+                    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+                    update_activity(ActivityProcRegName, {out, {InternalPid, TS1}, MFA, TS})
+            end;
+        undefined ->
+            ok;
+        _ ->
+            erlang:erase({in, Pid})    
     end;
 trace_out(_SubDBIndex, _Trace)->
     ok.
@@ -734,6 +770,26 @@ select_query_activity(FileNameSubDBPairs, Query) ->
 
 pdb_activity_loop(ProcRegName)->
     receive 
+        {update_activity, {SubTab, {in, {_Pid, TS1}, _MFA, TS}}} ->
+            case ets:lookup(SubTab, TS1) of
+                [] ->
+                    ok;
+                [Act] ->
+                    ets:update_element(
+                      SubTab,  TS1,
+                      {7, [{in, TS}|Act#activity.in_out]})
+            end,
+            pdb_activity_loop(ProcRegName);
+        {update_activity, {SubTab, {out, {_Pid, TS1}, _MFA, TS}}} ->
+            case ets:lookup(SubTab, TS1) of
+                [] ->
+                    ok;
+                [Act] ->
+                    ets:update_element(
+                      SubTab, TS1,
+                      {7, [{out, TS}|Act#activity.in_out]})
+            end,
+            pdb_activity_loop(ProcRegName);
         {update_activity, {SubTab,Activity}} ->
             ets:insert(SubTab, Activity),
             pdb_activity_loop(ProcRegName);
@@ -2099,6 +2155,14 @@ add_to_1({Fun, CNT}, Acc) ->
 %%   Generate process tree                          %%
 %%                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% process_tree_size(Trees) ->
+%%     lists:sum([process_tree_size_1(Tree)||Tree<-Trees]).
+
+%% process_tree_size_1({_Parent, Children}) ->
+%%     1 + process_tree_size(Children).
+
+
 -type process_tree()::{#information{},[process_tree()]}.
 gen_compressed_process_tree()->
     Trees = gen_process_tree(),
