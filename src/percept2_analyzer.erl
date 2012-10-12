@@ -195,7 +195,7 @@ waiting_activities(Activities) ->
 
 waiting_activities_mfa_list([], ListedMfas) -> ListedMfas;
 waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
-    #activity{id = Pid, state = Act, timestamp = Time, where = MFA} = Activity,
+    #activity{id = Pid, state = Act, timestamp = Time, where = MFA, in_out=_InOut} = Activity,
     case Act of 
     	active ->
 	    waiting_activities_mfa_list(Activities, ListedMfas);
