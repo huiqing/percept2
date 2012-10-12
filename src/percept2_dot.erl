@@ -1,12 +1,13 @@
 -module(percept2_dot).
 
 -export([gen_callgraph_img/1,
-         gen_process_tree_img/0]).
+         gen_process_tree_img/0,
+         gen_callgraph_slice_img/3]).
 
 -export([gen_process_tree_img_1/1]).
 
 -include("../include/percept2.hrl").
-          
+
 %%% --------------------------------%%%
 %%% 	Callgraph Image generation  %%%
 %%% --------------------------------%%%
@@ -40,6 +41,7 @@ fun_callgraph_to_dot(CallTree, DotFileName) ->
     digraph_add_edges(Edges, [], MG),
     to_dot(MG,DotFileName),
     digraph:delete(MG).
+
 
 gen_callgraph_edges(CallTree) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
@@ -120,6 +122,72 @@ edge_list_to_dot(Edges, OutFileName, GraphName) ->
     String = [Start, VertexList, EdgeList, End],
     ok = file:write_file(OutFileName, list_to_binary(String)).
 
+
+gen_callgraph_slice_img(Pid, Min, Max) ->
+    Res=ets:select(fun_calltree, 
+                   [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+                     [],
+                     ['$_']
+                    }]),
+    case Res of 
+        [] -> no_image;
+        [Tree] -> 
+            gen_callgraph_slice_img_1(Pid, Tree, Min, Max)
+    end.
+
+gen_callgraph_slice_img_1(Pid={pid, {P1, P2, P3}}, CallTree, Min, Max) ->
+    PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
+        "."++integer_to_list(P3),
+    MinTsStr=lists:flatten(io_lib:format("~.4f", [Min])),
+    MaxTsStr=lists:flatten(io_lib:format("~.4f", [Max])),
+    BaseName = "callgraph"++PidStr++MinTsStr++"_"++MaxTsStr,
+    DotFileName = BaseName++".dot",
+    SvgFileName = filename:join(
+                    [code:priv_dir(percept2), "server_root",
+                     "images", BaseName++".svg"]),
+    fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName),
+    dot_to_svg(DotFileName, SvgFileName).
+
+fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName) ->
+    StartTs = percept2_db:select({system, start_ts}),
+    TsMin   = percept2_html:seconds2ts(Min, StartTs),
+    TsMax   = percept2_html:seconds2ts(Max, StartTs),
+    FunActs = percept2_db:select({code,[{ts_min, TsMin},
+                                       {ts_max, TsMax},
+                                       {pids, [Pid]}]}),
+    ActiveFuns =[Act#funcall_info.func||Act<-FunActs],
+    Edges=gen_callgraph_slice_edges(CallTree,ActiveFuns),
+    MG = digraph:new(),
+    digraph_add_edges(Edges, [], MG),
+    to_dot(MG,DotFileName),
+    digraph:delete(MG).
+
+%% This is not accurate!!!
+gen_callgraph_slice_edges(CallTree, ActiveFuns) ->
+    {_, CurFunc, _} = CallTree#fun_calltree.id,
+    case lists:member(CurFunc, ActiveFuns) of
+        true ->
+            ChildrenCallTrees = CallTree#fun_calltree.called,
+            lists:foldl(fun(Tree, Acc) ->
+                                {_, ToFunc, _} = Tree#fun_calltree.id,
+                                case lists:member(ToFunc, ActiveFuns) of
+                                    true ->
+                                        NewEdge = {CurFunc, ToFunc, Tree#fun_calltree.cnt},
+                                        [[NewEdge|gen_callgraph_slice_edges(Tree, ActiveFuns)]|Acc];
+                                    false ->
+                                        Acc
+                                end
+                        end, [], ChildrenCallTrees);
+        false ->
+           case CurFunc of 
+               {percept2_profile, start, _} ->
+                   [ChildCallTree] = CallTree#fun_calltree.called,
+                   gen_callgraph_slice_edges(ChildCallTree, ActiveFuns);
+               _ -> []
+           end
+    end.
+
+    
 format_node(V) ->
     format_node(V, fun format_vertex/1).
 
@@ -306,3 +374,70 @@ pid2str({pid, {P1,P2, P3}}) when is_atom(P2)->
      integer_to_list(P1)++"."++atom_to_list(P2)++"."++integer_to_list(P3);
 pid2str({pid, {P1, P2, P3}}) ->
     integer_to_list(P1)++"."++integer_to_list(P2)++"."++integer_to_list(P3).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Used for generating data only; not part of percept2 yet,%% 
+%% but don't remove.                                       %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% gen_callgraph_location(Pid, FName) ->
+%%     [Tree]=ets:select(fun_calltree, 
+%%                [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+%%                  [],
+%%                  ['$_']
+%%                 }]),
+%%     FunLocations = fun_locations(FName),
+%%     Edges=gen_callgraph_edges(Tree, FunLocations),
+%%     Str = lists:flatten(io_lib:format("~p.", [Edges])),
+%%     file:write_file("callgraph.txt", list_to_binary(Str)).
+
+%% gen_callgraph_edges(CallTree, FunLocations) ->
+%%     {_, CurFunc, _} = CallTree#fun_calltree.id,
+%%     ChildrenCallTrees = CallTree#fun_calltree.called,
+%%     lists:foldl(
+%%       fun(Tree, Acc) ->
+%%               CurFunc1=normalise_fun_name(CurFunc),
+%%               CurFuncLoc= case lists:keyfind(CurFunc1, 1, FunLocations) of 
+%%                               false -> 
+%%                                   {0, 0};
+%%                               {CurFunc1, {Ln, Col}} ->
+%%                                   {Ln, Col}
+%%                           end,
+%%               {_, ToFunc, _} = Tree#fun_calltree.id,
+%%               ToFunc1 = normalise_fun_name(ToFunc),
+%%               ToFuncLoc =  case lists:keyfind(ToFunc1, 1, FunLocations) of 
+%%                                false -> 
+%%                                    {0, 0};
+%%                                {ToFunc1, {Ln1, Col1}} ->
+%%                                    {Ln1, Col1}
+%%                            end,
+%%               NewEdge = {{CurFunc, CurFuncLoc}, {ToFunc,ToFuncLoc}, Tree#fun_calltree.cnt},
+%%               [{NewEdge,gen_callgraph_edges(Tree, FunLocations)}|Acc]
+%%       end, [], ChildrenCallTrees).
+
+
+%% fun_locations(FName) ->
+%%     application:start(wrangler),
+%%     {ok, {AnnAST, _Info1}} = wrangler_ast_server:parse_annotate_file(FName, true, [], 8),
+%%     Forms = wrangler_syntax:form_list_elements(AnnAST),
+%%     FunLocs=[{get_fun_mfa(Form),
+%%               wrangler_misc:start_end_loc(Form)}
+%%              ||Form<-Forms, 
+%%                wrangler_syntax:type(Form)==function],
+%%     application:stop(wrangler),
+%%     FunLocs.
+
+%% get_fun_mfa(Form) ->
+%%     {value, {fun_def, {M, F, A, _, _}}} =
+%%         lists:keysearch(fun_def, 1, wrangler_syntax:get_ann(Form)),
+%%     {M,F,A}.
+    
+%% normalise_fun_name({M,F,A}) ->
+%%     case atom_to_list(F) of 
+%%         "-"++F1 ->
+%%             {F2, [_|F3]} = lists:splitwith(fun(C)->C/=$/ end, F1),
+%%             {A1, _} = lists:splitwith(fun(C)->C/=$- end, F3),
+%%             {M, list_to_atom(F2),list_to_integer(A1)};
+%%         _ -> {M, F, A}
+%%     end.
