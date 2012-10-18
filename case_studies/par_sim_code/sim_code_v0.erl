@@ -150,9 +150,13 @@ process_initial_clones(Cs) ->
 %% {{FileName, FunName, Arity, Index}, ExprAST}, where Index is used to identify a specific 
 %% expression in the function. 
 generalise_and_hash_ast(Files, Threshold, Tabs, ASTPid, SearchPaths, TabWidth) ->
-    [generalise_and_hash_file_ast_1(File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
-      ||File<-Files].
-    
+    %% Refactoring1: lists comprehension parallel pmap. Since the value returned here is not actually 
+    %% used, so pforeach should do as well.
+    para_lib:foreach(fun(File) ->
+                             generalise_and_hash_file_ast_1(
+                               File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
+                     end, Files).
+
 %% Generalise and hash the AST for an single Erlang file.
 generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
     Forms = try wrangler_ast_server:quick_parse_annotate_file(FName, SearchPaths, TabWidth) of
