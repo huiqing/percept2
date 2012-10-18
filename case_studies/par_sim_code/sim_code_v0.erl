@@ -150,11 +150,9 @@ process_initial_clones(Cs) ->
 %% {{FileName, FunName, Arity, Index}, ExprAST}, where Index is used to identify a specific 
 %% expression in the function. 
 generalise_and_hash_ast(Files, Threshold, Tabs, ASTPid, SearchPaths, TabWidth) ->
-    lists:foreach(fun(File) ->
-			  generalise_and_hash_file_ast_1(
-			    File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
-		  end, Files).
-
+    [generalise_and_hash_file_ast_1(File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
+      ||File<-Files].
+    
 %% Generalise and hash the AST for an single Erlang file.
 generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
     Forms = try wrangler_ast_server:quick_parse_annotate_file(FName, SearchPaths, TabWidth) of
@@ -171,6 +169,7 @@ generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, Search
 		end
 	end,
     lists:foreach(fun (Form) -> F(Form) end, Forms).
+   
 
 %% generalise and hash the AST of a single function.
 generalise_and_hash_function_ast(Form, FName, true, Threshold, Tabs, ASTPid) ->
