@@ -518,7 +518,7 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                              "Max:", 
                              "<input name=range_max value=" ++ term2html(float(T1)) ++">",
                              "",
-                             "<input type=submit value=\"Function Activities\">"])
+                             "<input type=submit value=\"Active Functions\">"])
         ++"</table>",
     MainTable = 
         "<table cellspacing=0 cellpadding=0 border=0>" ++ 
@@ -581,19 +581,40 @@ active_funcs_content_1(_Env, Input) ->
     TsMax   = seconds2ts(Max, StartTs),
     Pids = get_option_value("pids", Query),
     ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}, {pids, Pids}]}),
-    active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids).
-
+    ActiveFuns1 = [{Pid, Start, Func, End}||
+                      {funcall_info,{Pid, Start}, Func, End}<-ActiveFuns],
+    GroupedActiveFuns = [[group_active_funcs(ActiveFuncsByFunc)
+                          ||ActiveFuncsByFunc<-group_by(3,ActiveFuncsByPid)]
+                         ||ActiveFuncsByPid <- group_by(1, ActiveFuns1)],
+    GroupedActiveFuns1 = lists:sort(fun({Pid1,_, {StartTs1,_}, _},
+                                        {Pid2, _,{StartTs2,_},_})->
+                                            {Pid1, StartTs1} =< {Pid2, StartTs2}
+                                    end, lists:append(GroupedActiveFuns)),
+    active_funcs_content_2(Min, Max, StartTs, GroupedActiveFuns1, Pids).
+  
+group_active_funcs([{Pid, StartTs, Func, EndTs}]) ->
+    SystemStartTS = percept2_db:select({system, start_ts}),
+    FunStart = ?seconds(StartTs, SystemStartTS),
+    FunEnd = ?seconds(EndTs, SystemStartTS),
+    {Pid, Func, {FunStart, FunEnd}, 1};
+group_active_funcs(Data=[{Pid, StartTs, Func, _EndTs}|_ActiveFuncs]) ->
+    SystemStartTS = percept2_db:select({system, start_ts}),
+    FunStart = ?seconds(StartTs, SystemStartTS),
+    StartEndTs = [{Start, End}||{_Pid, Start, _Func, End}<-Data],
+    FunEnd = lists:sum([timer:now_diff(End, Start)|| 
+                           {Start, End}<-StartEndTs])/1000000 
+        + FunStart,
+    {Pid, Func,{FunStart, FunEnd}, length(Data)}.
+   
 active_funcs_content_2(_Min, _Max, _StartTs, [], _) ->
     blink_msg("No function activities recorded for the time interval selected.");
-active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids) ->
+active_funcs_content_2(Min, Max, _StartTs, ActiveFuns, Pids) ->
     CleanPid = percept2_db:select({system, nodes})==1,
-    TableContent = [[{td, pid2html(element(1, F#funcall_info.id), CleanPid)},
-                     {td, mfa2html_with_link({element(1,F#funcall_info.id), F#funcall_info.func})},
-                     {td, make_image_string(F, {Min, Max})},
-                     {td, term2html({?seconds((element(2, F#funcall_info.id)), StartTs),
-                                     ?seconds((F#funcall_info.end_ts), StartTs)})}]
-                    || F <- ActiveFuns, ?seconds((F#funcall_info.end_ts),
-                                                 (element(2, F#funcall_info.id))) > 0.01],
+    TableContent = [[{td, pid2html(Pid, CleanPid)},
+                     {td, mfa2html_with_link({Pid, Func})},
+                     {td, make_image_string({FunStart, FunEnd}, {Min, Max})},
+                     {td, term2html(Count)}]
+                    ||{Pid, Func, {FunStart, FunEnd}, Count}<- ActiveFuns],
     InfoTable = "<table>" ++ 
         table_line(["Min. range:", Min])++
         table_line(["Max. range:", Max])++
@@ -602,8 +623,8 @@ active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids) ->
     Table = html_table(
               [[{th, " pid "},
                 {th, "module:function/arity"},
-                {th, "activity"}, 
-                {th, "function start/end secs"}]
+                {th, "active period"}, 
+                {th, "call count"}]
               ] ++TableContent, " class=\"sortable\""),
     case PidsWithCallgraph of 
         [] ->
@@ -627,7 +648,7 @@ active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids) ->
                 "<table>
 	           <tr><td><select name=\"pid\">"++PidList ++
                 "</select></td>
-                 <td width=200><input type=submit value=\"Call Graph\" /></td></tr>
+                 <td width=200><input type=submit value=\"Call Graph Slice\" /></td></tr>
         	</table>" 
                 ++"<br></br>"
                 ++ Table ++
@@ -635,11 +656,7 @@ active_funcs_content_2(Min, Max, StartTs, ActiveFuns, Pids) ->
     end.
 
             
-
-make_image_string(F, {QueryStart, QueryEnd})->
-    SystemStartTS = percept2_db:select({system, start_ts}),
-    FunStart = ?seconds((element(2, F#funcall_info.id)), SystemStartTS),
-    FunEnd = ?seconds((F#funcall_info.end_ts),SystemStartTS),
+make_image_string({FunStart, FunEnd}, {QueryStart, QueryEnd})->
     image_string(query_fun_time,
                  [{query_start, QueryStart},
                   {fun_start, FunStart},
@@ -647,6 +664,7 @@ make_image_string(F, {QueryStart, QueryEnd})->
                   {fun_end, FunEnd},
                   {width, 100},
                   {height, 10}]).
+
 
 %%% inter-node message passing content.
 -spec(inter_node_msg_graph_content(list(), string()) -> string()).
@@ -1260,7 +1278,6 @@ callgraph_time_content(Env, Input) ->
 
 
 callgraph_slice_content(_Env, Input) ->
-    io:format("Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     Min = get_option_value("range_min", Query),
@@ -1769,3 +1786,17 @@ seconds2ts(Seconds, {Ms, S, Us}) ->
     MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
 
     {MsOut, SOut, UsOut}.
+
+group_by(N, TupleList) ->
+    SortedTupleList = lists:keysort(N, lists:sort(TupleList)),
+    group_by(N, SortedTupleList, []).
+
+group_by(_N,[],Acc) -> Acc;
+group_by(N,TupleList = [T| _Ts],Acc) ->
+    E = element(N,T),
+    {TupleList1,TupleList2} = 
+	lists:partition(fun (T1) ->
+				element(N,T1) == E
+			end,
+			TupleList),
+    group_by(N,TupleList2,Acc ++ [TupleList1]).
