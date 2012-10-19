@@ -2278,10 +2278,10 @@ compress_process_tree_3(ChildrenGroup) ->
             compress_process_tree(Children);
         false ->
             UnNamedProcs=[C1#information.id||
-                             {C1,_}<-Children, 
-                             C1#information.name==undefined],
+                             {C1, _}<-Children, C1#information.name==undefined],
             case length(UnNamedProcs) == length(Children) of
                 true ->
+                    ChildWithMostRunTime = {Proc, _}=get_proc_with_most_runtime(Children),
                     Num = length(Cs),
                     LastIndex = get(last_index),
                     put(last_index, LastIndex+1),
@@ -2301,15 +2301,28 @@ compress_process_tree_3(ChildrenGroup) ->
                                                                          {S1, S2} = P#information.msgs_sent,
                                                                          {S1+S1Acc, S2+S2Acc}
                                                                  end, {0,0}, Cs),
-                                          hidden_pids = UnNamedProcs
+                                          hidden_pids = UnNamedProcs--[Proc#information.id]
                                          },
                     update_information_1(Info),
-                    [compress_process_tree_1(C), {CompressedChildren,[]}];   
+                    [compress_process_tree_1(ChildWithMostRunTime), {CompressedChildren,[]}];   
                 false ->
                     compress_process_tree(Children)
             end
     end.
 
+get_proc_with_most_runtime([Proc|Procs]) ->
+   get_proc_with_most_runtime(Procs, Proc).
+get_proc_with_most_runtime([], Proc) ->
+    Proc;
+get_proc_with_most_runtime([CurP={Proc, _}|Procs], P={Proc1,_}) ->
+    Time = Proc#information.accu_runtime,
+    case Proc1#information.accu_runtime < Time of 
+        true ->
+            get_proc_with_most_runtime(Procs,CurP);
+        false ->
+            get_proc_with_most_runtime(Procs,P)
+    end.
+    
 is_dummy_pid({pid, {_, P2, _}}) ->
     is_atom(P2);
 is_dummy_pid(_) -> false.
