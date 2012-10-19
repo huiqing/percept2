@@ -337,20 +337,20 @@ find_service_pid_from_port([], _) ->
     undefined;
 find_service_pid_from_port([{_, Pid, Options} | Services], Port) ->
     case lists:keyfind(port, 1, Options) of
-	false ->
-	    find_service_pid_from_port(Services, Port);
-	{port, Port} ->
-	    Pid
+        {port, Port} ->
+	    Pid;
+	_ ->
+	    find_service_pid_from_port(Services, Port)
     end.
 
 find_service_port_from_pid([], _) ->
     undefined;
 find_service_port_from_pid([{_, Pid, Options} | _], Pid) ->
     case lists:keyfind(port, 1, Options) of
-	false ->
-	    undefined;
-	{port, Port} ->
-	   Port
+        {port, Port} ->
+            Port;
+        _ ->
+	    undefined
     end;
 find_service_port_from_pid([{_, _, _} | Services], Pid) ->
     find_service_port_from_pid(Services, Pid).
