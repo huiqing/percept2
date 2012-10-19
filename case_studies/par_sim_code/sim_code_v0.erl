@@ -152,10 +152,10 @@ process_initial_clones(Cs) ->
 generalise_and_hash_ast(Files, Threshold, Tabs, ASTPid, SearchPaths, TabWidth) ->
     %% Refactoring1: lists comprehension parallel pmap. Since the value returned here is not actually 
     %% used, so pforeach should do as well.
-    para_lib:foreach(fun(File) ->
-                             generalise_and_hash_file_ast_1(
-                               File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
-                     end, Files).
+    para_lib:pforeach(fun(File) ->
+                              generalise_and_hash_file_ast_1(
+                                File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
+                      end, Files).
 
 %% Generalise and hash the AST for an single Erlang file.
 generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
