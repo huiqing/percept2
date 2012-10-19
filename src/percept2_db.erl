@@ -419,7 +419,7 @@ select_query_inter_node(Query) ->
 select_query_func(Query) ->
     case Query of 
         {code, Options} when is_list(Options) ->
-            Head = #funcall_info{
+                      Head = #funcall_info{
               id={'$1', '$2'}, 
               end_ts='$3',
               _='_'},
@@ -861,12 +861,18 @@ select_query_activity_1(SubDBIndex, Query) ->
         {activity, {runnable_counts, Options}} ->
             get_runnable_counts(SubDBIndex, Options);
         {activity, {min_max_ts, Pids}} ->
-            MS= [{#activity{timestamp ='$1', id=Pid,  _='_'}, [], ['$1']}
+            MS= [{#activity{timestamp ='$1', id=Pid, _='_'}, [], ['$1']}
                  ||Pid<-Pids],
             Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
             case ets:select(Tab, MS) of 
                 [] -> [];
-                TSs ->[{hd(TSs), lists:last(TSs)}]
+                TSs ->
+                    [Last] = ets:lookup(Tab, lists:last(TSs)),
+                    TS1 = case Last#activity.in_out of 
+                              [] -> Last#activity.timestamp;
+                              _ ->element(2, hd(Last#activity.in_out))
+                          end,
+                    [{hd(TSs), TS1}]
             end;
         {activity, Options} when is_list(Options) ->
             case lists:member({ts_exact, true},Options) of
@@ -1659,8 +1665,11 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
         [] -> ok;
         Funs ->
             {Caller1, Caller1StartTs}= hd(NewLevel0),
-            [update_calltree_info(Pid, {Func2, TS2, TS}, {Caller1, Caller1StartTs})||
-                     {Func2, TS2} <- Funs]
+            [begin
+                 ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), TS2}, 
+                                                        func=Func2, end_ts=TS}),
+                 update_calltree_info(Pid, {Func2, TS2, TS}, {Caller1, Caller1StartTs})
+             end||{Func2, TS2} <- Funs]
     end,
     [[{Func, TS1} | NewLevel0] | NewStack1].
     
@@ -1738,8 +1747,9 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
                         {Func1, TS1}
                 end,
             update_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
+            ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), TS1}, func=Func1, end_ts=TS}),
             update_fun_call_time({Pid, Func1}, {TS1, TS}),
-            trace_return_to_2(Pid, Caller, TS, Stack);
+            trace_return_to_2(Pid, Caller, TS, Stack1);
         _ when Caller == undefined ->
             trace_return_to_2(Pid, Caller, TS, Stack);
         [] ->
@@ -1810,24 +1820,31 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
             NewF =F#fun_calltree{id=setelement(3, F#fun_calltree.id, Caller),
                                  cnt=1,
                                  start_ts =StartTS,
-                                 end_ts=EndTS},                  
-            case ets:lookup(fun_calltree, {Pid1, Caller, CallerStartTS}) of 
+                                 end_ts=EndTS},           
+            CallerId = {Pid1, Caller, CallerStartTS},
+            case ets:lookup(fun_calltree, CallerId) of 
                 [C] when Caller=/=Callee->
                     ets:delete_object(fun_calltree, F),
                     NewC = C#fun_calltree{called=add_new_callee(NewF, C#fun_calltree.called)},
                     NewC1 = collapse_call_tree(NewC, Callee),
-                    ets:insert(fun_calltree, NewC1);                  
+                    ets:insert(fun_calltree, NewC1);    
                 _ ->
-                    CallerInfo = #fun_calltree{id = {Pid1, Caller, CallerStartTS},
-                                               cnt =1,
+                    CallerInfo = #fun_calltree{id = CallerId,
+                                               cnt =0,
                                                start_ts=CallerStartTS,
                                                called = [NewF]}, 
                     ets:delete_object(fun_calltree, F),
                     NewCallerInfo = collapse_call_tree(CallerInfo, Callee),
-                    ets:insert(fun_calltree, NewCallerInfo)
+                    case ets:lookup(fun_calltree, CallerId) of
+                        [] ->
+                            ets:insert(fun_calltree, NewCallerInfo);
+                        [C1] ->
+                            NewC = combine_fun_info(C1, NewCallerInfo),
+                            ets:insert(fun_calltree, NewC)
+                    end                            
             end
     end.
-
+   
 add_new_callee_caller(Pid, {Callee, StartTS, EndTS},{Caller, CallerStartTS}) ->
     CalleeInfo = #fun_calltree{id={Pid, Callee, Caller},
                                cnt =1, 
@@ -1837,7 +1854,7 @@ add_new_callee_caller(Pid, {Callee, StartTS, EndTS},{Caller, CallerStartTS}) ->
     case ets:lookup(fun_calltree, {Pid, Caller, CallerStartTS}) of
          [] ->
             CallerInfo = #fun_calltree{id = {Pid, Caller, CallerStartTS},
-                                       cnt =1,
+                                       cnt =0,
                                        called = [CalleeInfo],
                                        start_ts=CallerStartTS},
             ets:insert(fun_calltree, CallerInfo);
@@ -2033,7 +2050,7 @@ consolidate_runnability_1(CurSubDBIndex, {ActiveProcs, ActivePorts, RunnableStat
 %%%                                                      %%%
 %%%  consolidate calltree to make sure each process only %%%
 %%   has one calltree.                                   %%%
-%%%                                                      %%%
+%%%                                                      %%% 
 %%%------------------------------------------------------%%%
 consolidate_calltree() ->
     Pids=ets:select(fun_calltree, 
