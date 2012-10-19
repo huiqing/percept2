@@ -155,27 +155,34 @@ fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName) ->
     FunActs = percept2_db:select({code,[{ts_min, TsMin},
                                        {ts_max, TsMax},
                                        {pids, [Pid]}]}),
-    ActiveFuns =[Act#funcall_info.func||Act<-FunActs],
-    Edges=gen_callgraph_slice_edges(CallTree,ActiveFuns),
+   %% ActiveFuns =[Act#funcall_info.func||Act<-FunActs],
+    Edges=gen_callgraph_slice_edges(CallTree,FunActs),
     MG = digraph:new(),
     digraph_add_edges(Edges, [], MG),
     to_dot(MG,DotFileName),
     digraph:delete(MG).
 
-%% This is not accurate!!!
 gen_callgraph_slice_edges(CallTree, ActiveFuns) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
-    case lists:member(CurFunc, ActiveFuns) of
+    case lists:member(CurFunc, [Act#funcall_info.func||Act<-ActiveFuns]) of
         true ->
             ChildrenCallTrees = CallTree#fun_calltree.called,
             lists:foldl(fun(Tree, Acc) ->
                                 {_, ToFunc, _} = Tree#fun_calltree.id,
-                                case lists:member(ToFunc, ActiveFuns) of
-                                    true ->
-                                        NewEdge = {CurFunc, ToFunc, Tree#fun_calltree.cnt},
-                                        [[NewEdge|gen_callgraph_slice_edges(Tree, ActiveFuns)]|Acc];
-                                    false ->
-                                        Acc
+                                StartTs = Tree#fun_calltree.start_ts,
+                                EndTs = Tree#fun_calltree.end_ts,
+                                CallCount = length([true||Act<-ActiveFuns,
+                                                          Act#funcall_info.func==ToFunc,
+                                                          element(2, Act#funcall_info.id)>=StartTs orelse
+                                                              StartTs == undefined,
+                                                          Act#funcall_info.end_ts =< EndTs orelse 
+                                                              EndTs == undefined]),
+                                case CallCount of 
+                                    0 -> Acc;
+                                    _ ->
+                                        NewEdge = {CurFunc, ToFunc, 
+                                                   lists:min([Tree#fun_calltree.cnt, CallCount])},
+                                        [[NewEdge|gen_callgraph_slice_edges(Tree, ActiveFuns)]|Acc]
                                 end
                         end, [], ChildrenCallTrees);
         false ->
