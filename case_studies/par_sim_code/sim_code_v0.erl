@@ -153,8 +153,8 @@ generalise_and_hash_ast(Files, Threshold, Tabs, ASTPid, SearchPaths, TabWidth) -
     %% Refactoring1: lists comprehension parallel pmap. Since the value returned here is not actually 
     %% used, so pforeach should do as well.
     para_lib:pforeach(fun(File) ->
-                              generalise_and_hash_file_ast_1(
-                                File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
+                             generalise_and_hash_file_ast_1(
+                               File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
                       end, Files).
 
 %% Generalise and hash the AST for an single Erlang file.
@@ -168,11 +168,15 @@ generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, Search
     F = fun (Form) ->
 		case wrangler_syntax:type(Form) of
 		    function ->
-                        generalise_and_hash_function_ast(Form, FName, IsNewFile, Threshold, Tabs, ASTPid);
-		    _ -> ok
-		end
+                        generalise_and_hash_function_ast(
+                          Form, FName, IsNewFile, Threshold, Tabs, ASTPid);
+                    _ -> ok
+                end
 	end,
-    lists:foreach(fun (Form) -> F(Form) end, Forms).
+    %% Refactoring2: lists:foreach to lists:pforeach;
+    %% to avoid very small processes, we allow each process to handle 10 Forms 
+    %% at the most.
+    para_lib:pforeach(fun (Form) -> F(Form) end, Forms, 10).
    
 
 %% generalise and hash the AST of a single function.
@@ -240,17 +244,23 @@ stop_ast_process(Pid)->
 %% The sequence of expressions to be inserted are from 
 %% the same expression body (clause_expr, block_expr, try_expr).
 insert_to_ast_tab(Pid, {{M, F, A}, ExprASTs, Index, StartLine}) ->
-    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}}.
+    Self=self(),
+    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}, Self},
+    receive
+        {Pid, Self, done} ->
+            ok
+    end.
 
 ast_loop({ASTTab, HashPid}) ->
     receive
-        {add, {FFA, Body, Index, StartLine}} ->
+        {add, {FFA, Body, Index, StartLine}, From} ->
             Len = length(Body),
             ExprASTsWithIndex = lists:zip(Body, lists:seq(0, Len - 1)),
             HashValExprPairs=[generalise_and_hash_expr(ASTTab, FFA, StartLine,
                                                        Index, {E, I})
                               ||{E, I}<-ExprASTsWithIndex],
             insert_hash(HashPid, {FFA, HashValExprPairs}),
+            From ! {self(), From, done},
             ast_loop({ASTTab, HashPid});
 	stop ->
 	    ok;
@@ -312,8 +322,12 @@ stop_hash_process(Pid) ->
     Pid!stop.
 
 insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
-    Pid ! {add, {{M, F, A}, HashExprPairs}}.
-
+    Self=self(),
+    Pid ! {add, {{M, F, A}, HashExprPairs}, Self},
+    receive
+        {Pid, Self, done} ->
+            ok
+    end.
 get_index(ExpHashTab, Key) ->
     case ets:lookup(ExpHashTab, Key) of 
 	[{Key, I}]->
@@ -327,11 +341,12 @@ get_index(ExpHashTab, Key) ->
 hash_loop({NextSeqNo, ExpHashTab, NewData}) ->
     receive
 	%% add a new entry.
-	{add, {{M, F, A}, KeyExprPairs}} ->
+	{add, {{M, F, A}, KeyExprPairs}, From} ->
 	    KeyExprPairs1 =
 		[{{Index1, NumOfToks, StartEndLoc, StartLine, true}, HashIndex}
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
 		    HashIndex <- [get_index(ExpHashTab, Key)]],
+            From ! {self(), From, done},
 	    hash_loop({NextSeqNo+1, ExpHashTab, [{NextSeqNo, {M,F,A}, KeyExprPairs1}| NewData]});
 	{get_clone_candidates, From, Thresholds, Dir} ->
 	    {ok, OutFileName} = search_for_clones(Dir, lists:reverse(NewData), Thresholds),
