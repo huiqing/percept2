@@ -29,6 +29,8 @@
          memory_graph/3,
          inter_node_message_graph/3]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
 
@@ -117,31 +119,15 @@ graph_1(_Env, Input, Type) ->
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
             Counts=percept2_analyzer:activities2count2(Acts, StartTs),
-            percept2_image:graph(Width, Height, Counts);
+            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts);
         false ->                
             Options  = [{ts_min, TsMin},{ts_max, TsMax}],
-            Options1 = [{ts_min, StartTs},{ts_max, TsMax}],
             Counts = case Type of 
                          procs_ports ->
-                             Counts1=[{?seconds(TS, StartTs), Procs, Ports}||
+                             [{?seconds(TS, StartTs), Procs, Ports}||
                                          {TS, {Procs, Ports}}
                                              <-percept2_db:select(
-                                                 {activity,{runnable_counts, Options}})],
-                             case Counts1 of 
-                                 [] ->
-                                     case [{?seconds(TS, StartTs), Procs, Ports}||
-                                              {TS, {Procs, Ports}}
-                                                  <-percept2_db:select(
-                                                      {activity,{runnable_counts, Options1}})] of 
-                                         [] -> [];
-                                         Res-> 
-                                             {_TS, X, Y} =lists:last(Res),
-                                             [{RangeMin, X, Y}, {RangeMax, X, Y}]
-                                     end;
-                                 [{_, X, Y}] ->
-                                     [{RangeMin, X, Y}, {RangeMax, X, Y}];
-                                 _ -> Counts1
-                             end;                                     
+                                                 {activity,{runnable_counts, Options}})];
                          procs ->
                              [{?seconds(TS, StartTs), Procs, 0}||
                                  {TS, {Procs, _Ports}}
@@ -261,4 +247,16 @@ header() ->
 %%                         {activity,{runnable_counts, Options}})],
 %%     Str = lists:flatten([io_lib:format("{~f, {~p,~p}}.\n", [Sec, Procs, Counts])||{Sec, Procs,Counts}<-Counts1]),
 %%     file:write_file("activity.txt", list_to_binary(Str)).
+    
+
+%% rq_migration_data() ->
+%%     StartTs = percept2_db:select({system, start_ts}),
+%%     StopTs = percept2_db:select({system, stop_ts}),
+%%     Data = [{E#information.id, lists:reverse(
+%%                                  [{?seconds(Ts, StartTs), Rq}
+%%                                   ||{Ts, Rq}<-E#information.rq_history])}
+%%             ||E<-ets:tab2list(pdb_info)],
+%%     Str=lists:flatten([io_lib:format("~p.\n", [E])||E<-Data1]),
+%%     file:write_file("rq_migration.txt", list_to_binary(Str)).           
+                                                                                                  
     
