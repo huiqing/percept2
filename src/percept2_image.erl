@@ -41,7 +41,14 @@
 %% graph(Widht, Height, Range, Data)
 
 graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
-    Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
+    Data2 = case Data of 
+                [] -> [];
+                _ -> 
+                    {_, Proc, Port} = lists:last(Data),
+                    Last = {RXmax, Proc, Port}, 
+                    [{X, Y1 + Y2} 
+                     ||{X, Y1, Y2} <- lists:reverse([Last|lists:reverse(Data)])]
+            end,
     MinMax = minmax(Data2),
     {Xmin, Ymin, Xmax, Ymax} = MinMax, 
     graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
@@ -148,7 +155,24 @@ draw_graf(Im, [{X1, Ys1 = [{Yproc1,Yport1}|_]}, {X2, Yproc2, Yport2}|Data], C = 
     egd:filledRectangle(Im, {X1, YprMax}, {X1, YprMin}, B),
      
     draw_graf(Im, [{X2, Yproc2, Yport2}|Data], C, GA);
-draw_graf(_, _, _, _) -> ok.
+
+draw_graf(Im, [{X1, Ys1 = [{Yproc1,Yport1}|_]}], {B, PrC, PoC}, _GA = #graph_area{y = Y0, width=Width, height = H})  ->
+    GyZero  = trunc(Y0 + H),
+    Yprocs = [Yp || {Yp, _} <- Ys1],
+    Yports = [Yp || {_, Yp} <- Ys1],
+
+    YprMin = lists:min(Yprocs),
+    YprMax = lists:max(Yprocs),
+    YpoMax = lists:max(Yports),
+    egd:filledRectangle(Im, {X1, GyZero}, {Width, Yproc1}, PrC),
+    egd:filledRectangle(Im, {X1, Yproc1}, {Width, Yport1}, PoC),
+    egd:filledRectangle(Im, {X1, Yport1}, {Width, Yport1}, B), % top line
+    egd:filledRectangle(Im, {X1, GyZero}, {X1, YprMin}, PrC), % left proc green line
+    egd:filledRectangle(Im, {X1, YprMax}, {X1, YpoMax}, PoC), % left port line
+    egd:filledRectangle(Im, {X1, YprMax}, {X1, YprMin}, B),
+    ok;
+draw_graf(_, _, _, _) -> 
+    ok.
 
 draw_xticks(Image, Color, XticksArea, {Xmin, Xmax}, Data) ->
     #graph_area{x = X0, y = Y0, width = Width} = XticksArea,
@@ -276,7 +300,7 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }
             draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
                           Dx, [{Xa2, Act2, InOutXas2} | Acts]);
 	active ->
-            Cr = egd:color(Image, {255, 0, 0}),
+            Cr = egd:color(Image, {255, 165, 0}),
             draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
                                    Dx, Xa1, Xa2, InOutXas1),
             egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
@@ -294,12 +318,12 @@ draw_in_out_activities(Image, Xmin, X0, Height, {Cg, _Cr}, Dx, Xa1, Xa2, []) ->
 draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa1, Xa2, [{in, Xa}|Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa - Xmin*Dx),
-    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg),
+    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cr),
     draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, Acts);
 draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa1, Xa2, [{out, Xa}|Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa - Xmin*Dx),
-    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cr),
+    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg),
     draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, Acts).
     
     
@@ -404,7 +428,7 @@ text(Image, {X,Y}, Font, Text, Color) ->
 
 query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     Im = egd:create(round(Width), round(Height)),
-    Black = egd:color(Im, {0, 0, 0}),
+    Black =  egd:color(Im, {0, 0, 0}),
     Green = egd:color(Im, {0, 255, 0}),
     PaleGreen = egd:color(Im, {143,188,143}),
     Grey = egd:color(Im, {128, 128, 128}),
@@ -417,34 +441,22 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     X2 = round(DX*(QueryEnd-Start)),
     X3 = round(DX*(FunStart-Start)),
     X4 = round(DX*(FunEnd-Start)),
-    egd:rectangle(Im, {0,0}, {Width-1, Height-1}, Black),
-     if QueryStart > FunStart andalso QueryEnd < FunEnd -> 
-            egd:filledRectangle(Im, {0, 0}, {Width-1, Height- 1}, Grey),
-            egd:filledRectangle(Im, {X1, 0}, {X2, Height- 1}, PaleGreen),
-            if X2>X1+1 ->
-                    egd:rectangle(Im, {X1, 0}, {X2, Height - 1}, Black);
-               true ->
-                    ok 
-            end;
+    if QueryStart > FunStart andalso QueryEnd < FunEnd -> 
+             egd:filledRectangle(Im, {0, 0}, {Width - 1, Height - 1}, Green),
+             egd:filledRectangle(Im, {X1, 0}, {X2, Height - 1}, PaleGreen);
        QueryStart =< FunStart andalso QueryEnd >= FunEnd ->
-            egd:filledRectangle(Im, {0, 0}, {X2, Height - 1}, Green),
-            egd:filledRectangle(Im, {X3, 0}, {X4, Height - 1}, Grey),
-            egd:rectangle(Im, {X3, 0}, {X4, Height-1}, Black);
+            egd:filledRectangle(Im, {0, 0}, {X2, Height - 1}, Grey),
+            egd:filledRectangle(Im, {X3, 0}, {X4, Height - 1}, Green);
        QueryStart =<FunStart andalso QueryEnd <FunEnd ->
-            egd:filledRectangle(Im, {0, 0}, {X3, Height - 1}, Green),
+            egd:filledRectangle(Im, {0, 0}, {X3, Height - 1}, Grey),
             egd:filledRectangle(Im, {X3, 0}, {X2, Height - 1}, PaleGreen),
-            egd:filledRectangle(Im, {X2, 0}, {X4, Height - 1}, Grey),
-            egd:rectangle(Im, {0, 0}, {X2, Height-1}, Black),
-            egd:rectangle(Im, {X3, 0}, {X4, Height-1}, Black);
+            egd:filledRectangle(Im, {X2, 0}, {X4, Height - 1}, Green);
        QueryStart >FunStart andalso QueryEnd >= FunEnd ->
-            egd:filledRectangle(Im, {0, 0}, {X1, Height - 1}, Grey),
+            egd:filledRectangle(Im, {0, 0}, {X1, Height - 1}, Green),
             egd:filledRectangle(Im, {X1, 0}, {X4, Height - 1}, PaleGreen),
-            egd:filledRectangle(Im, {X4, 0}, {X2, Height - 1}, Green),
-            egd:rectangle(Im, {0, 0}, {X4, Height-1}, Black),
-            egd:rectangle(Im, {X1, 0}, {X2, Height-1}, Black);
+            egd:filledRectangle(Im, {X4, 0}, {X2, Height - 1}, Grey);
        true ->
             io:format("Unhanled case in percept_image:query_fun_time.\n")
-                
     end,
     Binary = egd:render(Im, png),
     egd:destroy(Im),
