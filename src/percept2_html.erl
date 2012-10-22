@@ -474,7 +474,7 @@ concurrency_content_1(_Env, Input) ->
     {MinTs, MaxTs} = percept2_db:select({activity, {min_max_ts, IDs}}),
     case {MinTs, MaxTs} of 
         {undefined, undefined} ->
-            error_msg("No in/out activities have been recorded "
+            error_msg("No activities have been recorded "
                       "for the processess selected!");
         _ ->
             concurrency_content_2(IDs, StartTs, MinTs, MaxTs)
@@ -494,12 +494,10 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                                    {range_max, T1},
                                    {height, 10}], []),
                   Out ++
-                      table_line(
-                        [pid2html(Pid, CleanPid),
-                         "<img onload=\"size_image(this, '" ++
-                             ActivityBar ++
-                             "')\" src=/images/white.png border=0 />"
-                        ])
+                      "<tr><td width=100>"++pid2html(Pid, CleanPid)++"</td>"++
+                      "<td>" ++ "<img onload=\"size_image(this, '" ++
+                      ActivityBar ++
+                      "')\" src=/images/white.png border=0 />" ++ "</td>"
           end, [], IDs),
     PidsRequest = pids2request(IDs),
     Header = "
