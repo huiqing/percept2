@@ -119,7 +119,7 @@ graph_1(_Env, Input, Type) ->
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
             Counts=percept2_analyzer:activities2count2(Acts, StartTs),
-            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts);
+            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts,100);
         false ->                
             Options  = [{ts_min, TsMin},{ts_max, TsMax}],
             Counts = case Type of 
@@ -139,7 +139,7 @@ graph_1(_Env, Input, Type) ->
                                      <-percept2_db:select(
                                          {activity,{runnable_counts, Options}})]
                      end,
-            percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts)
+            percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts,20)
     end.
 
 scheduler_graph(_Env, Input) ->
@@ -155,7 +155,7 @@ scheduler_graph(_Env, Input) ->
    
     Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
     Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts],
-    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts).
+    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts, 20).
 
 memory_graph(Env, Input) ->
     scheduler_graph(Env, Input). %% change this!
