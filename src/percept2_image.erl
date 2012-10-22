@@ -21,8 +21,8 @@
          percentage/3,
          calltime_percentage/4,
          query_fun_time/4,
-         graph/3, 
          graph/4, 
+         graph/5, 
          activities/3, 
          activities/4,
          inter_node_message_image/5]).
@@ -40,7 +40,7 @@
 
 %% graph(Widht, Height, Range, Data)
 
-graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
+graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data,HO) ->
     Data2 = case Data of 
                 [] -> [];
                 _ -> 
@@ -54,7 +54,7 @@ graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
     graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
     				lists:min([RYmin, Ymin]),
     				lists:max([RXmax, Xmax]), 
-				lists:max([RYmax, Ymax])}, Data).
+			      lists:max([RYmax, Ymax])},Data,HO).
 
 %% graph(Widht, Height, Data) = Image
 %% In:
@@ -66,12 +66,12 @@ graph(Width, Height, {RXmin, RYmin, RXmax, RYmax}, Data) ->
 %%	Ports = integer()
 %% Out:
 %%	Image = binary()
-graph(Width, Height, []) ->
+graph(Width, Height, [], _) ->
     error_graph(Width, Height,"No trace data recorded.");
-graph(Width, Height, Data) ->
+graph(Width,Height,Data,HO) ->
     Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
     Bounds = minmax(Data2),
-    graf1(Width, Height, Bounds, Data).
+    graf1(Width,Height,Bounds,Data,HO).
 
 error_graph(Width, Height, Text) ->
     %% Initiate Image
@@ -83,11 +83,11 @@ error_graph(Width, Height, Text) ->
     Binary.
 
     
-graf1(Width, Height, {Xmin, Ymin, Xmax, Ymax}, Data) ->
+graf1(Width,Height,{Xmin, Ymin, Xmax, Ymax},Data,HOffset) ->
        % Calculate areas
-    HO = 20,
-    GrafArea   = #graph_area{x = HO, y = 4, width = Width - 2*HO, height = Height - 17},
-    XticksArea = #graph_area{x = HO, y = Height - 13, width = Width - 2*HO, height = 13},
+    HO = HOffset,
+    GrafArea   = #graph_area{x = HO, y = 4, width = Width -HO, height = Height - 17},
+    XticksArea = #graph_area{x = HO, y = Height - 13, width = Width - HO, height = 13},
     YticksArea = #graph_area{x = 1,  y = 4, width = HO, height = Height - 17},
     
     %% Initiate Image
@@ -103,7 +103,7 @@ graf1(Width, Height, {Xmin, Ymin, Xmax, Ymax}, Data) ->
     %% Draw graf, xticks and yticks
     draw_graf(Image, Data, {Black, ProcColor, PortColor}, GrafArea, {Xmin, Ymin, Xmax, Ymax}),
     draw_xticks(Image, Black, XticksArea, {Xmin, Xmax}, Data),
-    draw_yticks(Image, Black, YticksArea, {Ymin, Ymax}),
+    draw_yticks(Image, Black, YticksArea, {Ymin, Ymax}, HO-20),
     
     %% Kill image and return binaries
     Binary = egd:render(Image, png),
@@ -210,7 +210,7 @@ draw_xticks(Image, Color, XticksArea, {Xmin, Xmax}, Data) ->
 	    end
 	end, 0, Data).
 
-draw_yticks(Im, Color, TickArea, {_,Ymax}) ->
+draw_yticks(Im, Color, TickArea, {_,Ymax}, HOffset) ->
     #graph_area{x = X0, y = Y0, width = Width, height = Height} = TickArea,
     Font = get_font(),
     X = trunc(X0 + Width),
@@ -220,17 +220,17 @@ draw_yticks(Im, Color, TickArea, {_,Ymax}) ->
 	true -> 1
     end,
     egd:filledRectangle(Im, {X, trunc(0 + Y0)}, {X, trunc(Y0 + Height)}, Color),
-    draw_yticks0(Im, Font, Color, 0, Yts, Ymax, {X, Height, Dy}).
+    draw_yticks0(Im, Font, Color, 0, Yts, Ymax, {X, Height, Dy}, HOffset).
 
-draw_yticks0(Im, Font, Color, Yi, Yts, Ymax, Area) when Yi =< Ymax -> 
+draw_yticks0(Im, Font, Color, Yi, Yts, Ymax, Area, HOffset) when Yi =< Ymax -> 
     {X, Height, Dy} = Area, 
     Y = round(Height - (Yi*Dy) + 3),
 
     egd:filledRectangle(Im, {X - 3, Y}, {X + 3, Y}, Color), 
     Text = lists:flatten(io_lib:format("~p", [Yi])),
-    text(Im, {0, Y - 4}, Font, Text, Color),
-    draw_yticks0(Im, Font, Color, Yi + Yts, Yts, Ymax, Area);
-draw_yticks0(_, _, _, _, _, _, _) -> ok.
+    text(Im, {HOffset, Y - 4}, Font, Text, Color),
+    draw_yticks0(Im, Font, Color, Yi + Yts, Yts, Ymax, Area, HOffset);
+draw_yticks0(_, _, _, _, _, _, _,_) -> ok.
 
 %%% -------------------------------------
 %%% ACTIVITIES
@@ -255,7 +255,8 @@ activities(Width, Height, {UXmin, UXmax}, Activities) ->
                [] -> 0.0;
                _ ->lists:max(Xs)
            end,
-    activities0(Width, Height, {lists:min([Xmin, UXmin]), lists:max([UXmax, Xmax])}, Activities).
+    activities0(Width, Height, {lists:min([Xmin, UXmin]), 
+                                lists:max([UXmax, Xmax])}, Activities).
 
 activities(Width, Height, Activities) ->
     Xs = [ X || {X,_} <- Activities],
@@ -280,7 +281,7 @@ activities0(Width, Height, {Xmin, Xmax}, Activities) ->
     egd:destroy(Image),
     Binary.
 
-draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ width = Width }, Acts) ->
+draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{width = Width}, Acts) ->
     White = egd:color({255, 255, 255}),
     Green = egd:color({0,250, 0}),
     Black = egd:color({0, 0, 0}),
@@ -303,7 +304,7 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }
             Cr = egd:color(Image, {255, 165, 0}),
             draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
                                    Dx, Xa1, Xa2, InOutXas1),
-            egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
+           %% egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
             draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
                           Dx, [{Xa2, Act2, InOutXas2} | Acts])
     end.
@@ -428,7 +429,7 @@ text(Image, {X,Y}, Font, Text, Color) ->
 
 query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
     Im = egd:create(round(Width), round(Height)),
-    Black =  egd:color(Im, {0, 0, 0}),
+%%    Black =  egd:color(Im, {0, 0, 0}),
     Green = egd:color(Im, {0, 255, 0}),
     PaleGreen = egd:color(Im, {143,188,143}),
     Grey = egd:color(Im, {128, 128, 128}),
@@ -482,7 +483,7 @@ inter_node_message_image(Width, Height, Xmin, Xmax, Data) ->
     Red = egd:color(Image, {255, 0, 0}),
     draw_cross_graf(Image, Data, {Red, Red}, GrafArea, {Xmin, Ymin, Xmax, Ymax}),
     draw_xticks(Image, Black, XticksArea, {Xmin, Xmax}, Data),
-    draw_yticks(Image, Black, YticksArea, {Ymin, Ymax}),
+    draw_yticks(Image, Black, YticksArea, {Ymin, Ymax},0),
     Binary = egd:render(Image, png),
     egd:destroy(Image),
     Binary.
