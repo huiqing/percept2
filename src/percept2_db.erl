@@ -1008,7 +1008,8 @@ activity_count_ms(Opts) ->
         id = '$2',
         state = '$3',
         where = '$4',
-        runnable_count='$5'
+        runnable_count='$5',
+        _ = '_'
 	},
 
     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
