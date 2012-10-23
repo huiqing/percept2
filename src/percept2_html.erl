@@ -313,8 +313,6 @@ overview_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Min = get_option_value("range_min", Query),
     Max = get_option_value("range_max", Query),
-    Width  =900,
-    Height =400,
     TotalProfileTime = ?seconds((percept2_db:select({system, stop_ts})),
                                 (percept2_db:select({system, start_ts}))),
     Procs = percept2_db:select({information, procs_count}),
@@ -340,10 +338,10 @@ overview_content_1(_Env, Input) ->
 	    "Min:", 
 	    "<input name=range_min value=" ++ term2html(float(Min)) ++">",
 	    "<select name=\"graph_select\" onChange=\"select_image()\">
-	      	<option value=\"" ++ url_graph(Width,Height,Min,Max,[]) ++ "\">Ports & Processes </option>
-                <option value=\"" ++ url_sched_graph(Width, Height, Min, Max, []) ++ "\">Schedulers </option>
-                <option value=\"" ++ url_ports_graph(Width, Height, Min, Max, []) ++ "\">Ports </option>
-	    	<option value=\"" ++ url_procs_graph(Width, Height, Min, Max, []) ++ "\">Processes </option>
+	      	<option value=\"" ++ url_graph(Min,Max,[]) ++ "\">Ports & Processes </option>
+                <option value=\"" ++ url_sched_graph(Min, Max, []) ++ "\">Schedulers </option>
+                <option value=\"" ++ url_ports_graph(Min, Max, []) ++ "\">Ports </option>
+	    	<option value=\"" ++ url_procs_graph(Min, Max, []) ++ "\">Processes </option>
             </select>",
 	    "<input type=submit value=Update>"
 	    ]) ++
@@ -388,26 +386,23 @@ div_tag_graph(Name) ->
 	width:40px;
 	height:40px;\"></div></div>".
 
-url_graph(W,H,Min,Max,Pids) ->
-    graph("/cgi-bin/percept2_graph/graph",W,H,Min,Max,Pids).
+url_graph(Min,Max,Pids) ->
+    graph("/cgi-bin/percept2_graph/graph",Min,Max,Pids).
 
-url_sched_graph(W, H, Min, Max, Pids) ->
-    graph("/cgi-bin/percept2_graph/scheduler_graph", W, H, Min, Max, Pids).
+url_sched_graph(Min, Max, Pids) ->
+    graph("/cgi-bin/percept2_graph/scheduler_graph", Min, Max, Pids).
 
-url_ports_graph(W, H, Min, Max, Pids) ->
-    graph("/cgi-bin/percept2_graph/ports_graph", W, H, Min, Max, Pids).
+url_ports_graph(Min, Max, Pids) ->
+    graph("/cgi-bin/percept2_graph/ports_graph",Min, Max, Pids).
 
-url_procs_graph(W, H, Min, Max, Pids) ->
-    graph("/cgi-bin/percept2_graph/procs_graph", W, H, Min, Max, Pids).
+url_procs_graph(Min, Max, Pids) ->
+    graph("/cgi-bin/percept2_graph/procs_graph",Min, Max, Pids).
 
--spec graph(Func :: string(), Widht :: non_neg_integer(),
-            Height :: non_neg_integer(), Min :: float(), Max :: float(),
+-spec graph(Func :: string(), Min :: float(), Max :: float(),
             Pids :: [pid()]) -> string().
-graph(Func,W,H,Min,Max,Pids) ->
+graph(Func,Min,Max,Pids) ->
     Func ++ "?range_min=" ++ term2html(float(Min))
     	++ "&range_max=" ++ term2html(float(Max))
-	++ "&width=" ++ term2html(float(W))
-	++ "&height=" ++ term2html(float(H))
         ++ "&pids=" ++ pids2request(Pids).
 
 -spec(pids2request([pid_value()]) ->  string()).
