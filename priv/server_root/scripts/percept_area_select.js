@@ -28,19 +28,19 @@ function size_image(img, src) {
 function load_image() {
 	var percept_graph = document.getElementById("percept_graph");
 	if (percept_graph) {
-		percept_content = document.getElementById("content");
-		var width  = percept_content.offsetWidth - 50;
-		var height = max(screen.height - 550, 600); 
-		var rmin   = document.form_area.data_min.value;
-		var rmax   = document.form_area.data_max.value;
-
-		percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/graph" +
-			"?range_min=" + rmin + 
-			"&range_max=" + rmax +
-			"&width=" + width + 
-			"&height=" + height + "')";
-		percept_graph.style.width = width;
-		percept_graph.style.height = height;
+	    percept_content = document.getElementById("content");
+	    var width  = percept_content.offsetWidth - 50;
+	    var height = max(screen.height - 550, 600); 
+	    var rmin   = document.form_area.data_min.value;
+	    var rmax   = document.form_area.data_max.value;
+            
+	    percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/graph" +
+		"?range_min=" + rmin + 
+		"&range_max=" + rmax +
+		"&width=" + width + 
+		"&height=" + height + "')";
+	    percept_graph.style.width = width;
+	    percept_graph.style.height = height;
 	}
 }
 
@@ -89,12 +89,17 @@ function load_message_image() {
 function select_image() {
 	var Graph = document.getElementById("percept_graph");
 	if (Graph) {
+            var width  = percept_content.offsetWidth - 50;
+	    var height = max(screen.height - 550, 600); 
 	    var GraphIndex = document.form_area.graph_select.selectedIndex;
 	    var GraphSelectValue = document.form_area.graph_select.options[GraphIndex].value;
-	    Graph.style.backgroundImage = "url('" + GraphSelectValue +"')";
+	    Graph.style.backgroundImage = "url('" + GraphSelectValue +	"&width=" + width + 
+		"&height=" + height +"')";
+            percept_graph.style.width = width;
+	    percept_graph.style.height = height;
 	}
 }
-   
+
 function select_down(event) {
 	var Graf = document.getElementById("percept_graph");
         var Area = document.getElementById("percept_areaselect");
