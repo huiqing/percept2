@@ -99,6 +99,9 @@ procs_graph(_Env, Input) ->
 ports_graph(_Env, Input) ->
     graph_1(_Env, Input, ports).
 
+scheduler_graph(_Env, Input) ->
+    graph_1(_Env, Input, schedulers).
+
 graph_1(_Env, Input, Type) ->
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
@@ -137,25 +140,14 @@ graph_1(_Env, Input, Type) ->
                              [{?seconds(TS, StartTs), 0, Ports}||
                                  {TS, {_Procs, Ports}}
                                      <-percept2_db:select(
-                                         {activity,{runnable_counts, Options}})]
+                                         {activity,{runnable_counts, Options}})];
+                         schedulers ->
+                             Acts = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
+                             [{?seconds(Ts, StartTs), Scheds, 0} ||
+                                 #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts]
                      end,
             percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts,20)
     end.
-
-scheduler_graph(_Env, Input) ->
-    Query    = httpd:parse_query(Input),
-    RangeMin = percept2_html:get_option_value("range_min", Query),
-    RangeMax = percept2_html:get_option_value("range_max", Query),
-    Width    = percept2_html:get_option_value("width", Query),
-    Height   = percept2_html:get_option_value("height", Query),
-    
-    StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
-   
-    Acts     = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
-    Counts   = [{?seconds(Ts, StartTs), Scheds, 0} || #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts],
-    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts, 20).
 
 memory_graph(Env, Input) ->
     scheduler_graph(Env, Input). %% change this!
