@@ -1332,7 +1332,7 @@ calltime_content_1(_Env, Pid) ->
                   undefined -> SystemStopTS;
                   StopTs -> StopTs
               end,
-    ProcLifeTime = ?seconds(ProcStopTs, ProcStartTs),
+    ProcLifeTime = timer:now_diff(ProcStopTs, ProcStartTs),
     Props = " align=center",
     html_table(
       [[{th, "module:function/arity"},
@@ -1342,8 +1342,8 @@ calltime_content_1(_Env, Pid) ->
          {td, term2html(CallCount)},
          {td, image_string(calltime_percentage, 
                            [{width,200}, {height, 10}, 
-                            {calltime, CallTime}, 
-                            {percentage, CallTime / ProcLifeTime}])}]
+                            {calltime, CallTime/1000000}, 
+                            {percentage, CallTime/ProcLifeTime}])}]
         ||{{_Pid, CallTime}, Func, CallCount}<-Elems]], Props).
    
 
