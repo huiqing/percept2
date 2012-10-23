@@ -82,7 +82,7 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
 	    ?wrangler_io("Warning: No files found in the searchpaths specified.",[]);
 	_ -> Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 					 SearchPaths, TabWidth),
-	     wrangler_code_search_utils:display_clone_result(lists:reverse(Cs), "Similar")
+	     display_clones_by_freq(lists:reverse(Cs), "Similar")
     end,
     {ok, "Similar code detection finished."}.
 
@@ -150,13 +150,9 @@ process_initial_clones(Cs) ->
 %% {{FileName, FunName, Arity, Index}, ExprAST}, where Index is used to identify a specific 
 %% expression in the function. 
 generalise_and_hash_ast(Files, Threshold, Tabs, ASTPid, SearchPaths, TabWidth) ->
-    %% Refactoring1: lists comprehension parallel pmap. Since the value returned here is not actually 
-    %% used, so pforeach should do as well.
-    para_lib:pforeach(fun(File) ->
-                             generalise_and_hash_file_ast_1(
-                               File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
-                      end, Files).
-
+    [generalise_and_hash_file_ast_1(File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
+      ||File<-Files].
+    
 %% Generalise and hash the AST for an single Erlang file.
 generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
     Forms = try wrangler_ast_server:quick_parse_annotate_file(FName, SearchPaths, TabWidth) of
@@ -168,15 +164,11 @@ generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, Search
     F = fun (Form) ->
 		case wrangler_syntax:type(Form) of
 		    function ->
-                        generalise_and_hash_function_ast(
-                          Form, FName, IsNewFile, Threshold, Tabs, ASTPid);
-                    _ -> ok
-                end
+                        generalise_and_hash_function_ast(Form, FName, IsNewFile, Threshold, Tabs, ASTPid);
+		    _ -> ok
+		end
 	end,
-    %% Refactoring2: lists:foreach to lists:pforeach;
-    %% to avoid very small processes, we allow each process to handle 10 Forms 
-    %% at the most.
-    para_lib:pforeach(fun (Form) -> F(Form) end, Forms, 10).
+    lists:foreach(fun (Form) -> F(Form) end, Forms).
    
 
 %% generalise and hash the AST of a single function.
@@ -244,23 +236,17 @@ stop_ast_process(Pid)->
 %% The sequence of expressions to be inserted are from 
 %% the same expression body (clause_expr, block_expr, try_expr).
 insert_to_ast_tab(Pid, {{M, F, A}, ExprASTs, Index, StartLine}) ->
-    Self=self(),
-    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}, Self},
-    receive
-        {Pid, Self, done} ->
-            ok
-    end.
+    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}}.
 
 ast_loop({ASTTab, HashPid}) ->
     receive
-        {add, {FFA, Body, Index, StartLine}, From} ->
+        {add, {FFA, Body, Index, StartLine}} ->
             Len = length(Body),
             ExprASTsWithIndex = lists:zip(Body, lists:seq(0, Len - 1)),
             HashValExprPairs=[generalise_and_hash_expr(ASTTab, FFA, StartLine,
                                                        Index, {E, I})
                               ||{E, I}<-ExprASTsWithIndex],
             insert_hash(HashPid, {FFA, HashValExprPairs}),
-            From ! {self(), From, done},
             ast_loop({ASTTab, HashPid});
 	stop ->
 	    ok;
@@ -322,12 +308,8 @@ stop_hash_process(Pid) ->
     Pid!stop.
 
 insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
-    Self=self(),
-    Pid ! {add, {{M, F, A}, HashExprPairs}, Self},
-    receive
-        {Pid, Self, done} ->
-            ok
-    end.
+    Pid ! {add, {{M, F, A}, HashExprPairs}}.
+
 get_index(ExpHashTab, Key) ->
     case ets:lookup(ExpHashTab, Key) of 
 	[{Key, I}]->
@@ -341,12 +323,11 @@ get_index(ExpHashTab, Key) ->
 hash_loop({NextSeqNo, ExpHashTab, NewData}) ->
     receive
 	%% add a new entry.
-	{add, {{M, F, A}, KeyExprPairs}, From} ->
+	{add, {{M, F, A}, KeyExprPairs}} ->
 	    KeyExprPairs1 =
 		[{{Index1, NumOfToks, StartEndLoc, StartLine, true}, HashIndex}
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
 		    HashIndex <- [get_index(ExpHashTab, Key)]],
-            From ! {self(), From, done},
 	    hash_loop({NextSeqNo+1, ExpHashTab, [{NextSeqNo, {M,F,A}, KeyExprPairs1}| NewData]});
 	{get_clone_candidates, From, Thresholds, Dir} ->
 	    {ok, OutFileName} = search_for_clones(Dir, lists:reverse(NewData), Thresholds),
@@ -426,7 +407,6 @@ clone_check_loop(Cs, CandidateClassPairs, Tabs) ->
 examine_clone_candidates([],_Thresholds,Tabs,CloneCheckerPid,_HashPid,_Num) ->
     get_final_clone_classes(CloneCheckerPid,Tabs#tabs.ast_tab);
 examine_clone_candidates([C| Cs],Thresholds,Tabs,CloneCheckerPid,HashPid,Num) ->
-    output_progress_msg(Num), 
     C1 = get_clone_in_range(HashPid,C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
@@ -443,9 +423,7 @@ examine_clone_candidates([C| Cs],Thresholds,Tabs,CloneCheckerPid,HashPid,Num) ->
     end, 
     examine_clone_candidates(Cs,Thresholds,Tabs,CloneCheckerPid,HashPid,Num+1).
 
-output_progress_msg(Num) ->
-    ?wrangler_io("\nChecking clone candidate no. ~p ...", [Num]).
-    
+   
 hash_a_clone_candidate(_C={Ranges, {_Len, _Freq}}) ->
     F = fun({MFAI, Toks, {Loc, _StartLine}, _IsNew}) ->
 		{MFAI, Toks, Loc}
@@ -1346,4 +1324,103 @@ write_file(File, Data) ->
 	_->
 	    file:write_file(File, Data)
     end.
+
+
+display_clones_by_freq(_Cs, _Str) ->
+    ?wrangler_io("\n===================================================================\n",[]),
+    ?wrangler_io(_Str ++ " Code Detection Results Sorted by the Number of Code Instances.\n",[]),
+    ?wrangler_io("======================================================================\n",[]),		 
+    _Cs1 = lists:reverse(lists:keysort(3, _Cs)),
+    ?wrangler_io(display_clones(_Cs1, _Str),[]).
+
+
+display_clones(Cs, _Str) ->
+    Num = length(Cs),
+    ?wrangler_io("\n" ++ _Str ++ " detection finished with *** ~p *** clone(s) found.\n", [Num]),
+    case Num of 
+	0 -> ok;
+	_ -> display_clones_1(Cs,1)
+    end.
+
+display_clones_1([],_) ->
+    ?wrangler_io("\n",[]),
+    ok;
+display_clones_1([C|Cs], Num) ->
+    display_a_clone(C, Num),
+    display_clones_1(Cs, Num+1).
+  
+
+display_a_clone(_C={Ranges, _Len, F,{Code, _}},Num) ->
+    NewStr1 = make_clone_info_str(Ranges, F, Code, Num),
+    ?wrangler_io("~s", [NewStr1]);
+display_a_clone(_C={Ranges, _Len, F,Code},Num) ->
+    NewStr1 = make_clone_info_str(Ranges, F, Code, Num),
+    ?wrangler_io("~s", [NewStr1]);
+display_a_clone(_C={Ranges, _Len, F,{Code, _}, ChangeStatus},Num) ->
+    [R| _Rs] = lists:keysort(1, Ranges),
+    NewStr = compose_clone_info(R, F, Ranges, "", Num, ChangeStatus),
+    NewStr1 = NewStr ++ "The cloned expression/function after generalisation:\n\n" ++ Code,
+    ?wrangler_io("~s", [lists:flatten(NewStr1)]).
+
+make_clone_info_str(Ranges, F, Code, Num) ->
+    [R | _Rs] = lists:keysort(1, Ranges),
+    NewStr = compose_clone_info(R, F, Ranges, "", Num),
+    NewStr ++"The cloned expression/function after generalisation:\n\n" ++Code.
+
+
+compose_clone_info(_, F, Range, Str, Num) ->
+    case F of
+	2 -> 
+            case Num of 
+                0 ->
+                    Str1 = "\n\nClone found. This code appears twice :\n",
+                    display_clones_2(Range, Str1);
+                _ ->
+                    Str1 =Str ++ "\n\n" ++"Clone "++io_lib:format("~p. ", [Num])++ "This code appears twice:\n",
+                    display_clones_2(Range, Str1)
+            end;
+	_ -> 
+            case Num of
+                0 ->
+                    Str1 = "\n\nClone found. "++  io_lib:format("This code appears ~p times:\n",[F]),
+                    display_clones_2(Range, Str1);
+                _ ->                     
+                    Str1 =Str ++ "\n\n" ++"Clone "++io_lib:format("~p. ", [Num])++ 
+                        io_lib:format("This code appears ~p times:\n",[F]),
+                    display_clones_2(Range, Str1)
+             end
+    end.
+compose_clone_info(_, F, Range, Str, Num, ChangeStatus) ->
+    case F of
+	2 ->
+            case Num of 
+                0 ->
+                    Str1 = "\n\nClone found. This code appears twice :\n",
+                    display_clones_2(Range, Str1);
+                _ ->
+                    Str1 =Str ++ "\n\n" ++"Clone "++io_lib:format("~p. ", [Num])++ io_lib:format("~p:", [ChangeStatus])
+                        ++ " This code appears twice:\n",
+                    display_clones_2(Range, Str1)
+            end;
+	_ -> 
+            case Num of 
+                0 ->
+                    Str1 = "\n\nClone found. "++  io_lib:format("This code appears ~p times:\n",[F]),
+                    display_clones_2(Range, Str1);
+                _ ->
+                    Str1 =Str ++ "\n\n" ++"Clone "++io_lib:format("~p. ", [Num])++io_lib:format("~p:", [ChangeStatus])++ 
+                        io_lib:format("This code appears ~p times:\n",[F]),
+                    display_clones_2(Range, Str1)
+            end
+    end.
+
+
+display_clones_2([], Str) -> Str ++ "\n";
+display_clones_2([{{File, StartLine, StartCol}, {File, EndLine, EndCol}}|Rs], Str) ->
+    Str1 =Str ++ File++io_lib:format(":~p.~p-~p.~p:\n", [StartLine, lists:max([1,StartCol-1]), EndLine, EndCol]),
+    display_clones_2(Rs, Str1);
+display_clones_2([{{{File, StartLine, StartCol}, {File, EndLine, EndCol}}, FunCall}|Rs], Str) ->
+    Str1 = Str ++ File++io_lib:format(":~p.~p-~p.~p:", [StartLine,lists:max([1, StartCol-1]),EndLine, EndCol])++
+	" \n   "++ FunCall ++ "\n",
+    display_clones_2(Rs, Str1).
 
