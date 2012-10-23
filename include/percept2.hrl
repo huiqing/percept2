@@ -87,13 +87,13 @@
          }).
 
 -record(fun_info, {
-          id                     ::{pid_value()|special_atom(), any()},
-          callers = []           ::any(), %% ::[{true_mfa()|undefined, non_neg_integer()}]|special_atom(),
-          called = []            ::any(), %%[{true_mfa(), non_neg_integer()}]|special_atom(),
-          start_ts = undefined   ::any(), %%timestamp()|undefined|special_atom(),
-          end_ts = undefined     ::any(), %%timestamp()|undefinedspecial_atom(),
-          call_count = 0         ::non_neg_integer()|special_atom(),
-          acc_time = 0.0           ::float()|special_atom()
+          id                   ::{pid_value()|special_atom(), any()},
+          callers = []         ::any(), %% ::[{true_mfa()|undefined, non_neg_integer()}]|special_atom(),
+          called = []          ::any(), %%[{true_mfa(), non_neg_integer()}]|special_atom(),
+          start_ts = undefined ::any(), %%timestamp()|undefined|special_atom(),
+          end_ts = undefined   ::any(), %%timestamp()|undefinedspecial_atom(),
+          call_count = 0       ::non_neg_integer()|special_atom(),
+          acc_time = 0         ::non_neg_integer()|special_atom()
          }).
 
 
