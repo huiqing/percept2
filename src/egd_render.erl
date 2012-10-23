@@ -127,7 +127,7 @@ receive_binaries(H, Bins) when H > 0 ->
 scanline(Y, Os, {_,_,Width,_}=LSB, Type) ->
     OLSs = parse_objects_on_line(Y-1, Width, Os),
     RLSs = resulting_line_spans([LSB|OLSs],Type),
-    [ lists:duplicate(Xr - Xl + 1, <<(trunc(R*255)):8,(trunc(G*255)):8,(trunc(B*255)):8>>) || {_,Xl, Xr, {R,G,B,_}} <- RLSs ].
+    [ lists:duplicate(round(Xr - Xl + 1), <<(trunc(R*255)):8,(trunc(G*255)):8,(trunc(B*255)):8>>) || {_,Xl, Xr, {R,G,B,_}} <- RLSs ].
 
 resulting_line_spans(LSs,Type) ->
     %% Build a list of "transitions" from left to right.
