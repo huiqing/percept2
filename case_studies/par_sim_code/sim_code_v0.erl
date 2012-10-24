@@ -407,6 +407,7 @@ clone_check_loop(Cs, CandidateClassPairs, Tabs) ->
 examine_clone_candidates([],_Thresholds,Tabs,CloneCheckerPid,_HashPid,_Num) ->
     get_final_clone_classes(CloneCheckerPid,Tabs#tabs.ast_tab);
 examine_clone_candidates([C| Cs],Thresholds,Tabs,CloneCheckerPid,HashPid,Num) ->
+    output_progress_msg(Num), 
     C1 = get_clone_in_range(HashPid,C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
@@ -423,6 +424,12 @@ examine_clone_candidates([C| Cs],Thresholds,Tabs,CloneCheckerPid,HashPid,Num) ->
     end, 
     examine_clone_candidates(Cs,Thresholds,Tabs,CloneCheckerPid,HashPid,Num+1).
 
+output_progress_msg(Num) ->
+    case Num rem 10 of
+     	1 -> 
+     	    ?wrangler_io("\nChecking clone candidate no. ~p ...", [Num]);
+     	_-> ok
+     end.
    
 hash_a_clone_candidate(_C={Ranges, {_Len, _Freq}}) ->
     F = fun({MFAI, Toks, {Loc, _StartLine}, _IsNew}) ->
