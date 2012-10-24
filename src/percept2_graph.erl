@@ -122,7 +122,7 @@ graph_1(_Env, Input, Type) ->
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
             Counts=percept2_analyzer:activities2count2(Acts, StartTs),
-            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts,100);
+            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts,120);
         false ->                
             Options  = [{ts_min, TsMin},{ts_max, TsMax}],
             Counts = case Type of 
@@ -164,7 +164,7 @@ activity_bar(_Env, Input, StartTs) ->
     Activities = [{?seconds(Ts, StartTs), State, [{InOut, ?seconds(InOutTs, StartTs)}
                                                   ||{InOut, InOutTs}<-lists:reverse(InOuts)]} 
                   || #activity{timestamp = Ts, state = State, in_out=InOuts} <- Data],
-    percept2_image:activities(Width, Height, {Min,Max}, Activities).
+    percept2_image:activities(Width-50, Height, {Min,Max}, Activities).
 
 proc_lifetime(_Env, Input) ->
     Query = httpd:parse_query(Input),
