@@ -489,10 +489,11 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                                    {range_max, T1},
                                    {height, 10}], []),
                   Out ++
-                      "<tr><td width=100>"++pid2html(Pid, CleanPid)++"</td>"++
+                      "<tr><td><input type=checkbox name="++pid2str(Pid)++"></td>"++
+                      "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"++
                       "<td>" ++ "<img onload=\"size_image(this, '" ++
                       ActivityBar ++
-                      "')\" src=/images/white.png border=0 />" ++ "</td>"
+                      "')\" src=/images/white.png border=0 />" ++ "</td>\n"
           end, [], IDs),
     PidsRequest = pids2request(IDs),
     Header = "
@@ -503,6 +504,9 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
      <input name=height   type=hidden value=" ++ term2html(400) ++ ">
      <input name=pids     type=hidden value=" ++ term2html(PidsRequest) ++ ">
      \n",  
+    Header1 = 
+        "<div id=\"content\">
+         <form name=form_area1 method=POST action=/cgi-bin/percept2_html/concurrency_page>\n",  
     FuncActs = "<table>"++table_line(
                             [
                              "Min:",
@@ -511,21 +515,23 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                              "Max:", 
                              "<input name=range_max value=" ++ term2html(float(T1)) ++">",
                              "",
-                             "<input type=submit value=\"Active Functions\">"])
+                             "<input type=submit value=\"Active Functions\">"
+                            ])
         ++"</table>",
     MainTable = 
         "<table cellspacing=0 cellpadding=0 border=0>" ++ 
         table_line([div_tag_graph("percept_graph")]) ++
-        table_line([FuncActs])++
-        table_line(["<table>" ++ [ActivityBarTable]++"</table>"]) ++
-        "</table>",
+        table_line([FuncActs]) ++ "</table>\n",
+    MainTable1 =
+        "<table cellspacing=0 cellpadding=0 border=0>" ++ 
+        table_line(["<input type=submit value=\"Compare Selected Processes\">"])++ "</table>\n"++
+        "<table  cellspacing=0 cellpadding=0 border=0>" ++
+        [ActivityBarTable]++"</table>",
     Footer = "</div></form>",
-    Header ++ MainTable ++ Footer.
-
+    Header ++ MainTable ++ Footer ++ Header1 ++ MainTable1++Footer.
 
 -spec(get_pids_to_compare(string()) ->[pid()]).
 get_pids_to_compare(Input) ->
-    io:format("Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pids = [str_to_internal_pid(PidValue)
             || {PidValue, Case} <- Query, 
