@@ -525,19 +525,45 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
 
 -spec(get_pids_to_compare(string()) ->[pid()]).
 get_pids_to_compare(Input) ->
+    io:format("Input:\n~p\n", [Input]),
     Query = httpd:parse_query(Input),
     Pids = [str_to_internal_pid(PidValue)
             || {PidValue, Case} <- Query, 
                Case == "on", 
                PidValue /= "select_all",
-               PidValue /= "include_unshown_procs"],
-    case lists:member({"include_unshown_procs","on"}, Query) of 
+               PidValue /= "include_unshown_procs",
+               PidValue /= "include_children_procs"],
+    case lists:member({"select_all", "on"}, Query) orelse 
+        (not lists:member({"include_children_procs", "on"}, Query)) of 
         true ->
-            lists:append([expand_a_pid(Pid)|| Pid <- Pids]);
+            case lists:member({"include_unshown_procs","on"}, Query) of 
+                true ->
+                    lists:append([expand_a_pid(Pid)|| Pid <- Pids]);
+                false ->
+                    [Pid|| Pid <- Pids,
+                           not percept2_db:is_dummy_pid(Pid)]
+            end;
         false ->
-            [Pid|| Pid <- Pids,
-                   not percept2_db:is_dummy_pid(Pid)]
+            case lists:member({"include_unshown_procs","on"}, Query) of
+                true ->
+                    lists:append([process_tree_pids(Pid)
+                                  ||Pid<-Pids]);
+                false ->
+                    AllPids=lists:append([process_tree_pids(Pid)
+                                          ||Pid<-Pids,
+                                            not percept2_db:is_dummy_pid(Pid)]),
+                    AllPids --hidden_pids()
+            end
     end.
+    
+  
+hidden_pids() ->
+    DummyEntries=percept2_db:select({information, dummy_pids}),
+    {_, HiddenPidLists}=
+        lists:unzip([{Entry#information.id, Entry#information.hidden_pids}
+                     ||Entry<-DummyEntries]),
+    lists:append(HiddenPidLists).   
+
     
 expand_a_pid(Pid) ->
     case percept2_db:is_dummy_pid(Pid) of
@@ -764,14 +790,11 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     SystemStartTS = percept2_db:select({system, start_ts}),
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
-    %% Acts = percept2_db:select({activity, [{ts_min, TsMin}, {ts_max, TsMax}]}),
-    %% ActivePids = sets:to_list(sets:from_list([A#activity.id||A<-Acts])),
-    %% ActiveProcsInfo=lists:append([percept2_db:select({information, Pid})||Pid <- ActivePids]),
-    %% too expensive to calculate active pids in this way.
-    ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, []), %%ActiveProcsInfo),
+    ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, []), 
     Selector = "<table cellspacing=10>" ++
         "<tr> <td>" ++ "<input onClick='selectall()' type=checkbox name=select_all>Select all" ++ "</td>"
-        ++"<td><input type=checkbox name=include_unshown_procs>Include unshown procs"++"</td></tr>" ++
+        ++"<td><input type=checkbox name=include_children_procs>Include children procs"++"</td>" 
+        ++"<td><input type=checkbox name=include_unshown_procs>Include omitted procs"++"</td></tr>" ++
         "<tr> <td> <input type=submit value=Compare> </td>" ++
         "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/process_tree_visualisation_page\">"++
         "<b>Visualise Process Tree</b>"++"</a></td></tr>",
