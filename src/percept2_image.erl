@@ -273,7 +273,7 @@ activities(Width, Height, Activities) ->
 activities0(Width, Height, {Xmin, Xmax}, Activities) ->
     Image = egd:create(Width, Height),
     Grey = egd:color(Image, {200, 200, 200}),
-    HO = 20,
+    HO = 10,
     ActivityArea = #graph_area{x = HO, y = 0, width = Width - 2*HO, height = Height},
     egd:filledRectangle(Image, {0, 0}, {Width, Height}, Grey),
     draw_activity(Image, {Xmin, Xmax}, ActivityArea, Activities),
