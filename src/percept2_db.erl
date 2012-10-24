@@ -1345,6 +1345,12 @@ select_query_information(Query) ->
 		[],
 		['$_']
 		}]);
+        {information, dummy_pids} -> 
+	    ets:select(pdb_info, [{
+		#information{ id = {pid, '$1'}, _ = '_'},
+		[{is_atom, {element, 2, '$1'}}],
+		['$_']
+		}]);
 	Unhandled ->
 	    io:format("select_query_information, unhandled: ~p~n", [Unhandled]),
 	    []
@@ -2126,7 +2132,7 @@ update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
             ets:insert(fun_info, #fun_info{id={PidValue, Func},
                                            acc_time=Time});
         [FunInfo] ->
-            ets:update_element(fun_info, {Pidvalue, Func},
+            ets:update_element(fun_info, {PidValue, Func},
                                [{8, FunInfo#fun_info.acc_time+Time}])
     end.
 
