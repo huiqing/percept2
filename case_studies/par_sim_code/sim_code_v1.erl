@@ -240,17 +240,23 @@ stop_ast_process(Pid)->
 %% The sequence of expressions to be inserted are from 
 %% the same expression body (clause_expr, block_expr, try_expr).
 insert_to_ast_tab(Pid, {{M, F, A}, ExprASTs, Index, StartLine}) ->
-    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}}.
+    Self=self(),
+    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}, Self},
+    receive
+        {Pid, Self, done} ->
+            ok
+    end.
 
 ast_loop({ASTTab, HashPid}) ->
     receive
-        {add, {FFA, Body, Index, StartLine}} ->
+        {add, {FFA, Body, Index, StartLine}, From} ->
             Len = length(Body),
             ExprASTsWithIndex = lists:zip(Body, lists:seq(0, Len - 1)),
             HashValExprPairs=[generalise_and_hash_expr(ASTTab, FFA, StartLine,
                                                        Index, {E, I})
                               ||{E, I}<-ExprASTsWithIndex],
             insert_hash(HashPid, {FFA, HashValExprPairs}),
+            From ! {self(), From, done},
             ast_loop({ASTTab, HashPid});
 	stop ->
 	    ok;
