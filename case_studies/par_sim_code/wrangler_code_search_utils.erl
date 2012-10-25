@@ -70,7 +70,8 @@ gen_new_var_name(_Pid) ->
     {SuffixNum,UsedNames, NewExportVars} = get(counter),
     {NewSuffixNum, NewName} = make_new_name(SuffixNum, UsedNames),
     NewData={NewSuffixNum, sets:add_element(NewName, UsedNames), NewExportVars},
-    put(counter, NewData).
+    put(counter, NewData),
+    NewName.
 
     %% Pid ! {self(), next},
     %% receive

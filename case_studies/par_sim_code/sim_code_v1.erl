@@ -312,7 +312,12 @@ stop_hash_process(Pid) ->
     Pid!stop.
 
 insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
-    Pid ! {add, {{M, F, A}, HashExprPairs}}.
+    Self=self(),
+    Pid ! {add, {{M, F, A}, HashExprPairs}, Self},
+    receive
+        {Pid, Self, done} ->
+            ok
+    end.
 
 get_index(ExpHashTab, Key) ->
     case ets:lookup(ExpHashTab, Key) of 
@@ -327,11 +332,12 @@ get_index(ExpHashTab, Key) ->
 hash_loop({NextSeqNo, ExpHashTab, NewData}) ->
     receive
 	%% add a new entry.
-	{add, {{M, F, A}, KeyExprPairs}} ->
+        {add, {{M, F, A}, KeyExprPairs}, From} ->
 	    KeyExprPairs1 =
 		[{{Index1, NumOfToks, StartEndLoc, StartLine, true}, HashIndex}
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
 		    HashIndex <- [get_index(ExpHashTab, Key)]],
+            From ! {self(), From, done},
 	    hash_loop({NextSeqNo+1, ExpHashTab, [{NextSeqNo, {M,F,A}, KeyExprPairs1}| NewData]});
 	{get_clone_candidates, From, Thresholds, Dir} ->
 	    {ok, OutFileName} = search_for_clones(Dir, lists:reverse(NewData), Thresholds),

@@ -236,19 +236,25 @@ stop_ast_process(Pid)->
 %% The sequence of expressions to be inserted are from 
 %% the same expression body (clause_expr, block_expr, try_expr).
 insert_to_ast_tab(Pid, {{M, F, A}, ExprASTs, Index, StartLine}) ->
-    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}}.
+    Self=self(),
+    Pid ! {add, {{M, F, A}, ExprASTs, Index,  StartLine}, Self},
+    receive
+        {Pid, Self, done} ->
+            ok
+    end.
 
 ast_loop({ASTTab, HashPid}) ->
     receive
-        {add, {FFA, Body, Index, StartLine}} ->
+        {add, {FFA, Body, Index, StartLine}, From} ->
             Len = length(Body),
             ExprASTsWithIndex = lists:zip(Body, lists:seq(0, Len - 1)),
             HashValExprPairs=[generalise_and_hash_expr(ASTTab, FFA, StartLine,
                                                        Index, {E, I})
                               ||{E, I}<-ExprASTsWithIndex],
             insert_hash(HashPid, {FFA, HashValExprPairs}),
+            From ! {self(), From, done},
             ast_loop({ASTTab, HashPid});
-	stop ->
+ 	stop ->
 	    ok;
 	_Msg ->
 	    ?wrangler_io("Unexpected message:\n~p\n", [_Msg]),
@@ -308,7 +314,12 @@ stop_hash_process(Pid) ->
     Pid!stop.
 
 insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
-    Pid ! {add, {{M, F, A}, HashExprPairs}}.
+    Self=self(),
+    Pid ! {add, {{M, F, A}, HashExprPairs}, Self},
+    receive
+        {Pid, Self, done} ->
+            ok
+    end.
 
 get_index(ExpHashTab, Key) ->
     case ets:lookup(ExpHashTab, Key) of 
@@ -323,11 +334,12 @@ get_index(ExpHashTab, Key) ->
 hash_loop({NextSeqNo, ExpHashTab, NewData}) ->
     receive
 	%% add a new entry.
-	{add, {{M, F, A}, KeyExprPairs}} ->
+        {add, {{M, F, A}, KeyExprPairs}, From} ->
 	    KeyExprPairs1 =
 		[{{Index1, NumOfToks, StartEndLoc, StartLine, true}, HashIndex}
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
 		    HashIndex <- [get_index(ExpHashTab, Key)]],
+            From ! {self(), From, done},
 	    hash_loop({NextSeqNo+1, ExpHashTab, [{NextSeqNo, {M,F,A}, KeyExprPairs1}| NewData]});
 	{get_clone_candidates, From, Thresholds, Dir} ->
 	    {ok, OutFileName} = search_for_clones(Dir, lists:reverse(NewData), Thresholds),
