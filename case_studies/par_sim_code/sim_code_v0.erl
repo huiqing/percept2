@@ -65,8 +65,7 @@
 -record(tabs, 
 	{ast_tab,
 	 var_tab, 
-         exp_hash_tab,
-	 clone_tab
+       	 clone_tab
 	}).
 
 -define(PARALLEL, false).
@@ -92,8 +91,7 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
     %% dets tables used to cache information.
     Tabs = #tabs{ast_tab = create_ets(ast_tab),
 		 var_tab = create_ets(var_tab),
-                 exp_hash_tab = create_ets(expr_hash_tab),
-		 clone_tab = create_ets(expr_clone_tab)},
+                 clone_tab = create_ets(expr_clone_tab)},
     %% Threshold parameters.
     Threshold = #threshold{min_len = MinLen,
 			   min_freq = MinFreq,
