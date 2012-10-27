@@ -29,7 +29,7 @@
 %% Author contact: hl@kent.ac.uk, sjt@kent.ac.uk
 %% 
 %% @private
--module(sim_code_v0).
+-module(sim_code_v20).
 
 -export([sim_code_detection/8,sim_code_detection/4]). 
 
@@ -101,7 +101,6 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 sim_code_detection_1(Files, Thresholds, HashPid, ASTPid, SearchPaths, TabWidth) ->
     ?wrangler_io("Generalise and hash ASTs ...\n", []),
     generalise_and_hash_ast(Files, Thresholds, ASTPid, SearchPaths, TabWidth),
-   %% io:format("vartab:\n~p\n", [ets:tab2list(var_tab)]),
     ?wrangler_io("\nCollecting initial clone candidates ...\n",[]),
     Cs= gen_initial_clone_candidates(Files, Thresholds, HashPid),
     ?wrangler_io("\nNumber of initial clone candidates: ~p\n", [length(Cs)]),
@@ -290,7 +289,8 @@ start_hash_process() ->
 
 init_hash_loop() ->
     ets:new(expr_hash_tab, [named_table, protected, {keypos, 1}, ordered_set]),
-    hash_loop({1, []}).
+    ets:new(expr_seq_hash_tab, [named_table, protected, {keypos,1}, ordered_set]),
+    hash_loop(1).
 
 %% Get initial clone candidates.    
 get_clone_candidates(Pid, Thresholds, Dir) ->
@@ -326,7 +326,7 @@ get_index(Key) ->
 	    NewIndex
     end.
 
-hash_loop({NextSeqNo, NewData}) ->
+hash_loop(NextSeqNo) ->
     receive
 	%% add a new entry.
         {add, {{M, F, A}, KeyExprPairs}, From} ->
@@ -335,23 +335,26 @@ hash_loop({NextSeqNo, NewData}) ->
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
 		    HashIndex <- [get_index(Key)]],
             From ! {self(), From, done},
-            hash_loop({NextSeqNo+1,[{NextSeqNo, {M,F,A}, KeyExprPairs1}| NewData]});
+            ets:insert(expr_seq_hash_tab, {NextSeqNo, {M,F,A}, KeyExprPairs1}),
+            hash_loop(NextSeqNo+1);
 	{get_clone_candidates, From, Thresholds, Dir} ->
-	    {ok, OutFileName} = search_for_clones(Dir, lists:reverse(NewData), Thresholds),
+	    {ok, OutFileName} = search_for_clones(Dir, Thresholds),
             From ! {self(), {ok, OutFileName}},
-            hash_loop({NextSeqNo,lists:reverse(NewData)});%%!!!! Data Reorded!!!
+            hash_loop(NextSeqNo);
 	{get_clone_in_range, From, {Ranges, Len, Freq}} ->
 	    F0 = fun ({ExprSeqId, ExprIndex}, L) ->
-			 {ExprSeqId, {M, F, A}, Exprs} = lists:nth(ExprSeqId, NewData),
+			 [{ExprSeqId, {M, F, A}, Exprs}] = ets:lookup(expr_seq_hash_tab, ExprSeqId),
 			 Es = lists:sublist(Exprs, ExprIndex, L),
 			 [{{M,F,A,Index}, Toks, {{StartLoc, EndLoc}, StartLine}, IsNew}
 			  || {{Index, Toks, {StartLoc, EndLoc}, StartLine, IsNew}, _HashIndex} <- Es]
 		 end,
 	    C1 = {[F0(R, Len) || R <- Ranges], {Len, Freq}},
 	    From ! {self(), C1},
-	    hash_loop({NextSeqNo, NewData});
+	   %% hash_loop({NextSeqNo, NewData});
+            hash_loop(NextSeqNo);
 	stop ->
             ets:delete(expr_hash_tab),
+            ets:delete(expr_seq_hash_tab),
             ok
     end.
 
@@ -1168,20 +1171,24 @@ integer_list_to_string([I|Is], Acc) ->
     integer_list_to_string(Is, S++Acc).
 
     
-search_for_clones(Dir, [], _Thresholds) ->
-    OutFileName = filename:join(Dir, "wrangler_suffix_tree"),
-    write_file(OutFileName, []),
-    {ok, OutFileName};
-search_for_clones(Dir, Data, Thresholds) ->
+search_for_clones(Dir, Thresholds) ->
     MinLen = Thresholds#threshold.min_len,
     MinFreq= Thresholds#threshold.min_freq,
-    NumOfIndexStrs=integer_to_list(length(Data))++"\r\n",
-    IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
-					     ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
-						{_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
-    SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
-    wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
-                                                        MinFreq, 1, SuffixTreeExec).
+    NumOfIndexStrs=integer_to_list(ets:info(expr_seq_hash_tab, size))++"\r\n",
+    Data = ets:tab2list(expr_seq_hash_tab),
+    case Data of 
+        [] ->
+            OutFileName = filename:join(Dir, "wrangler_suffix_tree"),
+            write_file(OutFileName, []),
+            {ok, OutFileName};
+        _ ->
+            IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
+                                                     ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
+                                                       {_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
+            SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
+            wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
+                                                               MinFreq, 1, SuffixTreeExec)
+    end.
    
    
 
