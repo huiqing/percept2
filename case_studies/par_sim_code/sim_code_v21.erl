@@ -61,8 +61,6 @@
 	 max_new_vars =?DEFAULT_NEW_VARS,
 	 simi_score=?DEFAULT_SIMI_SCORE}).
 
--define(PARALLEL, false).
-
 -spec(sim_code_detection/8::(DirFileList::[filename()|dir()], MinLen::integer(), MinToks::integer(),
 			      MinFreq::integer(),  MaxVars::integer(),SimiScore::float(), 
                                  SearchPaths::[dir()], TabWidth::integer()) -> {ok, string()}).
@@ -81,7 +79,7 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
 
 sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 		       SearchPaths, TabWidth) ->
-    ets:new(var_tab, [named_table, public, {keypos, 1}, ordered_set]),
+    ets:new(var_tab, [named_table, public, {keypos, 1}, set, {read_concurrency, true}]),
     %% Threshold parameters.
     Threshold = #threshold{min_len = MinLen,
 			   min_freq = MinFreq,
@@ -221,7 +219,7 @@ start_ast_process(HashPid) ->
     spawn_link(?MODULE, init_ast_loop, [HashPid]).
 
 init_ast_loop(HashPid) ->
-    ets:new(ast_tab, [named_table, protected, {keypos,1}, ordered_set]),
+    ets:new(ast_tab, [named_table, protected, {keypos,1}, set, {read_concurrency, true}]),
     ast_loop(HashPid).
 %% stop the ast process.
 stop_ast_process(Pid)->
@@ -292,8 +290,8 @@ start_hash_process() ->
     spawn_link(?MODULE, init_hash_loop, []).
 
 init_hash_loop() ->
-    ets:new(expr_hash_tab, [named_table, protected, {keypos, 1}, ordered_set]),
-    ets:new(expr_seq_hash_tab, [named_table, protected, {keypos,1}, ordered_set]),
+    ets:new(expr_hash_tab, [named_table, protected, {keypos, 1}, set, {read_concurrency, true}]),
+    ets:new(expr_seq_hash_tab, [named_table, protected, {keypos,1}, ordered_set,{read_concurrency, true}]),
     hash_loop(1).
 
 %% Get initial clone candidates.    
@@ -382,7 +380,7 @@ start_clone_check_process() ->
     spawn_link(?MODULE, init_clone_check, []).
 
 init_clone_check() ->
-    ets:new(clone_tab, [named_table, protected, {keypos, 1}, ordered_set]),
+    ets:new(clone_tab, [named_table, protected, {keypos, 1}, set, {read_concurrency, true}]),
     clone_check_loop([],[]).
 
 
