@@ -215,7 +215,7 @@ start_ast_process(HashPid) ->
     spawn_link(?MODULE, init_ast_loop, [HashPid]).
 
 init_ast_loop(HashPid) ->
-    ets:new(ast_tab, [named_table, protected, {keypos,1}, set,{read_concurrency_true}]),
+    ets:new(ast_tab, [named_table, protected, {keypos,1}, set,{read_concurrency,true}]),
     ast_loop(HashPid).
 %% stop the ast process.
 stop_ast_process(Pid)->
