@@ -323,8 +323,10 @@ insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
 get_index(Key) ->
     case ets:lookup(expr_hash_tab, Key) of 
 	[{Key, I}]->
+            %%io:format("Item found\n"),
 	    I;
 	[] ->
+            io:format("No item found\n"),
 	    NewIndex = ets:info(expr_hash_tab, size)+1,
 	    ets:insert(expr_hash_tab, {Key, NewIndex}),
 	    NewIndex
@@ -1215,6 +1217,7 @@ search_for_clones(Dir, Thresholds) ->
             IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
                                                      ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
                                                        {_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
+            io:format("NumOfIndexStrs:\n~p\n", [NumOfIndexStrs]),
             io:format("HashTabSize:\n~p\n", [ets:info(expr_seq_hash_tab, size)]),
             io:format("ExpTabSize:\n~p\n", [ets:info(expr_hash_tab, size)]),
             io:format("Length:\n~p\n", [length(IndexStr)]),
