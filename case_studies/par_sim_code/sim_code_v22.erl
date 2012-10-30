@@ -159,9 +159,9 @@ generalise_and_hash_file_ast_1(FName, Threshold, ASTPid, IsNewFile, SearchPaths,
 		end
 	end,
     %% Refactoring2: lists:foreach to para_lib:pforeach;
-    %% to avoid very small processes, we allow each process to handle 10 Forms 
+    %% to avoid very small processes, we allow each process to handle 5 Forms 
     %% at the most
-    para_lib:pforeach(fun (Form) -> F(Form) end, Forms, 10).
+    para_lib:pforeach(fun (Form) -> F(Form) end, Forms, 5).
 
 %% generalise and hash the AST of a single function.
 generalise_and_hash_function_ast(Form, FName, true, Threshold, ASTPid) ->
@@ -1189,9 +1189,6 @@ search_for_clones(Dir, Thresholds) ->
             IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
                                                      ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
                                                        {_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
-            io:format("HashTabSize:\n~p\n", [ets:info(expr_seq_hash_tab, size)]),
-            io:format("ExpTabSize:\n~p\n", [ets:info(expr_hash_tab, size)]),
-            io:format("Length:\n~p\n", [length(IndexStr)]),
             SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
             wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
                                                                MinFreq, 1, SuffixTreeExec)

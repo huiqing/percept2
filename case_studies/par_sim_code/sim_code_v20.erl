@@ -70,9 +70,11 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
     case Files of
 	[] ->
 	    ?wrangler_io("Warning: No files found in the searchpaths specified.",[]);
-	_ -> Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
-					 SearchPaths, TabWidth),
-	     display_clones_by_freq(lists:reverse(Cs), "Similar")
+	_ -> 
+            Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
+                                    SearchPaths, TabWidth),
+            %%io:format("Clone detection finished with ~p clones found\n", [length(Cs)])
+            display_clones_by_freq(lists:reverse(Cs), "Similar")
     end,
     {ok, "Similar code detection finished."}.
 
@@ -1183,8 +1185,6 @@ search_for_clones(Dir, Thresholds) ->
             IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
                                                      ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
                                                        {_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
-            io:format("HashTabSize:\n~p\n", [ets:info(expr_seq_hash_tab, size)]),
-            io:format("Length:\n~p\n", [length(IndexStr)]),
             SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
             wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
                                                                MinFreq, 1, SuffixTreeExec)
