@@ -42,6 +42,8 @@
 
 -include_lib("wrangler/include/wrangler_internal.hrl").
 
+-compile(export_all).
+
 -define(INC, false). %% incremental or not.
 
 %% default threshold values.
@@ -66,13 +68,20 @@
                                  SearchPaths::[dir()], TabWidth::integer()) -> {ok, string()}).
 sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,SearchPaths,TabWidth) ->
     {MinLen,MinToks,MinFreq,MaxVars,SimiScore} = check_parameters(MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1),
-    Files = wrangler_misc:expand_files(DirFileList,".erl"),
+    StartTime = now(),
+    {Time1, Files} = timer:tc(wrangler_misc, expand_files, [DirFileList,".erl"]),
     case Files of
 	[] ->
 	    ?wrangler_io("Warning: No files found in the searchpaths specified.",[]);
-	_ -> Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
-					 SearchPaths, TabWidth),
-	     display_clones_by_freq(lists:reverse(Cs), "Similar")
+	_ -> {Time2, Time3, Time4,Cs}= sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
+                                                          SearchPaths, TabWidth),
+             EndTime = now(),
+             io:format("\n clone detection finished with *** ~p *** clone(s) found.\n", [length(Cs)]),
+             TotalTime  = timer:now_diff(EndTime, StartTime),
+             io:format("TimeUsed:\n~p\n", [{{Time1/1000, Time1/TotalTime*100}, {Time2/1000, Time2/TotalTime*100},
+                                            {Time3/1000, Time3/TotalTime*100}, {Time4/1000, Time4/TotalTime*100}, 
+                                            TotalTime/1000}])
+             %%display_clones_by_freq(lists:reverse(Cs), "Similar")
     end,
     {ok, "Similar code detection finished."}.
 
@@ -98,13 +107,14 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 
 sim_code_detection_1(Files, Thresholds, HashPid, ASTPid, SearchPaths, TabWidth) ->
     ?wrangler_io("Generalise and hash ASTs ...\n", []),
-    generalise_and_hash_ast(Files, Thresholds, ASTPid, SearchPaths, TabWidth),
+    {Time2, _}=timer:tc(?MODULE, generalise_and_hash_ast, [Files, Thresholds, ASTPid, SearchPaths, TabWidth]),
     ?wrangler_io("\nCollecting initial clone candidates ...\n",[]),
-    Cs= gen_initial_clone_candidates(Files, Thresholds, HashPid),
+    {Time3, Cs}= timer:tc(?MODULE, gen_initial_clone_candidates, [Files, Thresholds, HashPid]),
     ?wrangler_io("\nNumber of initial clone candidates: ~p\n", [length(Cs)]),
     
     ?wrangler_io("\nChecking clone candidates ... \n", []),
-    check_clone_candidates(Thresholds, HashPid, Cs).
+    {Time4, Res} =timer:tc(?MODULE, check_clone_candidates, [Thresholds, HashPid, Cs]),
+    {Time2, Time3, Time4, Res}.
     
 gen_initial_clone_candidates(Files, Thresholds, HashPid) ->
     %% Generate clone candidates using suffix tree based clone detection techniques.
@@ -434,7 +444,7 @@ examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid) ->
     get_final_clone_classes(CloneCheckerPid, ast_tab).
  
 examine_a_clone_candidate({C,Nth},Thresholds,CloneCheckerPid,HashPid) ->
-    output_progress_msg(Nth), 
+   %% output_progress_msg(Nth), 
     C1 = get_clone_in_range(HashPid,C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
