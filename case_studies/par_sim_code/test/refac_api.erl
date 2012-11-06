@@ -1,184 +1,3 @@
-%% Copyright (c) 2010, Huiqing Li, Simon Thompson
-%% All rights reserved.
-%%
-%% Redistribution and use in source and binary forms, with or without
-%% modification, are permitted provided that the following conditions are met:
-%%     %% Redistributions of source code must retain the above copyright
-%%       notice, this list of conditions and the following disclaimer.
-%%     %% Redistributions in binary form must reproduce the above copyright
-%%       notice, this list of conditions and the following disclaimer in the
-%%       documentation and/or other materials provided with the distribution.
-%%     %% Neither the name of the copyright holders nor the
-%%       names of its contributors may be used to endorse or promote products
-%%       derived from this software without specific prior written permission.
-%%
-%% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ''AS IS''
-%% AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-%% IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-%% ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-%% BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-%% CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-%% SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
-%% BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-%% WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR 
-%% OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
-%% ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-%%@version 0.1
-%%@author  Huiqing Li <H.Li@kent.ac.uk>
-%%
-%%
-%%@doc 
-%% This module defines the API exposed by Wrangler for users to compose their
-%% own refactoring or code inspection functions. A refactoring consist of 
-%% two parts: program analysis and program transformation. Both program analysis
-%% and program transformation involves various AST traversals and manipulations,
-%% and requires deep knowledge of the AST representation details. To make the 
-%% processing of writing a refactoring easier, through this refactoring API, we 
-%% aim to provide a template and rule based program analysis and transformation 
-%% framework to allow users to express their own program transformation in 
-%% a very concise way. This is achieved through the following aspects:
-%%
-%% -- The use of code templates to make the composition/decomposition of 
-%%    of AST nodes straightforward.
-%%
-%% -- The use of template-based transformation rules to allow concise 
-%%    representation of transformations.
-%%
-%% -- Context information annotated to each AST node to make the program 
-%%    analysis easier to implement.
-%%
-%% -- A collect of predefined macros and API functions to capture the 
-%%    most frequently used functionalities when writing a refactoring.
-%%
-%% -- A refactoring behaviour `gen_refac' to provide a high-level abstraction
-%%    of the logic work-flow of a refactoring process.
-%%
-%% Some macros:
-%%<ul>
-%%<li>
-%%?T(TemplateStr).
-%%
-%%?T(TemplateStr) denotes a template code fragment. A template code fragment 
-%% is a string 
-%%representing an Erlang expression, function, or a function clause. 
-%% Both object variables and meta variables can be 
-%% used in a template string. Variable names ending with `@', `@'`@', or `@'`@'`@'
-%% are meta-variables; and variable names not ending with `@' are object 
-%% variables. A meta variable ending with only one `@' is a place holder 
-%% for a single program entity which maps to a single AST tree; whereas 
-%% a meta variable ending with `@'`@' represents a list of program entities
-%% seperated by comma, which map to a list of AST trees; a meta variable 
-%% ending with `@'`@'`@' is only used for writing templates that match 
-%% a function with arbitray function clauses or a clause with arbitray 
-%% clause bodies. For example `?T("f@(Args@'`@'`@'`) when Guard@'`@'`@'`-> Body@'`@'`@'`.")' can be
-%% used to match function definitions with arbitray number of function 
-%% clauses.
-%% 
-%%</li>
-%%
-%%<li>
-%%?RULE(TemplateBefore, TemplateAfter, Cond).
-%% 
-%% If the AST node represented by `TemplateBefore' pattern matches with the 
-%% current AST node, and `Cond' evaluates to `true', then transform the node 
-%% according to `TemplateAfter'. When a code template pattern matches to an 
-%% AST nodes, each meta variable in the template code is bound to an AST
-%% node, and meta variables with the same name should always map to AST nodes
-%% that are semantically the same. A special meta variable names `_@This' is 
-%% implicitly bound to the whole AST node that matches the code template. 
-%% All these meta-variables are visible, and can be used, in `TemplateAfter' and 
-%% `Cond'. 
-%%
-%%</li>
-%%<li>
-%%?COLLECT(Template, CollectorFun, Cond, Scope).
-%%
-%% For every AST node in `Scope' that pattern matches the AST represented by `Template', if
-%% `Cond' evaluates to `true', then information about this node is collected using
-%% the function specified by `CollectorFun'. `Scope' can be an AST or a list of Erlang 
-%% files/directories, and in the latter case, each Erlang file included is parsed into
-%% an AST first. 
-%%</li>
-%%<li>
-%%?COLLECT_LOC(Template, CollectorFun, Cond, Scope).
-%%
-%% For every AST node in `Scope' that pattern matches the AST represented by `Template', if
-%% `Cond' evaluates to `true', then the location information of this node in the format of 
-%% `{filename(), {pos(),pos()}}' is collected. `Scope' should list of Erlang 
-%% files/directories.
-%%
-%%</li>
-%%<li>
-%%?EQUAL(Tree1, Tree2).
-%%
-%% Returns `true' if `Tree1' and `Tree2' are syntactically the same up to normalization. 
-%% The normalization process includes consistent variable renaming and turning un-qualified 
-%% function calls into qualified function calls. 
-%%
-%%</li>
-%%<li>
-%%?QUOTE(Str).
-%% 
-%%Returns the AST representation of the code represented by `Str', which can be an
-%%Erlang expression, an Erlang function or a function clause.
-%%
-%%</li>
-%%<li>
-%%?SPLICE(Tree).
-%%
-%%Pretty-prints the AST `Tree', and returns the string representation.
-%%
-%%</li>
-%%<li>
-%%?MATCH(Template, Tree).
-%%
-%%Pattern matches the AST representation of `Template' with the AST `Tree', and returns 
-%%`false' if the pattern matching fails, and `{true, Binds}' if succeeds, where `Bind' represents the 
-%%binding of meta-variables to AST nodes in the 
-%%format: `[{MetaVariableName, syntaxTreee()}]'.
-%%
-%%</li>
-%%<li>
-%%?FULL_TD(Rules, Scope).
-%%
-%% Traverse the AST in a topdown order, and for each node apply the first rule that 
-%% succeeds; after a rule has been applied to a node, the subtrees of the node will 
-%% continued to be traversed.
-%%
-%%</li>
-%%<li>
-%%?STOP_TD(Rules, Scope).
-%% Traverse the AST in a topdown order, and for each node apply the first rule that 
-%% succeeds; after a rule has been applied to a node, the subtrees of the node will 
-%% not to be traversed.
-%%</li>
-%%</ul>
-%% Some example refactorings implemented using the Wrangler API:
-%%<ul>
-%%<li>
-%%<a href="file:refac_swap_args.erl" > Swap arguments of a function;</a>.
-%%</li>
-%%<li>
-%%<a href="file:refac_specialise.erl"> Specialise a function definition; </a>
-%%</li>
-%%<li>
-%%<a href="file:refac_apply_to_remote_call.erl"> Apply to remote function call; </a>
-%%</li>
-%%<li>
-%%<a href="file:refac_intro_import.erl">Introduce an import attribute; </a>
-%%</li>
-%%<li>
-%%<a href="file:refac_remove_import.erl">Remove an import attribute;</a>
-%%</li>
-%%<li>
-%%<a href="file:refac_list.erl"> Various list-related transformations;</a>
-%%</li>
-%%<li>
-%%<a href="file:refac_batch_rename_fun.erl"> Batch renaming of function names from camelCaseto camel_case. </a>
-%%</li>
-%%</ul>
-
 -module(refac_api).
 
 -export([is_var_name/1, 
@@ -230,7 +49,7 @@
          full_td_search_and_transform/2,
          stop_td_search_and_transform/2]).
 
--include("../include/wrangler.hrl"). 
+-include_lib("wrangler/include/wrangler.hrl"). 
 
 %% ====================================================================
 %%@doc Returns the start and end locations of an AST node or a sequence 
@@ -249,13 +68,32 @@ start_end_loc(Exprs) when is_list(Exprs) ->
 start_end_loc(Expr) ->
     get_range(Expr).
 
+
+start_end_loc1(Exprs) when is_list(Exprs) ->
+    E1 = hd(Exprs),
+    En = lists:last(Exprs),
+    {S, _E} = get_range(E1),
+    {_S, E} = get_range(En),
+    {S, E};
+start_end_loc1(Expr) ->
+    get_range(Expr).
+
+get_range1(Node) ->
+    As = refac_syntax:get_ann(Node),
+    case lists:keysearch(range, 1, As) of
+	{value, {range, {S, E}}} -> 
+            {S, E};
+	_ -> 
+            {{0,0},{0,0}} 
+    end.
+
 get_range(Node) ->
     As = refac_syntax:get_ann(Node),
     case lists:keysearch(range, 1, As) of
 	{value, {range, {S, E}}} -> 
             {S, E};
 	_ -> 
-            {?DEFAULT_LOC,?DEFAULT_LOC} 
+            {{0,0},{0,0}} 
     end.
 
 %% ======================================================================
@@ -664,6 +502,32 @@ is_exported({FunName, Arity}, FileOrModInfo) ->
     end.
 
 is_exported_1({FunName, Arity}, ModInfo) ->
+    ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
+		    {value, {attributes, Attrs}} -> 
+			lists:member({compile, export_all}, Attrs);
+		    false -> false
+		end,
+    ExpExport= 	case lists:keysearch(exports, 1, ModInfo) of
+		    {value, {exports, ExportList}} ->
+                        lists:member({FunName, Arity}, ExportList);
+		    _ -> false
+		end,
+    ImpExport or ExpExport.
+
+is_exported_2({FunName, Arity}, ModInfo) ->
+    ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
+		    {value, {attributes, Attrs}} -> 
+			lists:member({compile, export_all}, Attrs);
+		    false -> false
+		end,
+    ExpExport= 	case lists:keysearch(exports, 1, ModInfo) of
+		    {value, {exports, ExportList}} ->
+                        lists:member({FunName, Arity}, ExportList);
+		    _ -> false
+		end,
+    ImpExport or ExpExport.
+
+is_exported_3({FunName, Arity}, ModInfo) ->
     ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
 		    {value, {attributes, Attrs}} -> 
 			lists:member({compile, export_all}, Attrs);
@@ -1106,24 +970,6 @@ reset_pos_and_range(Node) ->
             Node
     end.
 
-
-%% reset_pos_and_range(Node) when is_list(Node) ->
-%%     [reset_pos_and_range(N)||N<-Node];
-%% reset_pos_and_range(Node) ->
-%%     ast_traverse_api:full_buTP(
-%%       fun (T, _Others) ->
-%%               case is_tree(Node) of 
-%%                   true ->
-%%                       refac_syntax:set_pos(
-%%                        refac_misc:update_ann(T, {range, {{0,0},{0,0}}}),
-%%                         {0,0});
-%%                   false ->
-%%                       Node
-%%               end
-%%       end, Node, {}).
-
-
-
 %%=================================================================
 %%-spec(reverse_function_clause(Tree::syntaxTree()) -> syntaxTree()).   
 %%@private            
@@ -1467,6 +1313,21 @@ collect(Template, Cond, ReturnFun, Scope) ->
             {error, badarg}
     end.
 
+
+collect1(Template, Cond, ReturnFun, Scope) when is_list(Scope) ->
+    Files = refac_misc:expand_files(Scope, ".erl"),
+    TemplateExpr =parse_annotate_expr(Template),
+    Res=[collect_in_one_file(F, {TemplateExpr, Cond, ReturnFun})||F <- Files],
+    lists:append(Res);
+collect1(Template, Cond, ReturnFun, Scope) ->
+    case is_tree(Scope) of
+        true ->
+            TemplateExpr =parse_annotate_expr(Template),
+            do_search_matching_code(none, Scope, {TemplateExpr, Cond, ReturnFun});
+        false ->
+            {error, badarg}
+    end.
+
 collect_in_one_file(File, {Template, Cond, ReturnFun}) ->
     ?wrangler_io("Processing file:~p\n", [File]),
     {ok, {AST, _}} = wrangler_ast_server:parse_annotate_file(File, true, [], 8),
@@ -1631,6 +1492,42 @@ extend_function_clause_2(Node) ->
           ||C<-Cs],
     refac_misc:rewrite(Node, refac_syntax:function(Name, Cs1)).
 
+extend_function_clause_3(Node) ->
+    Name = refac_syntax:function_name(Node),
+    Cs = refac_syntax:function_clauses(Node),
+    Cs1= [case refac_syntax:type(C) of 
+              clause ->
+                  refac_misc:rewrite(C,refac_syntax:function_clause(Name, C));
+              _ ->
+                  C
+          end
+          ||C<-Cs],
+    refac_misc:rewrite(Node, refac_syntax:function(Name, Cs1)).
+
+extend_function_clause_4(Node) ->
+    Name = refac_syntax:function_name(Node),
+    Cs = refac_syntax:function_clauses(Node),
+    Cs1= [case refac_syntax:type(C) of 
+              clause ->
+                  refac_misc:rewrite(C,refac_syntax:function_clause(Name, C));
+              _ ->
+                  C
+          end
+          ||C<-Cs],
+    refac_misc:rewrite(Node, refac_syntax:function(Name, Cs1)).
+
+extend_function_clause_5(Node) ->
+    Name = refac_syntax:function_name(Node),
+    Cs = refac_syntax:function_clauses(Node),
+    Cs1= [case refac_syntax:type(C) of 
+              clause ->
+                  refac_misc:rewrite(C,refac_syntax:function_clause(Name, C));
+              _ ->
+                  C
+          end
+          ||C<-Cs],
+    refac_misc:rewrite(Node, refac_syntax:function(Name, Cs1)).
+
 is_tree(Node) ->
     refac_syntax:is_tree(Node) orelse refac_syntax:is_wrapper(Node).
 
@@ -1668,6 +1565,19 @@ expand_meta_clause_1(Node, _OtherInfo) ->
     end.
 
 expand_meta_clause_2(Clause) ->
+    case is_meta_clause(Clause) of 
+        true->
+            [Pat] = refac_syntax:clause_patterns(Clause),
+            [[Guard]] = revert_clause_guard(refac_syntax:clause_guard(Clause)),
+            [Body] = refac_syntax:clause_body(Clause),
+            ZippedPGB = lists:zip3(Pat, Guard, Body),
+            [refac_syntax:clause(P, G, B)||
+                {P, G, B} <-ZippedPGB];
+        false ->
+            [Clause]
+    end.
+
+expand_meta_clause_3(Clause) ->
     case is_meta_clause(Clause) of 
         true->
             [Pat] = refac_syntax:clause_patterns(Clause),
