@@ -95,7 +95,7 @@
           message_queue_len ::non_neg_integer()}).
 
 
--define(INTERVAL, 100). % in milliseconds
+-define(INTERVAL, 1). % in milliseconds
 
 -define(seconds(EndTs,StartTs), 
         timer:now_diff(EndTs, StartTs)/1000000).
