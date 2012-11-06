@@ -40,6 +40,8 @@
 
 -export([init_hash_loop/0, init_clone_check/0, init_ast_loop/1]).
 
+-compile(export_all).
+
 -include_lib("wrangler/include/wrangler_internal.hrl").
 
 -define(INC, false). %% incremental or not.
@@ -373,7 +375,7 @@ hash_loop(NextSeqNo) ->
 check_clone_candidates(Thresholds, HashPid, Cs) ->
     CloneCheckerPid = start_clone_check_process(),
     %% examine each clone candiate and filter false positives.
-    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid, 1),
+    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid),
     Cs3 = combine_clones_by_au(Cs2),
     stop_clone_check_process(CloneCheckerPid),
     [{R, L, F, C}||{R, L, F, C}<-Cs3, length(R)>=2].
@@ -393,8 +395,8 @@ stop_clone_check_process(Pid) ->
 add_new_clones(Pid, Clones) ->
     Pid ! {add_clone, Clones}.
 
-get_final_clone_classes(Pid, ASTTab) ->
-    Pid ! {get_clones, self(), ASTTab},
+get_final_clone_classes(Pid) ->
+    Pid ! {get_clones, self()},
     receive
         {Pid, Cs} ->
 	  Cs
@@ -407,7 +409,7 @@ clone_check_loop(Cs, CandidateClassPairs) ->
 		     || Clone <- Clones],
             clone_check_loop(Clones1++Cs, [{hash_a_clone_candidate(Candidate), Clones}
                                            |CandidateClassPairs]);
-	{get_clones, From, _ASTTab} ->
+	{get_clones, From} ->
 	    ?debug("TIME3:\n~p\n", [time()]),
 	    Cs0=remove_sub_clones(Cs),
 	    Cs1=[{AbsRanges, Len, Freq, AntiUnifier}||
@@ -427,30 +429,35 @@ clone_check_loop(Cs, CandidateClassPairs) ->
 %% Refactoring3: refactored to remove the dependences between consecutive recursions.
 %% Refactoring4: turn recursive function into lists:foreach.
 %% Refactoring5: turn lists:foreach into para_lib:pforeach.
-examine_clone_candidates(Cs, Thresholds, Tabs, CloneCheckerPid, HashPid) ->
+examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid) ->
     NumberedCs = lists:zip(Cs, lists:seq(1, length(Cs))),
+    Time1 =now(),
     para_lib:pforeach(fun({C, Nth}) ->
-                        examine_a_clone_candidate({C,Nth},Thresholds, Tabs, CloneCheckerPid, HashPid)
-                     end,NumberedCs),
-    get_final_clone_classes(CloneCheckerPid, Tabs#tabs.ast_tab).
- 
-examine_a_clone_candidate({C,Nth},Thresholds,Tabs,CloneCheckerPid,HashPid) ->
-    output_progress_msg(Nth), 
-    C1 = get_clone_in_range(HashPid,C),
+                     examine_a_clone_candidate({C,Nth},Thresholds,
+                                               CloneCheckerPid, HashPid)
+             end,NumberedCs),
+    Time2 = now(),
+    TotalTime  = timer:now_diff(Time2, Time1),
+    io:format("Time for clone examination:~p\n", [TotalTime/1000]),
+    get_final_clone_classes(CloneCheckerPid).
+
+examine_a_clone_candidate({C,_Nth},Thresholds,CloneCheckerPid, HashPid) ->
+   %% output_progress_msg(Nth), 
+    C1 = get_clone_in_range(HashPid, C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
     case remove_short_clones(C1,MinToks,MinFreq) of
       [] ->
 	  ok;
       [C2] ->
-            case examine_a_clone_candidate(C2,Thresholds,Tabs) of
+            case examine_a_clone_candidate(C2,Thresholds) of
                 [] ->
                     ok;
                 ClonesWithAU ->
                     add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
             end
     end.
- 
+
 output_progress_msg(Num) ->
     case Num rem 10 of
      	1 -> 

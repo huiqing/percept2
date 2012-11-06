@@ -29,20 +29,22 @@
 %% Author contact: hl@kent.ac.uk, sjt@kent.ac.uk
 %% 
 %% @private
--module(sim_code_v2).
+-module(sim_code_v24).
 
 -export([sim_code_detection/8,sim_code_detection/4]). 
 
 -export([ gen_initial_clone_candidates/3,
           generalise_and_hash_ast/5,
-          check_clone_candidates/3]).
+          check_clone_candidates/2]).
 
 
 -export([init_hash_loop/0, init_clone_check/0, init_ast_loop/1]).
 
--compile(export_all).
+-export([display_clones_by_freq/2, output_progress_msg/1]).
 
 -include_lib("wrangler/include/wrangler_internal.hrl").
+
+-compile(export_all).
 
 -define(INC, false). %% incremental or not.
 
@@ -68,13 +70,19 @@
                                  SearchPaths::[dir()], TabWidth::integer()) -> {ok, string()}).
 sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,SearchPaths,TabWidth) ->
     {MinLen,MinToks,MinFreq,MaxVars,SimiScore} = check_parameters(MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1),
-    Files = wrangler_misc:expand_files(DirFileList,".erl"),
+    StartTime = now(),
+    {Time1, Files} = timer:tc(wrangler_misc, expand_files, [DirFileList,".erl"]),
     case Files of
 	[] ->
 	    ?wrangler_io("Warning: No files found in the searchpaths specified.",[]);
-	_ -> Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
-                                     SearchPaths, TabWidth),
-             io:format("Clone detection finished with ~p clones found\n", [length(Cs)])
+	_ -> {Time2, Time3, Time4,Cs}= sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
+                                                          SearchPaths, TabWidth),
+             EndTime = now(),
+             io:format("\n clone detection finished with *** ~p *** clone(s) found.\n", [length(Cs)]),
+             TotalTime  = timer:now_diff(EndTime, StartTime),
+             io:format("TimeUsed:\n~p\n", [{{Time1/1000, Time1/TotalTime*100}, {Time2/1000, Time2/TotalTime*100},
+                                            {Time3/1000, Time3/TotalTime*100}, {Time4/1000, Time4/TotalTime*100}, 
+                                            TotalTime/1000}])
              %%display_clones_by_freq(lists:reverse(Cs), "Similar")
     end,
     {ok, "Similar code detection finished."}.
@@ -82,7 +90,7 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
 
 sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 		       SearchPaths, TabWidth) ->
-    ets:new(var_tab, [named_table, public, {keypos, 1}, set, {read_concurrency, true}]),
+    ets:new(var_tab, [named_table, public, {keypos, 1}, set,{read_concurrency, true}]),
     %% Threshold parameters.
     Threshold = #threshold{min_len = MinLen,
 			   min_freq = MinFreq,
@@ -101,13 +109,14 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 
 sim_code_detection_1(Files, Thresholds, HashPid, ASTPid, SearchPaths, TabWidth) ->
     ?wrangler_io("Generalise and hash ASTs ...\n", []),
-    generalise_and_hash_ast(Files, Thresholds, ASTPid, SearchPaths, TabWidth),
+    {Time2, _}=timer:tc(?MODULE, generalise_and_hash_ast, [Files, Thresholds, ASTPid, SearchPaths, TabWidth]),
     ?wrangler_io("\nCollecting initial clone candidates ...\n",[]),
-    Cs= gen_initial_clone_candidates(Files, Thresholds, HashPid),
+    {Time3, Cs}= timer:tc(?MODULE, gen_initial_clone_candidates, [Files, Thresholds, HashPid]),
     ?wrangler_io("\nNumber of initial clone candidates: ~p\n", [length(Cs)]),
     
     ?wrangler_io("\nChecking clone candidates ... \n", []),
-    check_clone_candidates(Thresholds, HashPid, Cs).
+    {Time4, Res} =timer:tc(?MODULE, check_clone_candidates, [Thresholds, Cs]),
+    {Time2, Time3, Time4, Res}.
     
 gen_initial_clone_candidates(Files, Thresholds, HashPid) ->
     %% Generate clone candidates using suffix tree based clone detection techniques.
@@ -148,12 +157,14 @@ generalise_and_hash_ast(Files, Threshold, ASTPid, SearchPaths, TabWidth) ->
 
 %% Generalise and hash the AST for an single Erlang file.
 generalise_and_hash_file_ast_1(FName, Threshold, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
-    Forms = try wrangler_ast_server:quick_parse_annotate_file(FName, SearchPaths, TabWidth) of
+    Forms = try quick_parse_annotate_file(FName, SearchPaths, TabWidth) of
 		{ok, {AnnAST, _Info}} ->
-		    wrangler_syntax:form_list_elements(AnnAST)
+                    wrangler_syntax:form_list_elements(AnnAST)
 	    catch
-		_E1:_E2 -> []
-	    end,
+		_E1:_E2 -> 
+                    io:format("E1,E1:~p\n", [{_E1, _E2, erlang:get_stacktrace()}]),
+                    []
+            end,
     F = fun (Form) ->
 		case wrangler_syntax:type(Form) of
 		    function ->
@@ -162,10 +173,11 @@ generalise_and_hash_file_ast_1(FName, Threshold, ASTPid, IsNewFile, SearchPaths,
 		end
 	end,
     %% Refactoring2: lists:foreach to para_lib:pforeach;
-    %% to avoid very small processes, we allow each process to handle 5 Forms 
+    %% to avoid very small processes, we allow each process to handle 10 Forms 
     %% at the most
     para_lib:pforeach(fun (Form) -> F(Form) end, Forms, 5).
-
+   
+    
 %% generalise and hash the AST of a single function.
 generalise_and_hash_function_ast(Form, FName, true, Threshold, ASTPid) ->
     FunName = wrangler_syntax:atom_value(wrangler_syntax:function_name(Form)),
@@ -224,7 +236,7 @@ start_ast_process(HashPid) ->
     spawn_link(?MODULE, init_ast_loop, [HashPid]).
 
 init_ast_loop(HashPid) ->
-    ets:new(ast_tab, [named_table, protected, {keypos,1}, set, {read_concurrency, true}]),
+    ets:new(ast_tab, [named_table, protected, {keypos,1}, set,{read_concurrency, true}]),
     ast_loop(HashPid).
 %% stop the ast process.
 stop_ast_process(Pid)->
@@ -295,8 +307,8 @@ start_hash_process() ->
     spawn_link(?MODULE, init_hash_loop, []).
 
 init_hash_loop() ->
-    ets:new(expr_hash_tab, [named_table, protected, {keypos, 1}, set, {read_concurrency, true}]),
-    ets:new(expr_seq_hash_tab, [named_table, protected, {keypos,1}, ordered_set, {read_concurrency, true}]),
+    ets:new(expr_hash_tab, [named_table, protected, {keypos, 1}, set,{read_concurrency, true}]),
+    ets:new(expr_seq_hash_tab, [named_table, protected, {keypos,1}, set,{read_concurrency, true}]),
     hash_loop(1).
 
 %% Get initial clone candidates.    
@@ -305,12 +317,6 @@ get_clone_candidates(Pid, Thresholds, Dir) ->
     receive
 	{Pid, {ok, OutFileName}}->
 	    {ok, OutFileName}
-    end.
-get_clone_in_range(Pid, C) ->
-    Pid! {get_clone_in_range, self(), C},
-    receive
-	{Pid, C1} ->
-	    C1
     end.
 stop_hash_process(Pid) ->
     Pid!stop.
@@ -326,9 +332,9 @@ insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
 get_index(Key) ->
     case ets:lookup(expr_hash_tab, Key) of 
 	[{Key, I}]->
-	    I;
+            I;
 	[] ->
-	    NewIndex = ets:info(expr_hash_tab, size)+1,
+            NewIndex = ets:info(expr_hash_tab, size)+1,
 	    ets:insert(expr_hash_tab, {Key, NewIndex}),
 	    NewIndex
     end.
@@ -337,7 +343,7 @@ hash_loop(NextSeqNo) ->
     receive
 	%% add a new entry.
         {add, {{M, F, A}, KeyExprPairs}, From} ->
-	    KeyExprPairs1 =
+            KeyExprPairs1 =
 		[{{Index1, NumOfToks, StartEndLoc, StartLine, true}, HashIndex}
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
 		    HashIndex <- [get_index(Key)]],
@@ -348,22 +354,20 @@ hash_loop(NextSeqNo) ->
 	    {ok, OutFileName} = search_for_clones(Dir, Thresholds),
             From ! {self(), {ok, OutFileName}},
             hash_loop(NextSeqNo);
-	{get_clone_in_range, From, {Ranges, Len, Freq}} ->
-	    F0 = fun ({ExprSeqId, ExprIndex}, L) ->
-			 [{ExprSeqId, {M, F, A}, Exprs}] = ets:lookup(expr_seq_hash_tab, ExprSeqId),
-			 Es = lists:sublist(Exprs, ExprIndex, L),
-			 [{{M,F,A,Index}, Toks, {{StartLoc, EndLoc}, StartLine}, IsNew}
-			  || {{Index, Toks, {StartLoc, EndLoc}, StartLine, IsNew}, _HashIndex} <- Es]
-		 end,
-	    C1 = {[F0(R, Len) || R <- Ranges], {Len, Freq}},
-	    From ! {self(), C1},
-	   %% hash_loop({NextSeqNo, NewData});
-            hash_loop(NextSeqNo);
 	stop ->
             ets:delete(expr_hash_tab),
             ets:delete(expr_seq_hash_tab),
             ok
     end.
+
+get_clone_in_range(_C={Ranges, Len, Freq}) ->
+    F0 = fun ({ExprSeqId, ExprIndex}, L) ->
+		 [{ExprSeqId, {M, F, A}, Exprs}] = ets:lookup(expr_seq_hash_tab, ExprSeqId),
+		 Es = lists:sublist(Exprs, ExprIndex, L),
+		 [{{M,F,A,Index}, Toks, {{StartLoc, EndLoc}, StartLine}, IsNew}
+		  || {{Index, Toks, {StartLoc, EndLoc}, StartLine, IsNew}, _HashIndex} <- Es]
+	 end,
+    {[F0(R, Len) || R <- Ranges], {Len, Freq}}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                                    %%
@@ -372,10 +376,10 @@ hash_loop(NextSeqNo) ->
 %%                                                                    %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_clone_candidates(Thresholds, HashPid, Cs) ->
+check_clone_candidates(Thresholds, Cs) ->
     CloneCheckerPid = start_clone_check_process(),
     %% examine each clone candiate and filter false positives.
-    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid, 1),
+    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid),
     Cs3 = combine_clones_by_au(Cs2),
     stop_clone_check_process(CloneCheckerPid),
     [{R, L, F, C}||{R, L, F, C}<-Cs3, length(R)>=2].
@@ -385,7 +389,7 @@ start_clone_check_process() ->
     spawn_link(?MODULE, init_clone_check, []).
 
 init_clone_check() ->
-    ets:new(clone_tab, [named_table, protected, {keypos, 1}, set, {read_concurrency, true}]),
+    ets:new(clone_tab, [named_table, protected, {keypos, 1}, set,{read_concurrency, true}]),
     clone_check_loop([],[]).
 
 
@@ -395,43 +399,81 @@ stop_clone_check_process(Pid) ->
 add_new_clones(Pid, Clones) ->
     Pid ! {add_clone, Clones}.
 
-get_final_clone_classes(Pid, ASTTab) ->
-    Pid ! {get_clones, self(), ASTTab},
+get_final_clone_classes(Pid) ->
+    Pid ! {get_clones, self()},
     receive
         {Pid, Cs} ->
-	  Cs
+            Cs
     end.
 
-clone_check_loop(Cs, CandidateClassPairs) ->
+clone_check_loop(Cs, CsRanges) ->
     receive
-	{add_clone,  {Candidate, Clones}} ->
+	{add_clone,  {_Candidate, Clones}} ->
             Clones1=[get_clone_class_in_absolute_locs(Clone) 
 		     || Clone <- Clones],
-            clone_check_loop(Clones1++Cs, [{hash_a_clone_candidate(Candidate), Clones}
-                                           |CandidateClassPairs]);
-	{get_clones, From, _ASTTab} ->
-	    ?debug("TIME3:\n~p\n", [time()]),
-	    Cs0=remove_sub_clones(Cs),
-	    Cs1=[{AbsRanges, Len, Freq, AntiUnifier}||
-		    {_, {Len, Freq}, AntiUnifier,AbsRanges}<-Cs0],
-	    From ! {self(), Cs1},
-	    clone_check_loop(Cs, CandidateClassPairs);       
+            clone_check_loop(Clones1++Cs, CsRanges);
+	{get_clones, From} ->
+            Time1 = now(),
+            Cs1 = remove_sub_clones(Cs),
+            Time2 = now(),
+            io:format("Time to remove sub clones:~p\n", [timer:now_diff(Time2, Time1)/1000]),
+            io:format("No of clones:\n~p\n", [{length(Cs), length(Cs1)}]),
+	    Cs2=[{AbsRanges, Len, Freq, AntiUnifier}||
+		    {_, {Len, Freq}, AntiUnifier,AbsRanges}<-Cs1],
+            From ! {self(), Cs2},
+	    clone_check_loop(Cs, CsRanges);       
 	stop ->
             ets:delete(clone_tab),
             ok;            
 	_Msg -> 
 	    ?wrangler_io("Unexpected message:\n~p\n",[_Msg]),
-	    clone_check_loop(Cs,  CandidateClassPairs)
+	    clone_check_loop(Cs,  CsRanges)
     end.
+ 
+
+%% clone_check_loop(Cs, CandidateClassPairs) ->
+%%     receive
+%% 	{add_clone,  {Candidate, Clones}} ->
+%%             Clones1=[get_clone_class_in_absolute_locs(Clone) 
+%% 		     || Clone <- Clones],
+%%             clone_check_loop(Clones1++Cs, [{hash_a_clone_candidate(Candidate), Clones}
+%%                                            |CandidateClassPairs]);
+%% 	{get_clones, From, _ASTTab} ->
+%% 	    ?debug("TIME3:\n~p\n", [time()]),
+%% 	    {TimeToRemoveSubClones,Cs0}=timer:tc(?MODULE, remove_sub_clones, [Cs]),
+%%             io:format("Time to remove subclones:\n~p\n", [TimeToRemoveSubClones/1000]),
+%% 	    Cs1=[{AbsRanges, Len, Freq, AntiUnifier}||
+%% 		    {_, {Len, Freq}, AntiUnifier,AbsRanges}<-Cs0],
+%% 	    From ! {self(), Cs1},
+%% 	    clone_check_loop(Cs, CandidateClassPairs);       
+%% 	stop ->
+%%             ets:delete(clone_tab),
+%%             ok;            
+%% 	_Msg -> 
+%% 	    ?wrangler_io("Unexpected message:\n~p\n",[_Msg]),
+%% 	    clone_check_loop(Cs,  CandidateClassPairs)
+%%     end.
  
 %%=============================================================================
 %% check each candidate clone, and drive real clone classes.
+%% Refactoring3: refactored to remove the dependences between consecutive recursions.
+%% Refactoring4: turn recursive function into lists:foreach.
+%% Refactoring5: turn lists:foreach into para_lib:pforeach.
+examine_clone_candidates(Cs, Thresholds, CloneCheckerPid) ->
+    NumberedCs = lists:zip(Cs, lists:seq(1, length(Cs))),
+    Time1 =now(),
+    pforeach(fun({C, Nth}) ->
+                     examine_a_clone_candidate({C,Nth},Thresholds,
+                                               CloneCheckerPid)
+             end,NumberedCs),
+    Time2 = now(),
+    TotalTime  = timer:now_diff(Time2, Time1),
+    io:format("Time for clone examination:~p\n", [TotalTime/1000]),
+    get_final_clone_classes(CloneCheckerPid).
 
-examine_clone_candidates([],_Thresholds,CloneCheckerPid,_HashPid,_Num) ->
-    get_final_clone_classes(CloneCheckerPid,ast_tab);
-examine_clone_candidates([C| Cs],Thresholds,CloneCheckerPid,HashPid,Num) ->
-    output_progress_msg(Num), 
-    C1 = get_clone_in_range(HashPid,C),
+examine_a_clone_candidate({C,_Nth},Thresholds,CloneCheckerPid) ->
+   %% output_progress_msg(Nth), 
+    C1 = get_clone_in_range(C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
     case remove_short_clones(C1,MinToks,MinFreq) of
@@ -439,13 +481,12 @@ examine_clone_candidates([C| Cs],Thresholds,CloneCheckerPid,HashPid,Num) ->
 	  ok;
       [C2] ->
             case examine_a_clone_candidate(C2,Thresholds) of
-	    [] ->
-		ok;
-	    ClonesWithAU ->
-                  add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
-	  end
-    end, 
-    examine_clone_candidates(Cs,Thresholds,CloneCheckerPid,HashPid,Num+1).
+                [] ->
+                    ok;
+                ClonesWithAU ->
+                    add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
+            end
+    end.
 
 output_progress_msg(Num) ->
     case Num rem 10 of
@@ -454,34 +495,26 @@ output_progress_msg(Num) ->
      	_-> ok
      end.
    
-hash_a_clone_candidate(_C={Ranges, {_Len, _Freq}}) ->
-    F = fun({MFAI, Toks, {Loc, _StartLine}, _IsNew}) ->
-		{MFAI, Toks, Loc}
-	end,
-    erlang:md5(lists:usort(
-		 [erlang:md5(lists:flatten(
-			       io_lib:format(
-				 "~p", [[F(E)||E<-R]])))
-		  ||R<-Ranges])).
 %% examine a  clone candidate.
 examine_a_clone_candidate(_C={Ranges, {_Len, _Freq}}, Thresholds) ->
-    ASTTab = ast_tab,
-    RangesWithExprAST=[attach_expr_ast_to_ranges(R, ASTTab)|| R<-Ranges],
+  %%  RangesWithExprAST=[attach_expr_ast_to_ranges(R)|| R<-Ranges],
+    RangesWithExprAST=para_lib:pmap(fun(R)->
+                                            attach_expr_ast_to_ranges(R)
+                                    end, Ranges),                                    
     Clones = examine_clone_class_members(RangesWithExprAST, Thresholds,[]),
-    ClonesWithAU = [begin
-			FromSameFile=from_same_file(Rs),
-                        AU= get_anti_unifier(Info, FromSameFile),
-                        {Rs1, AU1} = attach_fun_call_to_range(Rs, AU, FromSameFile),
-                        {Rs1, {Len, length(Rs1)}, AU1}
-		    end
-		    || {Rs, {Len, _}, Info} <- Clones],
+    ClonesWithAU = para_lib:pmap(fun({Rs, {Len, _}, Info}) ->
+                                      FromSameFile=from_same_file(Rs),
+                                      AU= get_anti_unifier(Info, FromSameFile),
+                                      {Rs1, AU1} = attach_fun_call_to_range(Rs, AU, FromSameFile),
+                                      {Rs1, {Len, length(Rs1)}, AU1}
+                              end, Clones),
     [{Rs1, {Len, F}, AU1}||{Rs1, {Len, F}, AU1}<-ClonesWithAU,
                            F>=Thresholds#threshold.min_freq].
  
 
-attach_expr_ast_to_ranges(Rs, ASTTab) ->
+attach_expr_ast_to_ranges(Rs) ->
     [{R, ExpAST}||R={ExprKey, _Toks, _Loc, _IsNew}<-Rs, 
-		  {_Key, ExpAST}<-ets:lookup(ASTTab, ExprKey)].
+		  {_Key, ExpAST}<-ets:lookup(ast_tab, ExprKey)].
 
 
 %% check the clone members of a clone candidate using 
@@ -492,6 +525,7 @@ examine_clone_class_members(RangesWithExprAST, Thresholds, Acc)
     %% than the min_freq threshold, so the examination
     %% finishes, and sub-clones are removed.
     remove_sub_clones(Acc);
+
 
 examine_clone_class_members(RangesWithExprAST, Thresholds,Acc) ->
     %% Take the first clone member and  try to anti_unify other 
@@ -504,10 +538,11 @@ examine_clone_class_members(RangesWithExprAST, Thresholds,Acc) ->
     %% try to anti_unify each of the remaining candidate clone members 
     %% with the first candidate clone member.
 
-    Res = [do_anti_unification(RangeWithExprAST1, RangeWithExprAST2)
-	   || RangeWithExprAST2<-Rs],
-
-
+    %% Res = [do_anti_unification(RangeWithExprAST1, RangeWithExprAST2)
+    %%        || RangeWithExprAST2<-Rs],
+    Res = para_lib:pmap(fun(RangeWithExprAST2) ->
+                                do_anti_unification(RangeWithExprAST1, RangeWithExprAST2)
+                        end, Rs, 1),
     %% process the anti_unification result.
     Clones = process_au_result(Res, Thresholds),
 
@@ -838,9 +873,12 @@ remove_sub_clone_pairs([CP={Rs, _,_}|CPs], Acc) ->
 %% derive clone classes from clone pairs.	
 get_clone_classes(ClonePairs,Thresholds) ->
     RangeGroups = lists:usort([Rs1 || {Rs1, _Rs2, _Subst} <- ClonePairs]),
-    CloneClasses = lists:append([get_one_clone_class(Range, ClonePairs, Thresholds) 
-				 || Range <- RangeGroups]),
-    lists:keysort(2, CloneClasses).
+    CloneClassList = para_lib:pmap(fun(Range) ->
+                                               get_one_clone_class(Range, ClonePairs, Thresholds) 
+                                       end, RangeGroups),
+    %% CloneClasses =[get_one_clone_class(Range, ClonePairs, Thresholds) 
+    %%     			 || Range <- RangeGroups],
+    lists:keysort(2, lists:append(CloneClassList)).
  
 get_one_clone_class(RangeWithExprAST, ClonePairs, Thresholds) ->
     Res = lists:append([get_one_clone_class_1(RangeWithExprAST, ClonePair)
@@ -1031,55 +1069,51 @@ make_fun_call(FunName, Pats, Subst, FromSameFile) ->
 %%                                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 remove_sub_clones(Cs) ->
-    remove_sub_clones(lists:reverse(lists:keysort(2,Cs)),[]).
-remove_sub_clones([], Acc_Cs) ->
+    OrderedCs = lists:reverse(lists:keysort(2,Cs)),
+    remove_sub_clones(OrderedCs, [],[]).
+   
+remove_sub_clones([], _, Acc_Cs) ->
     lists:reverse(Acc_Cs);
-remove_sub_clones([C|Cs], Acc_Cs) ->
-    case is_sub_clone(C, Acc_Cs) of
+remove_sub_clones([C|Cs], AccRanges,Acc_Cs) ->
+    CloneRanges = element(1, C),
+    {Len, Freq} = element(2,C),
+    case is_sub_clone_1({CloneRanges,{Len, Freq}},AccRanges) of
 	true -> 
-	    remove_sub_clones(Cs, Acc_Cs);
-	false ->remove_sub_clones(Cs, [C|Acc_Cs])
+	    remove_sub_clones(Cs, AccRanges, Acc_Cs);
+	false ->
+            remove_sub_clones(Cs, [{CloneRanges, {Len, Freq}}|AccRanges], 
+                              [C|Acc_Cs])
     end.
 
-is_sub_clone({Ranges, {Len, Freq},Str,AbsRanges}, ExistingClones) ->
-    case ExistingClones of 
-	[] -> false;
-	[{Ranges1, {_Len1, _Freq1}, _, _AbsRanges1}|T] ->
-	    case is_sub_ranges(Ranges, Ranges1) of 
-		true -> 
-		    true;
-		false -> is_sub_clone({Ranges, {Len, Freq},Str, AbsRanges}, T)
-	    end
-	end;
+is_sub_clone_1(CloneRanges, OtherRanges) ->
+    pany(fun(R)->
+                 is_sub_ranges(CloneRanges, R)
+         end, OtherRanges, 20).
 
-is_sub_clone({Ranges, {Len, Freq},Str}, ExistingClones) ->
-    case ExistingClones of 
-	[] -> false;
-	[{Ranges1, {_Len1, _Freq1}, _}|T] ->
-	    case is_sub_ranges(Ranges, Ranges1) of 
-		true -> 
-		    true;
-		false -> is_sub_clone({Ranges, {Len, Freq},Str}, T)
-	    end
-    end;
-is_sub_clone({Ranges, {Len, Freq}}, ExistingClones) ->
-    case ExistingClones of 
-	[] -> false;
-	[{Ranges1, {_Len1, _Freq1}}|T] ->
-	    case is_sub_ranges(Ranges, Ranges1) of 
-		true -> 
-		    true;
-		false -> is_sub_clone({Ranges, {Len, Freq}}, T)
-	    end
+is_sub_clone(_CloneRanges, []) ->
+    false;
+is_sub_clone(CloneRanges, [CRanges|CsRanges]) ->
+    case is_sub_ranges(CloneRanges, CRanges) of 
+        true ->
+            true;
+        false ->
+            is_sub_clone(CloneRanges, CsRanges)
     end.
 
-is_sub_ranges(Ranges1, Ranges2) ->
-    lists:all(fun (R1)  -> 
-		      lists:any(fun (R2) ->
-					R1--R2==[]
-				end, Ranges2) 
-	      end, Ranges1).
+is_sub_ranges({Ranges1,{Len1, Freq1}}, 
+              {Ranges2, {Len2, Freq2}}) ->
+    case Len1=<Len2 andalso Freq1=<Freq2 of 
+        true ->
+            lists:all(fun (R1)  -> 
+                              lists:any(fun (R2) ->
+                                                R1--R2==[]
+                                        end, Ranges2) 
+                      end, Ranges1);
+        false ->false 
+    end.
+            
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 get_var_define_pos(V) ->
     {value, {def, DefinePos}} = lists:keysearch(def, 1, wrangler_syntax:get_ann(V)),
@@ -1182,7 +1216,8 @@ search_for_clones(Dir, Thresholds) ->
     MinLen = Thresholds#threshold.min_len,
     MinFreq= Thresholds#threshold.min_freq,
     NumOfIndexStrs=integer_to_list(ets:info(expr_seq_hash_tab, size))++"\r\n",
-    Data = ets:tab2list(expr_seq_hash_tab),
+    Data = lists:keysort(1, ets:tab2list(expr_seq_hash_tab)),
+    %% io:format("Data:\n~p\n",[Data]),
     case Data of 
         [] ->
             OutFileName = filename:join(Dir, "wrangler_suffix_tree"),
@@ -1192,14 +1227,12 @@ search_for_clones(Dir, Thresholds) ->
             IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
                                                      ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
                                                        {_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
+            %% io:format("IndexStr:\n~p\n", [IndexStr]),
             SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
             wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
                                                                MinFreq, 1, SuffixTreeExec)
     end.
    
-   
-
-
 remove_short_clones(_C={Rs, {Len, _Freq}}, MinToks, MinFreq) ->
     Rs1=[R||R<-Rs, NumToks<-[[element(2, Elem)||Elem<-R]],
 	    lists:sum(NumToks)>=MinToks],
@@ -1454,4 +1487,937 @@ display_clones_2([{{{File, StartLine, StartCol}, {File, EndLine, EndCol}}, FunCa
     Str1 = Str ++ File++io_lib:format(":~p.~p-~p.~p:", [StartLine,lists:max([1, StartCol-1]),EndLine, EndCol])++
 	" \n   "++ FunCall ++ "\n",
     display_clones_2(Rs, Str1).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+para_call(FuncArgPairs) ->
+    Parent = self(),
+    Pids = [spawn_link(fun() ->
+                               Res=apply(Fun, Args),
+                               Parent! {self(),Res}
+                       end)||{Fun, Args}<-FuncArgPairs],
+    [receive {Pid, Result} ->
+            Result end|| Pid<-Pids].
+          
+quick_parse_annotate_file(FName, SearchPaths, TabWidth) ->
+    FileFormat = file_format(FName),
+    [Ms, ParseRes] = para_call([{fun()->
+                                      get_module_macros(FName, SearchPaths, TabWidth, FileFormat)
+                                 end, []},
+                                {fun()-> parse_a_file(FName, TabWidth, FileFormat)
+                                 end, []}]),
+                               
+    case ParseRes of
+	{ok, Forms} ->
+            {AnnAST, Info} = annotate_bindings(FName, Forms,Ms, TabWidth),
+	    {ok, {AnnAST, Info}};
+	{error, Reason} -> 
+            erlang:error(Reason)
+    end.
+ 
+get_module_macros(FName, SearchPaths, TabWidth, FileFormat) ->
+    Dir = filename:dirname(FName),
+    DefaultIncl2 = [filename:join(Dir, X) || X <- wrangler_misc:default_incls()],
+    Includes = SearchPaths ++ DefaultIncl2,
+    get_macros(FName, TabWidth, FileFormat, Includes).
+
+get_macros(FName, TabWidth, FileFormat, Includes) ->
+    case wrangler_epp:parse_file(FName, Includes, [], TabWidth, FileFormat) of
+	{ok, _, {MDefs, MUses}} ->
+	    {dict:from_list(MDefs), dict:from_list(MUses)};
+	_ -> []
+    end.
+
+annotate_bindings(FName, Forms, Ms, TabWidth) ->
+    [Toks, Comments] = para_call([{fun() -> wrangler_misc:tokenize(FName, true, TabWidth) end, []},
+                                  {fun() -> wrangler_comment_scan:file(FName, TabWidth) end, []}]),
+    AST = recomment_forms(Forms),
+    Info = analyze_forms(AST),
+    AST1 =add_token_and_ranges(AST, Toks),
+    AST2 = annotate_bindings(Ms, AST1),
+    AST3= wrangler_recomment:recomment_forms(AST2, Comments),
+    AST4 =update_toks(Toks,AST3),
+    AST5 = add_fun_define_locations(AST4, Info),
+    {AST5,Info}.
+
+annotate_bindings(Ms, AST1) ->
+    wrangler_syntax_lib:annotate_bindings(AST1, ordsets:new(), Ms).
+
+add_fun_define_locations(AST, ModInfo) ->
+    case lists:keysearch(module, 1, ModInfo) of
+	{value, {module, ModName}} -> ModName;
+	_ -> ModName = '_'
+    end,
+    Funs = fun (T, S) ->
+		   case wrangler_syntax:type(T) of
+		       function ->
+			   FunName = wrangler_syntax:data(wrangler_syntax:function_name(T)),
+			   Arity = wrangler_syntax:function_arity(T),
+			   Pos = wrangler_syntax:get_pos(T),
+			   ordsets:add_element({{ModName, FunName, Arity}, Pos}, S);
+		       _ -> S
+		   end
+	   end,
+    DefinedFuns = api_ast_traverse:fold(Funs, ordsets:new(), AST),
+    ImportedFuns = case lists:keysearch(imports, 1, ModInfo) of
+		       {value, {imports, I}} ->
+			   lists:append([[{{M, F, A}, ?DEFAULT_LOC}
+					  || {F, A} <- Fs] || {M, Fs} <- I]);
+		       _ -> []
+		   end,
+    Fs = wrangler_syntax:form_list_elements(AST),
+    Fs1 = [wrangler_annotate_ast:add_fun_def_info(F, ModName, DefinedFuns, ImportedFuns) || F <- Fs],
+    rewrite(AST, wrangler_syntax:form_list(Fs1)).
+
+
+analyze_forms(SyntaxTree) ->
+    wrangler_syntax_lib:analyze_forms(SyntaxTree).
+
+recomment_forms(Forms) -> wrangler_recomment:recomment_forms(Forms, []).
+
+parse_a_file(FName, TabWidth, FileFormat) ->
+    wrangler_epp_dodger:parse_file(FName, [{tab, TabWidth}, {format, FileFormat}]).
+
+
+file_format(FName) ->
+    wrangler_misc:file_format(FName).
+
+
+add_token_and_ranges(SyntaxTree, Toks) ->
+    Fs = wrangler_syntax:form_list_elements(SyntaxTree),
+    NewFs = do_add_token_and_ranges(Toks, Fs),
+    SyntaxTree1= rewrite(SyntaxTree, wrangler_syntax:form_list(NewFs)),
+    add_range_to_body(SyntaxTree1, NewFs, "", "").
+
+    
+%% do it backwards starting from the last form. 
+%% all the white spaces after a form belong to the next form if
+%% there is one. 
+
+update_toks(Toks, AnnAST) ->
+    Fs = wrangler_syntax:form_list_elements(AnnAST),
+    NewFs=do_update_toks(lists:reverse(Toks), lists:reverse(Fs),[]),
+    rewrite(AnnAST, wrangler_syntax:form_list(NewFs)).
+
+
+do_update_toks(_, [], NewFs) ->
+    NewFs;
+do_update_toks(Toks, _Forms=[F|Fs], NewFs) ->
+    {FormToks0, RemToks} = get_tokens_for_a_form(Toks, F, Fs),
+    FormToks = lists:reverse(FormToks0),
+    F1 = update_ann(F, {toks, FormToks}),
+    do_update_toks(RemToks, Fs, [F1| NewFs]).
+
+do_add_token_and_ranges(Toks, Fs) ->
+    do_add_token_and_ranges1(lists:reverse(Toks), lists:reverse(Fs)).
+
+do_add_token_and_ranges1(Toks, Forms) ->
+    FormTokenPairs = get_form_tokens1(Toks, Forms,[]),
+    %% lists:map(fun({Form, FormToks}) ->
+    %%                        FormToks1 = lists:reverse(FormToks),
+    %%                        Form1 = update_ann(Form, {toks, FormToks1}),
+    %%                        add_category(add_range(Form1, FormToks1))
+    %%           end, FormTokenPairs).
+    para_lib:pmap(fun({Form, FormToks}) ->
+                          FormToks1 = lists:reverse(FormToks),
+                          Form1 = update_ann(Form, {toks, FormToks1}),
+                          add_category(add_range(Form1, FormToks1))
+                  end, FormTokenPairs, 1).
+get_form_tokens1(_Toks, [], Acc) ->
+    Acc;
+get_form_tokens1(Toks, [F|Fs], Acc) ->
+    {FormToks, RemToks} = get_tokens_for_a_form(Toks, F, Fs),
+    get_form_tokens1(RemToks, Fs, [{F, FormToks}|Acc]).
+
+                          
+%% do_add_token_and_ranges(_, [], NewFs) ->
+%%     NewFs;
+%% do_add_token_and_ranges(Toks, _Forms=[F| Fs], NewFs) ->
+%%     {FormToks0, RemToks} = get_form_tokens(Toks, F, Fs), 
+%%     FormToks = lists:reverse(FormToks0),
+%%     F1 = update_ann(F, {toks, FormToks}),
+%%     F2 = add_category(add_range(F1, FormToks)),
+%%     do_add_token_and_ranges(RemToks, Fs, [F2| NewFs]).
+
+get_tokens_for_a_form(Toks, F, Fs) ->
+    case wrangler_syntax:type(F) of
+	comment ->
+	    get_comment_form_toks(Toks, F, Fs);
+	_ ->
+	    get_non_comment_form_toks(Toks, F, Fs) 
+    end.
+
+%% stand-alone comments.
+get_comment_form_toks(Toks, _F, Fs) when Fs==[] ->
+    {Toks,[]};
+get_comment_form_toks(Toks, F, _Fs) ->
+    StartPos =start_pos(F),
+    {Ts1,Ts2} = lists:splitwith(
+		  fun(T) ->
+			  token_loc(T)>=StartPos andalso 
+			   is_whitespace_or_comment(T)
+		  end, Toks),
+    {Ts21, Ts22} = lists:splitwith(fun(T) ->
+					   is_whitespace(T)
+				   end, Ts2),
+    {Ts1++Ts21, Ts22}.
+ 
+get_non_comment_form_toks(Toks, _F, Fs) when Fs==[] ->
+    {Toks, []};
+get_non_comment_form_toks(Toks, F, _Fs) ->
+    StartPos = start_pos(F),
+    {Ts1, Ts2} = lists:splitwith(
+		   fun(T) ->
+			   token_loc(T)>=StartPos
+		   end, Toks),
+    {Ts21, Ts22} = lists:splitwith(
+		     fun(T) ->
+			     element(1, T) /=dot andalso
+				 element(1,T)/=comment
+		     end, Ts2),
+    {Ts1++Ts21, Ts22}.
+
+start_pos(F) ->
+    case wrangler_syntax:type(F) of
+	error_marker ->
+	    case wrangler_syntax:revert(F) of
+		{error, {_, {{Line, Col}, {_Line1, _Col1}}}} ->
+		    {Line, Col};
+		_ ->
+		    wrangler_syntax:get_pos(F)
+	    end;
+	_ ->
+	    case wrangler_syntax:get_precomments(F) of
+		[] ->
+		    wrangler_syntax:get_pos(F);
+		[Com| _Tl] ->
+		    wrangler_syntax:get_pos(Com)
+	    end
+    end.
+
+%%-spec add_range(syntaxTree(), [token()]) -> syntaxTree(). 
+add_range(AST, Toks) ->
+    QAtomPs= [Pos||{qatom, Pos, _Atom}<-Toks],
+    Toks1 =[Tok||Tok<-Toks, not (is_whitespace_or_comment(Tok))],
+    api_ast_traverse:full_buTP(fun do_add_range/2, AST, {Toks1, QAtomPs}).
+
+do_add_range(Node, {Toks, QAtomPs}) ->
+    {L, C} = case wrangler_syntax:get_pos(Node) of
+		 {Line, Col} -> {Line, Col};
+		 Line -> {Line, 0}
+	     end,
+    case wrangler_syntax:type(Node) of
+	variable ->
+	    Len = length(wrangler_syntax:variable_literal(Node)),
+	    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}});
+	atom ->
+            case lists:member({L,C}, QAtomPs) orelse 
+                lists:member({L,C+1}, QAtomPs) of  
+                true ->
+                    Len = length(atom_to_list(wrangler_syntax:atom_value(Node))),
+                    Node1 = update_ann(Node, {qatom, true}),
+                    update_ann(Node1, {range, {{L, C}, {L, C + Len + 1}}});
+                false ->
+                    Len = length(atom_to_list(wrangler_syntax:atom_value(Node))),
+                    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}})
+	    end;
+        operator ->
+	    Len = length(atom_to_list(wrangler_syntax:atom_value(Node))),
+	    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}});
+	char -> update_ann(Node, {range, {{L, C}, {L, C}}});
+	integer ->
+            Len = length(wrangler_syntax:integer_literal(Node)),
+	    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}});
+	string ->
+            Toks1 = lists:dropwhile(fun (T) -> 
+                                            token_loc(T) < {L, C} 
+                                    end, Toks),
+            {Toks21, _Toks22} = lists:splitwith(fun (T) -> 
+                                                       is_string(T) orelse 
+                                                           is_whitespace_or_comment(T)
+                                               end, Toks1),
+	    Toks3 = lists:filter(fun (T) -> is_string(T) end, Toks21),
+            Str = case Toks3 of 
+                      [] -> wrangler_syntax:string_value(Node);
+                      _ -> element(3, lists:last(Toks3))
+                  end,
+            Lines = wrangler_syntax_lib:split_lines(Str),
+            {NumOfLines, LastLen}= 
+                case Lines of 
+                    [] -> 
+                        {1, 0};
+                    _ ->
+                        {length(Lines),length(lists:last(Lines))}
+                end,
+            case Toks3 of 
+                [] ->  %% this might happen with attributes when the loc info is not accurate.
+                    Range = {{L, C}, {L+NumOfLines-1, C+LastLen+1}},
+                    update_ann(Node, {range, Range});
+                _ ->
+                    {string, {L1, C1}, _} = lists:last(Toks3),
+                    L2 = L1+NumOfLines-1,
+                    C2 = case NumOfLines of
+                             1 -> C1+LastLen+1;
+                             _ -> LastLen+1
+                         end,
+                    Range ={token_loc(hd(Toks3)),{L2, C2}},
+                    Node1 = update_ann(Node, {range, Range}),
+                    update_ann(Node1, {toks, Toks3})
+            end;
+        float ->
+	    update_ann(Node,
+	               {range, {{L, C}, {L, C}}}); %% This is problematic.
+	underscore -> update_ann(Node,
+	                         {range, {{L, C}, {L, C}}});
+        eof_marker -> update_ann(Node,
+                                 {range, {{L, C}, {L, C}}});
+        nil -> update_ann(Node, {range, {{L, C}, {L, C + 1}}});
+	module_qualifier ->
+            Arg = wrangler_syntax:module_qualifier_argument(Node),
+            Field = wrangler_syntax:module_qualifier_body(Node),
+            {S1,_E1} = get_range(Arg),
+            {_S2,E2} = get_range(Field),
+            Node1 = wrangler_syntax:set_pos(Node, S1),
+            update_ann(Node1, {range, {S1, E2}});
+	list ->  
+            Es = list_elements(Node),
+            case Es/=[] of
+                true ->
+                    Last = wrangler_misc:glast("refac_util:do_add_range,list", Es),
+                    {_, E2} = get_range(Last),
+                    E21 = extend_backwards(Toks, E2, ']'),
+                    update_ann(Node, {range, {{L, C}, E21}});
+                false ->
+                    Node
+            end;
+        application ->
+	    O = wrangler_syntax:application_operator(Node),
+	    Args = wrangler_syntax:application_arguments(Node),
+	    {S1, E1} = get_range(O),
+	    {S3, E3} = case Args of
+			   [] -> {S1, E1};
+			   _ -> La = wrangler_misc:glast("refac_util:do_add_range, application", Args),
+				{_S2, E2} = get_range(La),
+				{S1, E2}
+		       end,
+	    E31 = extend_backwards(Toks, E3, ')'),
+	    update_ann(Node, {range, {S3, E31}});
+	case_expr ->
+            A = wrangler_syntax:case_expr_argument(Node),
+	    Lc = wrangler_misc:glast("refac_util:do_add_range,case_expr", wrangler_syntax:case_expr_clauses(Node)),
+	    calc_and_add_range_to_node_1(Node, Toks, A, Lc, 'case', 'end');
+	clause ->
+            {S1,_} = case wrangler_syntax:clause_patterns(Node) of
+                          [] -> case wrangler_syntax:clause_guard(Node) of
+                                    none ->{{L,C}, {0,0}};
+                                    _ -> get_range(wrangler_syntax:clause_guard(Node))
+                                end;
+                          Ps -> get_range(hd(Ps))
+                      end,         
+            Body = wrangler_misc:glast("refac_util:do_add_range, clause", wrangler_syntax:clause_body(Node)),
+	    {_S2, E2} = get_range(Body),
+	    update_ann(Node, {range, {lists:min([S1, {L, C}]), E2}});
+	catch_expr ->
+	    B = wrangler_syntax:catch_expr_body(Node),
+	    {S, E} = get_range(B),
+	    S1 = extend_forwards(Toks, S, 'catch'),
+	    update_ann(Node, {range, {S1, E}});
+	if_expr ->
+	    Cs = wrangler_syntax:if_expr_clauses(Node),
+	    add_range_to_list_node(Node, Toks, Cs, "refac_util:do_add_range, if_expr",
+				   "refac_util:do_add_range, if_expr", 'if', 'end');
+	cond_expr ->
+	    Cs = wrangler_syntax:cond_expr_clauses(Node),
+	    add_range_to_list_node(Node, Toks, Cs, "refac_util:do_add_range, cond_expr",
+				   "refac_util:do_add_range, cond_expr", 'cond', 'end');
+	infix_expr ->
+	    calc_and_add_range_to_node(Node, infix_expr_left, infix_expr_right);
+	prefix_expr ->
+	    calc_and_add_range_to_node(Node, prefix_expr_operator, prefix_expr_argument);
+	conjunction ->
+	    B = wrangler_syntax:conjunction_body(Node),
+	    add_range_to_body(Node, B, "refac_util:do_add_range,conjunction",
+			      "refac_util:do_add_range,conjunction");
+	disjunction ->
+	    B = wrangler_syntax:disjunction_body(Node),
+	    add_range_to_body(Node, B, "refac_util:do_add_range, disjunction",
+			      "refac_util:do_add_range,disjunction");
+	function ->
+	    F = wrangler_syntax:function_name(Node),
+	    Cs = wrangler_syntax:function_clauses(Node),
+	    Lc = wrangler_misc:glast("refac_util:do_add_range,function", Cs),
+	    {S1, _E1} = get_range(F),
+	    {_S2, E2} = get_range(Lc),
+	    update_ann(Node, {range, {S1, E2}});
+	fun_expr ->
+	    Cs = wrangler_syntax:fun_expr_clauses(Node),
+	    S = wrangler_syntax:get_pos(Node),
+	    Lc = wrangler_misc:glast("refac_util:do_add_range, fun_expr", Cs),
+	    {_S1, E1} = get_range(Lc),
+	    E11 = extend_backwards(Toks, E1,
+				   'end'),   %% S starts from 'fun', so there is no need to extend forwards/
+	    update_ann(Node, {range, {S, E11}});
+	arity_qualifier ->
+                calc_and_add_range_to_node(Node, arity_qualifier_body, arity_qualifier_argument);
+	implicit_fun ->
+                adjust_implicit_fun_loc(Node, Toks);
+        attribute ->
+	    Name = wrangler_syntax:attribute_name(Node),
+	    Args = wrangler_syntax:attribute_arguments(Node),
+	    case Args of
+		none -> {S1, E1} = get_range(Name),
+			S11 = extend_forwards(Toks, S1, '-'),
+			update_ann(Node, {range, {S11, E1}});
+		_ -> case length(Args) > 0 of
+			 true -> 
+                             Arg = wrangler_misc:glast("refac_util:do_add_range,attribute", Args),
+                             {S1, _E1} = get_range(Name),
+                             {_S2, E2} = get_range(Arg),
+                             S11 = extend_forwards(Toks, S1, '-'),
+                             update_ann(Node, {range, {S11, E2}});
+			 _ -> {S1, E1} = get_range(Name),
+			      S11 = extend_forwards(Toks, S1, '-'),
+			      update_ann(Node, {range, {S11, E1}})
+		     end
+	    end;
+	generator ->
+	    calc_and_add_range_to_node(Node, generator_pattern, generator_body);
+	binary_generator ->
+	    calc_and_add_range_to_node(Node, binary_generator_pattern, binary_generator_body);
+	tuple ->
+	    Es = wrangler_syntax:tuple_elements(Node),
+	    case length(Es) of
+		0 -> update_ann(Node, {range, {{L, C}, {L, C + 1}}});
+		_ ->
+		    add_range_to_list_node(Node, Toks, Es, "refac_util:do_add_range, tuple",
+					   "refac_util:do_add_range, tuple",
+					   '{', '}')
+	    end;
+	list_comp ->
+	    %%T = refac_syntax:list_comp_template(Node),
+	    B = wrangler_misc:glast("refac_util:do_add_range,list_comp", wrangler_syntax:list_comp_body(Node)),
+	    {_S2, E2} = get_range(B),
+	    E21 = extend_backwards(Toks, E2, ']'),
+	    update_ann(Node, {range, {{L, C}, E21}});
+	binary_comp ->
+	    %%T = refac_syntax:binary_comp_template(Node),
+	    B = wrangler_misc:glast("refac_util:do_add_range,binary_comp",
+				    wrangler_syntax:binary_comp_body(Node)),
+	    {_S2, E2} = get_range(B),
+	    E21 = extend_backwards(Toks, E2, '>>'),
+	    update_ann(Node, {range, {{L, C}, E21}});
+	block_expr ->
+	    Es = wrangler_syntax:block_expr_body(Node),
+	    add_range_to_list_node(Node, Toks, Es, "refac_util:do_add_range, block_expr",
+				   "refac_util:do_add_range, block_expr", 'begin', 'end');
+	receive_expr ->
+	    case wrangler_syntax:receive_expr_timeout(Node) of
+		none ->
+                    %% Cs cannot be empty here.
+		    Cs = wrangler_syntax:receive_expr_clauses(Node),
+                    add_range_to_list_node(Node, Toks, Cs, "refac_util:do_add_range, receive_expr1",
+                                           "refac_util:do_add_range, receive_expr1", 'receive', 'end');
+                _E ->
+                    A = wrangler_syntax:receive_expr_action(Node),
+                    {_S2, E2} = get_range(wrangler_misc:glast("refac_util:do_add_range, receive_expr2", A)),
+                    E21 = extend_backwards(Toks, E2, 'end'),
+                    update_ann(Node, {range, {{L, C}, E21}})
+            end;
+	try_expr ->
+	    B = wrangler_syntax:try_expr_body(Node),
+	    After = wrangler_syntax:try_expr_after(Node),
+	    {S1, _E1} = get_range(wrangler_misc:ghead("refac_util:do_add_range, try_expr", B)),
+	    {_S2, E2} = case After of
+			    [] ->
+				Handlers = wrangler_syntax:try_expr_handlers(Node),
+				get_range(wrangler_misc:glast("refac_util:do_add_range, try_expr", Handlers));
+			    _ ->
+				get_range(wrangler_misc:glast("refac_util:do_add_range, try_expr", After))
+			end,
+	    S11 = extend_forwards(Toks, S1, 'try'),
+	    E21 = extend_backwards(Toks, E2, 'end'),
+	    update_ann(Node, {range, {S11, E21}});
+	binary ->
+	    Fs = wrangler_syntax:binary_fields(Node),
+	    case Fs == [] of
+		true -> update_ann(Node, {range, {{L, C}, {L, C + 3}}});
+		_ ->
+		    Hd = wrangler_misc:ghead("do_add_range:binary", Fs),
+		    Last = wrangler_misc:glast("do_add_range:binary", Fs),
+		    calc_and_add_range_to_node_1(Node, Toks, Hd, Last, '<<', '>>')
+	    end;
+	binary_field ->
+	    Body = wrangler_syntax:binary_field_body(Node),
+	    Types = wrangler_syntax:binary_field_types(Node),
+	    {S1, E1} = get_range(Body),
+	    {_S2, E2} = if Types == [] -> {S1, E1};
+			   true -> get_range(wrangler_misc:glast("refac_util:do_add_range,binary_field", Types))
+			end,
+	    case E2 > E1  %%Temporal fix; need to change refac_syntax to make the pos info correct.
+		of
+		true ->
+		    update_ann(Node, {range, {S1, E2}});
+		false ->
+		    update_ann(Node, {range, {S1, E1}})
+	    end;
+	match_expr ->
+	    calc_and_add_range_to_node(Node, match_expr_pattern, match_expr_body);
+	form_list ->
+	    Es = wrangler_syntax:form_list_elements(Node),
+	    
+	    add_range_to_body(Node, Es, "refac_util:do_add_range, form_list",
+			      "refac_util:do_add_range, form_list");
+	parentheses ->
+	    B = wrangler_syntax:parentheses_body(Node),
+	    {S, E} = get_range(B),
+	    S1 = extend_forwards(Toks, S, '('),
+	    E1 = extend_backwards(Toks, E, ')'),
+	    update_ann(Node, {range, {S1, E1}});
+	class_qualifier ->
+	    calc_and_add_range_to_node(Node, class_qualifier_argument, class_qualifier_body);
+	qualified_name ->
+	    Es = wrangler_syntax:qualified_name_segments(Node),
+	    
+	    add_range_to_body(Node, Es, "refac_util:do_add_range, qualified_name",
+			      "refac_util:do_add_range, qualified_name");
+	query_expr ->
+	    B = wrangler_syntax:query_expr_body(Node),
+	    {S, E} = get_range(B),
+	    update_ann(Node, {range, {S, E}});
+	record_field ->
+	    Name = wrangler_syntax:record_field_name(Node),
+	    {S1, E1} = get_range(Name),
+	    Value = wrangler_syntax:record_field_value(Node),
+	    case Value of
+		none -> update_ann(Node, {range, {S1, E1}});
+		_ -> {_S2, E2} = get_range(Value), update_ann(Node,
+                                                              {range, {S1, E2}})
+	    end;
+	typed_record_field   %% This is not correct; need to be fixed later!
+                           ->
+                Field = wrangler_syntax:typed_record_field(Node),
+                {S1, _E1} = get_range(Field),
+                Type = wrangler_syntax:typed_record_type(Node),
+                {_S2, E2} = get_range(Type),
+                update_ann(Node, {range, {S1, E2}});
+	record_expr ->
+                Arg = wrangler_syntax:record_expr_argument(Node),
+                Type = wrangler_syntax:record_expr_type(Node),
+                Toks2 = lists:dropwhile(fun(B)->
+                                               element(2, B)/= {L,C}
+                                       end, Toks),
+                [{'#', _}, T|_] = Toks2,
+                Pos1 = token_loc(T),
+                Type1 = add_range(wrangler_syntax:set_pos(Type, Pos1), Toks),
+                Fields = wrangler_syntax:record_expr_fields(Node),
+                {S1, E1} = case Arg of
+                               none -> get_range(Type);
+                               _ -> get_range(Arg)
+                           end,
+                case Fields of
+                    [] -> E11 = extend_backwards(Toks, E1, '}'),
+                          Node1 =rewrite(Node, wrangler_syntax:record_expr(Arg, Type1, Fields)),
+                          update_ann(Node1, {range, {S1, E11}});
+                    _ ->
+                        {_S2, E2} = get_range(wrangler_misc:glast("refac_util:do_add_range,record_expr", Fields)),
+                        E21 = extend_backwards(Toks, E2, '}'),
+                        Node1 =rewrite(Node, wrangler_syntax:record_expr(Arg, Type1, Fields)),
+                        update_ann(Node1, {range, {S1, E21}})
+                end;
+	record_access ->
+	    calc_and_add_range_to_node(Node, record_access_argument, record_access_field);
+	record_index_expr ->
+	    calc_and_add_range_to_node(Node, record_index_expr_type, record_index_expr_field);
+	comment ->
+	    T = wrangler_syntax:comment_text(Node),
+	    Lines = length(T),
+	    update_ann(Node,
+		       {range,
+			{{L, C},
+                         {L + Lines - 1,
+                          length(wrangler_misc:glast("refac_util:do_add_range,comment",
+                                                     T))}}});
+	macro ->
+                Name = wrangler_syntax:macro_name(Node),
+                Args = wrangler_syntax:macro_arguments(Node),
+                {_S1, {L1, C1}} = get_range(Name),
+                E1={L1, C1+1},
+                M=case Args of
+                      none -> update_ann(Node, {range, {{L, C}, E1}});
+                      Ls ->
+                          case Ls of
+                              [] -> E21 = extend_backwards(Toks, E1, ')'),
+                                    update_ann(Node, {range, {{L, C}, E21}});
+                              _ ->
+                                  La = wrangler_misc:glast("refac_util:do_add_range,macro", Ls),
+                                  {_S2, E2} = get_range(La),
+                                  E21 = extend_backwards(Toks, E2, ')'),
+                                  update_ann(Node, {range, {{L, C}, E21}})
+                          end
+                  end,
+                update_ann(M,{with_bracket,
+                            wrangler_prettypr:has_parentheses(M, Toks)});
+	size_qualifier ->
+	    calc_and_add_range_to_node(Node, size_qualifier_body, size_qualifier_argument);
+	error_marker ->
+                case wrangler_syntax:revert(Node) of
+                    {error, {_, {Start, End}}} ->
+                        update_ann(Node, {range, {Start, End}});
+                    _ ->
+                        update_ann(Node, {range, {{L, C}, {L, C}}})
+                end;
+	type   %% This is not correct, and need to be fixed!!
+	     ->
+            update_ann(Node, {range, {{L, C}, {L, C}}});
+	_ ->
+	    %% refac_io:format("Node;\n~p\n",[Node]),
+	    %% ?wrangler_io("Unhandled syntax category:\n~p\n", [refac_syntax:type(Node)]),
+	    Node
+    end.
+
+calc_and_add_range_to_node(Node, Fun1, Fun2) ->
+    Arg = wrangler_syntax:Fun1(Node),
+    Field = wrangler_syntax:Fun2(Node),
+    {S1,_E1} = get_range(Arg),
+    {_S2,E2} = get_range(Field),
+    update_ann(Node, {range, {S1, E2}}).
+
+calc_and_add_range_to_node_1(Node, Toks, StartNode, EndNode, StartWord, EndWord) ->
+    {S1,_E1} = get_range(StartNode),
+    {_S2,E2} = get_range(EndNode),
+    S11 = extend_forwards(Toks,S1,StartWord),
+    E21 = extend_backwards(Toks,E2,EndWord),
+    update_ann(Node, {range, {S11, E21}}).
+
+
+get_range(Node) ->
+     As = wrangler_syntax:get_ann(Node),
+     case lists:keysearch(range, 1, As) of
+       {value, {range, {S, E}}} -> {S, E};
+       _ -> {?DEFAULT_LOC,
+ 	   ?DEFAULT_LOC} 
+     end.
+
+add_range_to_list_node(Node, Toks, Es, Str1, Str2, KeyWord1, KeyWord2) ->
+    Hd = wrangler_misc:ghead(Str1, Es),
+    La = wrangler_misc:glast(Str2, Es),
+    calc_and_add_range_to_node_1(Node, Toks, Hd, La, KeyWord1, KeyWord2).
+
+add_range_to_body(Node, [], _, _) -> Node; %% why this should happend?
+add_range_to_body(Node, B, Str1, Str2) ->
+    H = wrangler_misc:ghead(Str1, B),
+    La = wrangler_misc:glast(Str2, B),
+    {S1, _E1} = get_range(H),
+    {_S2, E2} = get_range(La),
+    update_ann(Node, {range, {S1, E2}}).
+   
+extend_forwards(Toks, StartLoc, Val) ->
+    Toks1 = lists:takewhile(fun (T) -> token_loc(T) < StartLoc end, Toks),
+    Toks2 = lists:dropwhile(fun (T) -> token_val(T) =/= Val end, lists:reverse(Toks1)),
+    case Toks2 of
+      [] -> StartLoc;
+      _ -> token_loc(hd(Toks2))
+    end.
+
+extend_backwards(Toks, EndLoc, Val) ->
+    Toks1 = lists:dropwhile(fun (T) -> 
+                                    token_loc(T) =< EndLoc 
+                                        orelse 
+                                        token_val(T)=/=Val 
+                            end, Toks),
+    case Toks1 of
+      [] -> EndLoc;
+      _ ->
+	  {Ln, Col} = token_loc(hd(Toks1)),
+	  {Ln, Col + length(atom_to_list(Val)) - 1}
+    end.
+
+token_loc(T) ->
+    case T of
+      {_, L, _V} -> L;
+      {_, L1} -> L1
+    end.
+
+token_val(T) ->
+    case T of
+      {_, _, V} -> V;
+      {V, _} -> V
+    end.
+
+	
+is_whitespace({whitespace, _, _}) ->
+    true;
+is_whitespace(_) ->
+    false.
+
+is_whitespace_or_comment({whitespace, _, _}) ->
+    true;
+is_whitespace_or_comment({comment, _, _}) ->
+    true;
+is_whitespace_or_comment(_) -> false.
+	
+    
+is_string({string, _, _}) ->
+    true;
+is_string(_) -> false.
+
+
+%% =====================================================================
+% @doc Attach syntax category information to AST nodes.
+%% =====================================================================
+%% -type (category():: pattern|expression|guard_expression|record_type|generator
+%%                    record_field| {macro_name, none|int(), pattern|expression}
+%%                    |operator
+%%-spec(add_category(Node::syntaxTree()) -> syntaxTree()).
+add_category(Node) ->
+    add_category(Node, none).
+
+add_category(Node, C) ->
+    {Node1, _} =api_ast_traverse:stop_tdTP(fun do_add_category/2, Node, C),
+    Node1.
+
+do_add_category(Node, C) when is_list(Node) ->
+    {[add_category(E, C)||E<-Node], true};
+do_add_category(Node, C) ->
+    case wrangler_syntax:type(Node) of
+	clause ->
+	    Body = wrangler_syntax:clause_body(Node),
+	    Ps = wrangler_syntax:clause_patterns(Node),
+	    G = wrangler_syntax:clause_guard(Node),
+	    Body1 = [add_category(B, expression)||B<-Body],
+	    Ps1 = [add_category(P, pattern)||P<-Ps],
+	    G1 = case G of
+		     none -> none;
+		     _ -> add_category(G, guard_expression)
+		 end,
+	    Node1 =rewrite(Node, wrangler_syntax:clause(Ps1, G1, Body1)),
+	    {Node1, true};
+	match_expr ->
+	    P = wrangler_syntax:match_expr_pattern(Node),
+	    B = wrangler_syntax:match_expr_body(Node),
+	    P1 = add_category(P, pattern),
+	    B1 = add_category(B, C),
+	    Node1=rewrite(Node, wrangler_syntax:match_expr(P1, B1)),
+            {update_ann(Node1, {category, C}), true};
+        generator ->
+	    P = wrangler_syntax:generator_pattern(Node),
+	    B = wrangler_syntax:generator_body(Node),
+	    P1 = add_category(P, pattern),
+	    B1 = add_category(B, expression),
+	    Node1=rewrite(Node, wrangler_syntax:generator(P1, B1)),
+	    {update_ann(Node1, {category, generator}), true};
+	binary_generator ->
+	    P = wrangler_syntax:binary_generator_pattern(Node),
+	    B = wrangler_syntax:binary_generator_body(Node),
+	    P1 = add_category(P, pattern),
+	    B1 = add_category(B, expression),
+	    Node1=rewrite(Node, wrangler_syntax:binary_generator(P1, B1)),
+	    {update_ann(Node1, {category, generator}), true};
+	macro ->
+	    Name = wrangler_syntax:macro_name(Node),
+	    Args = wrangler_syntax:macro_arguments(Node),
+            Name1 = case Args of 
+                        none -> add_category(Name, C);  %% macro with no args are not annoated as macro_name.
+                        _ ->add_category(Name, macro_name)
+                    end,
+	    Args1 = case Args of
+			none -> none;
+			_ -> add_category(Args, C) 
+		    end,
+	    Node1 = rewrite(Node, wrangler_syntax:macro(Name1, Args1)),
+	    {update_ann(Node1, {category, C}), true};
+	record_access ->
+            Argument = wrangler_syntax:record_access_argument(Node),
+            Type = wrangler_syntax:record_access_type(Node),
+            Field = wrangler_syntax:record_access_field(Node),
+            Argument1 = add_category(Argument, C),
+            Type1 = case Type of
+                        none -> none;
+                        _ -> add_category(Type, record_type)
+		   end,
+            Field1 = add_category(Field, record_field),
+            Node1 = rewrite(Node, wrangler_syntax:record_access(Argument1, Type1, Field1)),
+            {update_ann(Node1, {category, C}), true};
+	record_expr ->
+	    Argument = wrangler_syntax:record_expr_argument(Node),
+	    Type = wrangler_syntax:record_expr_type(Node),
+	    Fields = wrangler_syntax:record_expr_fields(Node),
+	    Argument1 = case Argument of
+			    none -> none;
+			    _ -> add_category(Argument, C)
+			end,
+	    Type1 = add_category(Type, record_type),
+	    Fields1 =[wrangler_syntax:add_ann({category, record_field},
+                                              rewrite(F, wrangler_syntax:record_field(
+                                                              add_category(wrangler_syntax:record_field_name(F), record_field),
+                                                              case wrangler_syntax:record_field_value(F) of
+                                                                  none ->
+                                                                      none;
+                                                                  V ->
+                                                                      add_category(V, C)
+                                                              end))) || F <- Fields],
+	    Node1 = rewrite(Node, wrangler_syntax:record_expr(Argument1, Type1, Fields1)),
+	    {update_ann(Node1, {category, C}), true};
+	record_index_expr ->
+	    Type = wrangler_syntax:record_index_expr_type(Node),
+	    Field = wrangler_syntax:record_index_expr_field(Node),
+	    Type1 = add_category(Type, record_type),
+	    Field1 = add_category(Field, record_field),
+	    Node1 = rewrite(Node, wrangler_syntax:record_index_expr(Type1, Field1)),
+	    {update_ann(Node1, {category, C}), true};
+	operator ->
+	    {update_ann(Node, {category, operator}), true};
+	_ -> case C of
+		 none ->
+		     {Node, false};
+		 _ -> 
+		     {update_ann(Node, {category, C}),false}
+	     end
+    end.
+
+rewrite(Tree, Tree1) ->
+    wrangler_syntax:copy_attrs(Tree, Tree1).
+
+
+list_elements(Node) ->
+    lists:reverse(list_elements(Node, [])).
+
+list_elements(Node, As) ->
+    case wrangler_syntax:type(Node) of
+      list ->
+	    As1 = lists:reverse(wrangler_syntax:list_prefix(Node)) ++ As,
+	    case wrangler_syntax:list_suffix(Node) of
+                none -> As1;
+                Tail ->
+                    list_elements(Tail, As1)
+            end;
+        nil -> As;
+        _ ->[Node|As]
+    end.
+           
+
+adjust_implicit_fun_loc(T, Toks)->
+    Pos = wrangler_syntax:get_pos(T),
+    Name = wrangler_syntax:implicit_fun_name(T),
+    Toks1 = lists:dropwhile(fun (B) -> element(2, B) =/= Pos end, Toks),
+    Toks2 = [Tok||Tok<-Toks1,element(1, Tok)/='?' ],
+    case wrangler_syntax:type(Name) of
+        module_qualifier ->
+            Arg = wrangler_syntax:module_qualifier_argument(Name),
+            Body = wrangler_syntax:module_qualifier_body(Name),
+            Fun = wrangler_syntax:arity_qualifier_body(Body),
+            A = wrangler_syntax:arity_qualifier_argument(Body),
+            [{'fun', Pos1},{_, Pos2, _ModName}, {':', _},
+             {_, Pos4, _FunName}, {'/', _},
+             {_, Pos5, _Arity}|_Ts] = Toks2,
+            Arg1 =add_range(wrangler_syntax:set_pos(Arg, Pos2),Toks),
+            Fun1= add_range(wrangler_syntax:set_pos(Fun, Pos4),Toks),
+            A1 = add_range(wrangler_syntax:set_pos(A, Pos5),Toks),
+            Body1 = add_range(
+                      wrangler_syntax:set_pos(
+                           rewrite(Body,wrangler_syntax:arity_qualifier(Fun1, A1)),
+                           Pos4),Toks),
+            Name1= add_range(wrangler_syntax:set_pos(
+                                  wrangler_syntax:module_qualifier(
+                                       Arg1, Body1), Pos2), Toks),
+            {_S,E} = get_range(A1),
+            T1=rewrite(T, wrangler_syntax:implicit_fun(Name1)),
+            update_ann(T1, {range, {Pos1, E}});
+        arity_qualifier->
+            Fun = wrangler_syntax:arity_qualifier_body(Name),
+            A = wrangler_syntax:arity_qualifier_argument(Name),
+            [{'fun', Pos1}, {_, Pos4, _FunName}, {'/', _},
+             {_, Pos5, _Arity}|_Ts] = Toks2,
+            Fun1= add_range(wrangler_syntax:set_pos(Fun, Pos4),Toks),
+            A1 = add_range(wrangler_syntax:set_pos(A, Pos5),Toks),
+            Name1 = add_range(
+                      wrangler_syntax:set_pos(
+                           rewrite(Name,wrangler_syntax:arity_qualifier(Fun1, A1)),
+                           Pos4),Toks),
+            {_S,E} = get_range(A1),
+            T1=rewrite(T, wrangler_syntax:implicit_fun(Name1)),
+            update_ann(T1, {range, {Pos1, E}});
+        _ -> T
+    end.
+  
+   
+update_ann(Node, Ann) ->
+    wrangler_misc:update_ann(Node, Ann).
+
+pany(Fun, List, Size) ->
+    Self = self(),
+    Pid = spawn_link(?MODULE, pany_0, [Self, Fun, List,Size]),
+    receive 
+        {Pid, Res} -> Res
+    end.
+
+pany_0(Parent, Fun, List, Size) when Size=<1 ->
+    Self = self(),
+    _Pids = [spawn_link(?MODULE, pany_1, [Fun, Self, X])
+             || X <- List],
+    pany_wait(Parent, Self, length(List),false);
+pany_0(Parent, Fun, List, Size)->
+    Self = self(),
+    ChoppedList = para_lib:chop_a_list(List, Size),
+    _Pids = [spawn_link(?MODULE, pany_2, [Fun, Self,SubList])
+             || SubList<-ChoppedList],
+    pany_wait(Parent, Self, length(ChoppedList),false).
+   
+pany_1(Fun, Parent, X) ->
+    Res = (catch Fun(X)),
+    Parent ! {Parent,Res}.
+pany_2(Fun, Parent, SubList) ->
+    Res = (catch lists:any(fun(X) ->
+                                   Fun(X)
+                           end, SubList)),
+    Parent ! {Parent, Res}.
+
+pany_wait(Parent,Self,0,false) -> 
+    Parent!{Self, false};
+pany_wait(_Parent,_Self,0,true) -> 
+    ok;
+pany_wait(Parent,Self, N, Done) ->
+    receive
+        {Self,true} -> 
+            case Done of 
+                true -> 
+                    pany_wait(Parent, Self,N-1,Done);
+                false ->
+                    Parent ! {Self, true},
+                    pany_wait(Parent, Self, N-1, true)
+            end;
+        {Self,false} ->
+            pany_wait(Parent, Self, N-1, Done)
+    end.
+
+
+pforeach(Fun, List)->
+    Self = self(),
+    Pid = spawn_link(?MODULE, pforeach_0, [Self, Fun, List]),
+    receive 
+        Pid -> ok
+    end.
+pforeach_0(Parent, Fun, List)->
+    Self = self(),
+    _Pids = [spawn_link(?MODULE, pforeach_1, [Fun, Self, X])
+             || X <- List],
+    pforeach_wait(Self, length(List)),
+    Parent ! Self.
+
+pforeach_1(Fun, Parent, X) ->
+    _ =  (catch Fun(X)),
+    Parent ! Parent.
+
+pforeach_wait(_S,0) -> ok;
+pforeach_wait(S,N) ->
+    receive
+        S -> pforeach_wait(S,N-1)
+    end.
+
+%% process_info1(Pids) ->
+%%     Res=[process_info(Pid, [initial_call, status, message_queue_len,current_function, messages])||Pid<-Pids],
+%%     [Info||Info<-Res, element(1,element(2, hd(Info)))==sim_code_v23 orelse 
+%%                element(1,element(2, hd(Info)))==para_lib
+%%     ].
+
 

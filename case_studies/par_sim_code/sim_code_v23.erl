@@ -73,15 +73,11 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
     case Files of
 	[] ->
 	    ?wrangler_io("Warning: No files found in the searchpaths specified.",[]);
-	_ -> {Time2, Time3, Time4,Cs}= sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
-                                                          SearchPaths, TabWidth),
-             EndTime = now(),
-             io:format("\n clone detection finished with *** ~p *** clone(s) found.\n", [length(Cs)]),
-             TotalTime  = timer:now_diff(EndTime, StartTime),
-             io:format("TimeUsed:\n~p\n", [{{Time1/1000, Time1/TotalTime*100}, {Time2/1000, Time2/TotalTime*100},
-                                            {Time3/1000, Time3/TotalTime*100}, {Time4/1000, Time4/TotalTime*100}, 
-                                            TotalTime/1000}])
-             %%display_clones_by_freq(lists:reverse(Cs), "Similar")
+	_ -> 
+            Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
+                                    SearchPaths, TabWidth),
+            io:format("Clone detection finished with ~p clones found\n", [length(Cs)])
+            %%display_clones_by_freq(lists:reverse(Cs), "Similar")
     end,
     {ok, "Similar code detection finished."}.
 
@@ -133,7 +129,7 @@ process_initial_clones(Cs) ->
 	 Rs1 =sets:to_list(sets:from_list(Rs)),
 	 {Rs1, Len, length(Rs1)}
      end
-     ||{Rs, Len, _Freq}<-Cs].
+     ||{Rs, Len, _Freq}<-sets:to_list(sets:from_list(Cs))].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                                                 %%
@@ -444,7 +440,7 @@ examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid) ->
     get_final_clone_classes(CloneCheckerPid, ast_tab).
  
 examine_a_clone_candidate({C,Nth},Thresholds,CloneCheckerPid,HashPid) ->
-   %% output_progress_msg(Nth), 
+    output_progress_msg(Nth), 
     C1 = get_clone_in_range(HashPid,C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
@@ -460,26 +456,6 @@ examine_a_clone_candidate({C,Nth},Thresholds,CloneCheckerPid,HashPid) ->
             end
     end.
  
-%% examine_clone_candidates([],_Thresholds,CloneCheckerPid,_HashPid,_Num) ->
-%%     get_final_clone_classes(CloneCheckerPid,ast_tab);
-%% examine_clone_candidates([C| Cs],Thresholds,CloneCheckerPid,HashPid,Num) ->
-%%     output_progress_msg(Num), 
-%%     C1 = get_clone_in_range(HashPid,C),
-%%     MinToks = Thresholds#threshold.min_toks, 
-%%     MinFreq = Thresholds#threshold.min_freq, 
-%%     case remove_short_clones(C1,MinToks,MinFreq) of
-%%       [] ->
-%% 	  ok;
-%%       [C2] ->
-%%             case examine_a_clone_candidate(C2,Thresholds) of
-%% 	    [] ->
-%% 		ok;
-%% 	    ClonesWithAU ->
-%%                   add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
-%% 	  end
-%%     end, 
-%%     examine_clone_candidates(Cs,Thresholds,CloneCheckerPid,HashPid,Num+1).
-
 output_progress_msg(Num) ->
     case Num rem 10 of
      	1 -> 
@@ -1511,7 +1487,7 @@ annotate_bindings(FName, AST, Info, Ms, TabWidth) ->
     Comments = wrangler_comment_scan:file(FName, TabWidth),
     AnnAST1= wrangler_recomment:recomment_forms(AnnAST0, Comments),
     AnnAST2 =update_toks(Toks,AnnAST1),
-    wrangler_annotate_ast:add_fun_define_locations(AnnAST1, Info).
+    wrangler_annotate_ast:add_fun_define_locations(AnnAST2, Info).
 
 analyze_forms(SyntaxTree) ->
     wrangler_syntax_lib:analyze_forms(SyntaxTree).

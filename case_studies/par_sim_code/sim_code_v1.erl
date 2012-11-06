@@ -34,11 +34,13 @@
 -export([sim_code_detection/8,sim_code_detection/4]). 
 
 -export([ gen_initial_clone_candidates/3,
-          generalise_and_hash_ast/6,
-          check_clone_candidates/4]).
+          generalise_and_hash_ast/5,
+          check_clone_candidates/3]).
 
 
--export([hash_loop/1, clone_check_loop/3, ast_loop/1]).
+-export([init_hash_loop/0, init_clone_check/0, init_ast_loop/1]).
+
+-compile(export_all).
 
 -include_lib("wrangler/include/wrangler_internal.hrl").
 
@@ -61,16 +63,6 @@
 	 max_new_vars =?DEFAULT_NEW_VARS,
 	 simi_score=?DEFAULT_SIMI_SCORE}).
 
-%% record for ets/dets table names.
--record(tabs, 
-	{ast_tab,
-	 var_tab, 
-         exp_hash_tab,
-	 clone_tab
-	}).
-
--define(PARALLEL, false).
-
 -spec(sim_code_detection/8::(DirFileList::[filename()|dir()], MinLen::integer(), MinToks::integer(),
 			      MinFreq::integer(),  MaxVars::integer(),SimiScore::float(), 
                                  SearchPaths::[dir()], TabWidth::integer()) -> {ok, string()}).
@@ -81,19 +73,16 @@ sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,Sea
 	[] ->
 	    ?wrangler_io("Warning: No files found in the searchpaths specified.",[]);
 	_ -> Cs = sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
-					 SearchPaths, TabWidth),
-	     display_clones_by_freq(lists:reverse(Cs), "Similar")
+                                     SearchPaths, TabWidth),
+             io:format("Clone detection finished with ~p clones found\n", [length(Cs)])
+             %%display_clones_by_freq(lists:reverse(Cs), "Similar")
     end,
     {ok, "Similar code detection finished."}.
 
 
 sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 		       SearchPaths, TabWidth) ->
-    %% dets tables used to cache information.
-    Tabs = #tabs{ast_tab = create_ets(ast_tab),
-		 var_tab = create_ets(var_tab),
-                 exp_hash_tab = create_ets(expr_hash_tab),
-		 clone_tab = create_ets(expr_clone_tab)},
+    ets:new(var_tab, [named_table, public, {keypos, 1}, set, {read_concurrency, true}]),
     %% Threshold parameters.
     Threshold = #threshold{min_len = MinLen,
 			   min_freq = MinFreq,
@@ -101,24 +90,24 @@ sim_code_detection(Files, {MinLen, MinToks, MinFreq, MaxVars, SimiScore},
 			   max_new_vars = MaxVars,
 			   simi_score = SimiScore},
     HashPid = start_hash_process(),
-    ASTPid = start_ast_process(Tabs#tabs.ast_tab, HashPid),
+    ASTPid = start_ast_process(HashPid),
     
-    Cs = sim_code_detection_1(Files, Threshold,Tabs, HashPid, ASTPid, SearchPaths,TabWidth),
+    Cs = sim_code_detection_1(Files, Threshold, HashPid, ASTPid, SearchPaths,TabWidth),
     
     stop_hash_process(HashPid),
     stop_ast_process(ASTPid),
+    ets:delete(var_tab),
     Cs.
 
-sim_code_detection_1(Files, Thresholds, Tabs, HashPid, ASTPid, SearchPaths, TabWidth) ->
+sim_code_detection_1(Files, Thresholds, HashPid, ASTPid, SearchPaths, TabWidth) ->
     ?wrangler_io("Generalise and hash ASTs ...\n", []),
-    generalise_and_hash_ast(Files, Thresholds, Tabs, ASTPid, SearchPaths, TabWidth),
-    
+    generalise_and_hash_ast(Files, Thresholds, ASTPid, SearchPaths, TabWidth),
     ?wrangler_io("\nCollecting initial clone candidates ...\n",[]),
     Cs= gen_initial_clone_candidates(Files, Thresholds, HashPid),
     ?wrangler_io("\nNumber of initial clone candidates: ~p\n", [length(Cs)]),
     
     ?wrangler_io("\nChecking clone candidates ... \n", []),
-    check_clone_candidates(Thresholds, Tabs, HashPid, Cs).
+    check_clone_candidates(Thresholds, HashPid, Cs).
     
 gen_initial_clone_candidates(Files, Thresholds, HashPid) ->
     %% Generate clone candidates using suffix tree based clone detection techniques.
@@ -137,7 +126,7 @@ process_initial_clones(Cs) ->
 	 Rs1 =sets:to_list(sets:from_list(Rs)),
 	 {Rs1, Len, length(Rs1)}
      end
-     ||{Rs, Len, _Freq}<-Cs].
+     ||{Rs, Len, _Freq}<-sets:to_list(sets:from_list(Cs))].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                                                 %%
@@ -149,16 +138,16 @@ process_initial_clones(Cs) ->
 %% the AST table. Each object in the AST table has the following format:
 %% {{FileName, FunName, Arity, Index}, ExprAST}, where Index is used to identify a specific 
 %% expression in the function. 
-generalise_and_hash_ast(Files, Threshold, Tabs, ASTPid, SearchPaths, TabWidth) ->
+generalise_and_hash_ast(Files, Threshold, ASTPid, SearchPaths, TabWidth) ->
     %% Refactoring1: lists comprehension parallel pmap. Since the value returned here is not actually 
     %% used, so pforeach should do as well.
     para_lib:pforeach(fun(File) ->
                               generalise_and_hash_file_ast_1(
-                                File, Threshold, Tabs, ASTPid, true, SearchPaths, TabWidth)
+                                File, Threshold, ASTPid, true, SearchPaths, TabWidth)
                       end, Files).
 
 %% Generalise and hash the AST for an single Erlang file.
-generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
+generalise_and_hash_file_ast_1(FName, Threshold, ASTPid, IsNewFile, SearchPaths, TabWidth) ->
     Forms = try wrangler_ast_server:quick_parse_annotate_file(FName, SearchPaths, TabWidth) of
 		{ok, {AnnAST, _Info}} ->
 		    wrangler_syntax:form_list_elements(AnnAST)
@@ -168,7 +157,7 @@ generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, Search
     F = fun (Form) ->
 		case wrangler_syntax:type(Form) of
 		    function ->
-                        generalise_and_hash_function_ast(Form, FName, IsNewFile, Threshold, Tabs, ASTPid);
+                        generalise_and_hash_function_ast(Form, FName, IsNewFile, Threshold, ASTPid);
 		    _ -> ok
 		end
 	end,
@@ -176,14 +165,14 @@ generalise_and_hash_file_ast_1(FName, Threshold, Tabs, ASTPid, IsNewFile, Search
    
 
 %% generalise and hash the AST of a single function.
-generalise_and_hash_function_ast(Form, FName, true, Threshold, Tabs, ASTPid) ->
+generalise_and_hash_function_ast(Form, FName, true, Threshold, ASTPid) ->
     FunName = wrangler_syntax:atom_value(wrangler_syntax:function_name(Form)),
     Arity = wrangler_syntax:function_arity(Form),
     HashVal = erlang:md5(format(Form)),
-    generalise_and_hash_function_ast_1(FName, Form, FunName, Arity, HashVal, Threshold, Tabs, ASTPid).
+    generalise_and_hash_function_ast_1(FName, Form, FunName, Arity, HashVal, Threshold,ASTPid).
 
 %% generalise and hash a function that is either new or has been changed since last run of clone detection.
-generalise_and_hash_function_ast_1(File, Form, FunName, Arity, HashVal, Threshold, Tabs, ASTPid) ->
+generalise_and_hash_function_ast_1(File, Form, FunName, Arity, HashVal, Threshold, ASTPid) ->
     {StartLine, _} = wrangler_syntax:get_pos(Form),
     %% Turn absolute locations to relative locations, so 
     %% so that the result can be reused.
@@ -192,7 +181,7 @@ generalise_and_hash_function_ast_1(File, Form, FunName, Arity, HashVal, Threshol
     %% variable binding information is needed by the anti-unification process.
     AllVars = wrangler_misc:collect_var_source_def_pos_info(NewForm),
     %% I also put the Hashvalue of a function in var_tab.
-    ets:insert(Tabs#tabs.var_tab, {{File, FunName, Arity}, HashVal, AllVars}),
+    ets:insert(var_tab, {{File, FunName, Arity}, HashVal, AllVars}),
     Fun = fun(Node, Index) ->
                   case wrangler_syntax:type(Node) of 
                       clause ->
@@ -228,10 +217,13 @@ generalise_and_hash_body(ASTPid,Body, StartLine, FFA, Threshold, Index) ->
 %% Store the AST representation of expression statements in ETS table %%
 %%                                                                    %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start_ast_process(ASTTab, HashPid) ->
+start_ast_process(HashPid) ->
     %% Dummy entries are used to sparate entries from different functions.
-    spawn_link(?MODULE, ast_loop, [{ASTTab, HashPid}]).
+    spawn_link(?MODULE, init_ast_loop, [HashPid]).
 
+init_ast_loop(HashPid) ->
+    ets:new(ast_tab, [named_table, protected, {keypos,1}, set, {read_concurrency, true}]),
+    ast_loop(HashPid).
 %% stop the ast process.
 stop_ast_process(Pid)->
     Pid ! stop.
@@ -247,19 +239,19 @@ insert_to_ast_tab(Pid, {{M, F, A}, ExprASTs, Index, StartLine}) ->
             ok
     end.
 
-ast_loop({ASTTab, HashPid}) ->
+ast_loop(HashPid) ->
     receive
         {add, {FFA, Body, Index, StartLine}, From} ->
             Len = length(Body),
             ExprASTsWithIndex = lists:zip(Body, lists:seq(0, Len - 1)),
-            HashValExprPairs=[generalise_and_hash_expr(ASTTab, FFA, StartLine,
+            HashValExprPairs=[generalise_and_hash_expr(ast_tab, FFA, StartLine,
                                                        Index, {E, I})
                               ||{E, I}<-ExprASTsWithIndex],
             insert_hash(HashPid, {FFA, HashValExprPairs}),
             From ! {self(), From, done},
-            ast_loop({ASTTab, HashPid});
-	stop ->
-	    ok;
+            ast_loop(HashPid);
+ 	stop ->
+	    ets:delete(ast_tab);
 	_Msg ->
 	    ?wrangler_io("Unexpected message:\n~p\n", [_Msg]),
 	  ok
@@ -270,13 +262,13 @@ generalise_and_hash_expr(ASTTab, {M, F, A}, StartLine,
     %% Num of tokens is used to chech the size of a clone candidate.
     NoOfToks = no_of_tokens(Expr),
     %% insert the AST of an expression into the ast table.
-    ets:insert(ASTTab, {{M, F, A, StartIndex + RelativeIndex}, Expr}),
+    ets:insert(ASTTab, {{M, F, A, {StartIndex, RelativeIndex}}, Expr}),
     E1 = do_generalise(Expr),
     %% get the hash values of the generalised expression.
     HashVal = erlang:md5(format(E1)),
     %% the location here is relative location.
     StartEndLoc = wrangler_misc:start_end_loc(Expr),
-    {HashVal, {StartIndex + RelativeIndex,
+    {HashVal, {{StartIndex, RelativeIndex},
 	       NoOfToks, StartEndLoc, StartLine}}.
 
 %% replace an AST node if the node can be generalised.
@@ -298,8 +290,12 @@ do_generalise(Node) ->
 %%                                                                    %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start_hash_process() ->
-    ExpHashTab=ets:new(expr_hash_tab, [set, public]),
-    spawn_link(?MODULE, hash_loop, [{1, ExpHashTab, []}]).
+    spawn_link(?MODULE, init_hash_loop, []).
+
+init_hash_loop() ->
+    ets:new(expr_hash_tab, [named_table, protected, {keypos, 1}, set, {read_concurrency, true}]),
+    ets:new(expr_seq_hash_tab, [named_table, protected, {keypos,1}, ordered_set, {read_concurrency, true}]),
+    hash_loop(1).
 
 %% Get initial clone candidates.    
 get_clone_candidates(Pid, Thresholds, Dir) ->
@@ -325,41 +321,45 @@ insert_hash(Pid, {{M, F, A}, HashExprPairs}) ->
             ok
     end.
 
-get_index(ExpHashTab, Key) ->
-    case ets:lookup(ExpHashTab, Key) of 
+get_index(Key) ->
+    case ets:lookup(expr_hash_tab, Key) of 
 	[{Key, I}]->
 	    I;
 	[] ->
-	    NewIndex = ets:info(ExpHashTab, size)+1,
-	    ets:insert(ExpHashTab, {Key, NewIndex}),
+	    NewIndex = ets:info(expr_hash_tab, size)+1,
+	    ets:insert(expr_hash_tab, {Key, NewIndex}),
 	    NewIndex
     end.
 
-hash_loop({NextSeqNo, ExpHashTab, NewData}) ->
+hash_loop(NextSeqNo) ->
     receive
 	%% add a new entry.
         {add, {{M, F, A}, KeyExprPairs}, From} ->
 	    KeyExprPairs1 =
 		[{{Index1, NumOfToks, StartEndLoc, StartLine, true}, HashIndex}
 		 || {Key, {Index1, NumOfToks, StartEndLoc, StartLine}} <- KeyExprPairs,
-		    HashIndex <- [get_index(ExpHashTab, Key)]],
+		    HashIndex <- [get_index(Key)]],
             From ! {self(), From, done},
-	    hash_loop({NextSeqNo+1, ExpHashTab, [{NextSeqNo, {M,F,A}, KeyExprPairs1}| NewData]});
+            ets:insert(expr_seq_hash_tab, {NextSeqNo, {M,F,A}, KeyExprPairs1}),
+            hash_loop(NextSeqNo+1);
 	{get_clone_candidates, From, Thresholds, Dir} ->
-	    {ok, OutFileName} = search_for_clones(Dir, lists:reverse(NewData), Thresholds),
-	    From ! {self(), {ok, OutFileName}},
-            hash_loop({NextSeqNo, ExpHashTab, lists:reverse(NewData)});%%!!!! Data Reorded!!!
+	    {ok, OutFileName} = search_for_clones(Dir, Thresholds),
+            From ! {self(), {ok, OutFileName}},
+            hash_loop(NextSeqNo);
 	{get_clone_in_range, From, {Ranges, Len, Freq}} ->
 	    F0 = fun ({ExprSeqId, ExprIndex}, L) ->
-			 {ExprSeqId, {M, F, A}, Exprs} = lists:nth(ExprSeqId, NewData),
+			 [{ExprSeqId, {M, F, A}, Exprs}] = ets:lookup(expr_seq_hash_tab, ExprSeqId),
 			 Es = lists:sublist(Exprs, ExprIndex, L),
 			 [{{M,F,A,Index}, Toks, {{StartLoc, EndLoc}, StartLine}, IsNew}
 			  || {{Index, Toks, {StartLoc, EndLoc}, StartLine, IsNew}, _HashIndex} <- Es]
 		 end,
 	    C1 = {[F0(R, Len) || R <- Ranges], {Len, Freq}},
 	    From ! {self(), C1},
-	    hash_loop({NextSeqNo, ExpHashTab, NewData});
+	   %% hash_loop({NextSeqNo, NewData});
+            hash_loop(NextSeqNo);
 	stop ->
+            ets:delete(expr_hash_tab),
+            ets:delete(expr_seq_hash_tab),
             ok
     end.
 
@@ -370,17 +370,22 @@ hash_loop({NextSeqNo, ExpHashTab, NewData}) ->
 %%                                                                    %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_clone_candidates(Thresholds, Tabs, HashPid, Cs) ->
-    CloneCheckerPid = start_clone_check_process(Tabs),
+check_clone_candidates(Thresholds, HashPid, Cs) ->
+    CloneCheckerPid = start_clone_check_process(),
     %% examine each clone candiate and filter false positives.
-    Cs2 = examine_clone_candidates(Cs, Thresholds, Tabs, CloneCheckerPid, HashPid, 1),
+    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid, 1),
     Cs3 = combine_clones_by_au(Cs2),
     stop_clone_check_process(CloneCheckerPid),
     [{R, L, F, C}||{R, L, F, C}<-Cs3, length(R)>=2].
     
 
-start_clone_check_process(Tabs) ->
-    spawn_link(?MODULE, clone_check_loop, [[],[], Tabs]).
+start_clone_check_process() ->
+    spawn_link(?MODULE, init_clone_check, []).
+
+init_clone_check() ->
+    ets:new(clone_tab, [named_table, protected, {keypos, 1}, set, {read_concurrency, true}]),
+    clone_check_loop([],[]).
+
 
 stop_clone_check_process(Pid) ->
     Pid ! stop.
@@ -395,35 +400,35 @@ get_final_clone_classes(Pid, ASTTab) ->
 	  Cs
     end.
 
-clone_check_loop(Cs, CandidateClassPairs, Tabs) ->
+clone_check_loop(Cs, CandidateClassPairs) ->
     receive
 	{add_clone,  {Candidate, Clones}} ->
             Clones1=[get_clone_class_in_absolute_locs(Clone) 
 		     || Clone <- Clones],
             clone_check_loop(Clones1++Cs, [{hash_a_clone_candidate(Candidate), Clones}
-                                           |CandidateClassPairs], Tabs);
+                                           |CandidateClassPairs]);
 	{get_clones, From, _ASTTab} ->
 	    ?debug("TIME3:\n~p\n", [time()]),
 	    Cs0=remove_sub_clones(Cs),
 	    Cs1=[{AbsRanges, Len, Freq, AntiUnifier}||
 		    {_, {Len, Freq}, AntiUnifier,AbsRanges}<-Cs0],
 	    From ! {self(), Cs1},
-	    clone_check_loop(Cs, CandidateClassPairs, Tabs);       
+	    clone_check_loop(Cs, CandidateClassPairs);       
 	stop ->
-	    ets:insert(Tabs#tabs.clone_tab, CandidateClassPairs),	
-	    ok;
+            ets:delete(clone_tab),
+            ok;            
 	_Msg -> 
 	    ?wrangler_io("Unexpected message:\n~p\n",[_Msg]),
-	    clone_check_loop(Cs,  CandidateClassPairs, Tabs)
+	    clone_check_loop(Cs,  CandidateClassPairs)
     end.
  
 %%=============================================================================
 %% check each candidate clone, and drive real clone classes.
 
-examine_clone_candidates([],_Thresholds,Tabs,CloneCheckerPid,_HashPid,_Num) ->
-    get_final_clone_classes(CloneCheckerPid,Tabs#tabs.ast_tab);
-examine_clone_candidates([C| Cs],Thresholds,Tabs,CloneCheckerPid,HashPid,Num) ->
-    output_progress_msg(Num),
+examine_clone_candidates([],_Thresholds,CloneCheckerPid,_HashPid,_Num) ->
+    get_final_clone_classes(CloneCheckerPid,ast_tab);
+examine_clone_candidates([C| Cs],Thresholds,CloneCheckerPid,HashPid,Num) ->
+    output_progress_msg(Num), 
     C1 = get_clone_in_range(HashPid,C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
@@ -431,14 +436,14 @@ examine_clone_candidates([C| Cs],Thresholds,Tabs,CloneCheckerPid,HashPid,Num) ->
       [] ->
 	  ok;
       [C2] ->
-            case examine_a_clone_candidate(C2,Thresholds,Tabs) of
+            case examine_a_clone_candidate(C2,Thresholds) of
 	    [] ->
 		ok;
 	    ClonesWithAU ->
                   add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
 	  end
     end, 
-    examine_clone_candidates(Cs,Thresholds,Tabs,CloneCheckerPid,HashPid,Num+1).
+    examine_clone_candidates(Cs,Thresholds,CloneCheckerPid,HashPid,Num+1).
 
 output_progress_msg(Num) ->
     case Num rem 10 of
@@ -457,10 +462,10 @@ hash_a_clone_candidate(_C={Ranges, {_Len, _Freq}}) ->
 				 "~p", [[F(E)||E<-R]])))
 		  ||R<-Ranges])).
 %% examine a  clone candidate.
-examine_a_clone_candidate(_C={Ranges, {_Len, _Freq}}, Thresholds, Tabs) ->
-    ASTTab = Tabs#tabs.ast_tab,
+examine_a_clone_candidate(_C={Ranges, {_Len, _Freq}}, Thresholds) ->
+    ASTTab = ast_tab,
     RangesWithExprAST=[attach_expr_ast_to_ranges(R, ASTTab)|| R<-Ranges],
-    Clones = examine_clone_class_members(RangesWithExprAST, Thresholds, Tabs,[]),
+    Clones = examine_clone_class_members(RangesWithExprAST, Thresholds,[]),
     ClonesWithAU = [begin
 			FromSameFile=from_same_file(Rs),
                         AU= get_anti_unifier(Info, FromSameFile),
@@ -479,14 +484,14 @@ attach_expr_ast_to_ranges(Rs, ASTTab) ->
 
 %% check the clone members of a clone candidate using 
 %% anti-unification techniques.   
-examine_clone_class_members(RangesWithExprAST, Thresholds, _, Acc) 
+examine_clone_class_members(RangesWithExprAST, Thresholds, Acc) 
   when length(RangesWithExprAST)< Thresholds#threshold.min_freq ->
     %% The number of clone memebers left is less 
     %% than the min_freq threshold, so the examination
     %% finishes, and sub-clones are removed.
     remove_sub_clones(Acc);
 
-examine_clone_class_members(RangesWithExprAST, Thresholds,Tabs, Acc) ->
+examine_clone_class_members(RangesWithExprAST, Thresholds,Acc) ->
     %% Take the first clone member and  try to anti_unify other 
     %% clone members with this member. If there is a real clone 
     %% class found, then the anti-unifier of the class is derrived 
@@ -502,7 +507,7 @@ examine_clone_class_members(RangesWithExprAST, Thresholds,Tabs, Acc) ->
 
 
     %% process the anti_unification result.
-    Clones = process_au_result(Res, Thresholds, Tabs),
+    Clones = process_au_result(Res, Thresholds),
 
     %% get the maximal length of the clone clone members returned.
     MaxCloneLength= case Clones ==[] of 
@@ -518,12 +523,12 @@ examine_clone_class_members(RangesWithExprAST, Thresholds,Tabs, Acc) ->
     case MaxCloneLength /= InitialLength of
 	true ->
 	    %% the original expression sequences have been chopped into shorter ones.
-	    examine_clone_class_members(Rs, Thresholds,Tabs, Clones ++ Acc);
+	    examine_clone_class_members(Rs, Thresholds, Clones ++ Acc);
 	false ->
 	    %% the original expression still a class member of the clones returned.
 	    Rs1 = element(1, hd(Clones)),
 	    RemainedRanges = RangesWithExprAST -- Rs1,
-	    examine_clone_class_members(RemainedRanges, Thresholds,Tabs, Clones ++ Acc)
+	    examine_clone_class_members(RemainedRanges, Thresholds, Clones ++ Acc)
 
     end.
 
@@ -580,16 +585,16 @@ has_same_subst(E1, E2, SubSt) ->
 	  end, SubSt).
 
 %% process anti-unification result.
-process_au_result(AURes, Thresholds, Tabs) ->
-    Res = [process_one_au_result(OneAURes, Thresholds, Tabs)
+process_au_result(AURes, Thresholds) ->
+    Res = [process_one_au_result(OneAURes, Thresholds)
 	   || OneAURes <- AURes],
     ClonePairs = lists:append(Res),
-    get_clone_classes(ClonePairs, Thresholds, Tabs).
+    get_clone_classes(ClonePairs, Thresholds).
 
 %% process one anti_unification pair. In case the whose 
 %% pair of expression sequences do not anti-unify, get those 
 %% pairs of sub sequences that do anti-unify.
-process_one_au_result(OneAURes, Thresholds, _Tabs) ->
+process_one_au_result(OneAURes, Thresholds) ->
     SubAULists=group_au_result(OneAURes, Thresholds),
     ClonePairs =lists:append([get_clone_pairs(SubAUList, Thresholds)
 			      ||SubAUList<-SubAULists]),
@@ -829,20 +834,20 @@ remove_sub_clone_pairs([CP={Rs, _,_}|CPs], Acc) ->
     end.
 	
 %% derive clone classes from clone pairs.	
-get_clone_classes(ClonePairs,Thresholds, Tabs) ->
+get_clone_classes(ClonePairs,Thresholds) ->
     RangeGroups = lists:usort([Rs1 || {Rs1, _Rs2, _Subst} <- ClonePairs]),
-    CloneClasses = lists:append([get_one_clone_class(Range, ClonePairs, Thresholds, Tabs) 
+    CloneClasses = lists:append([get_one_clone_class(Range, ClonePairs, Thresholds) 
 				 || Range <- RangeGroups]),
     lists:keysort(2, CloneClasses).
  
-get_one_clone_class(RangeWithExprAST, ClonePairs, Thresholds, Tabs) ->
-    Res = lists:append([get_one_clone_class_1(RangeWithExprAST, ClonePair, Tabs)
+get_one_clone_class(RangeWithExprAST, ClonePairs, Thresholds) ->
+    Res = lists:append([get_one_clone_class_1(RangeWithExprAST, ClonePair)
 			|| ClonePair <- ClonePairs]),
     CloneClasses =group_clone_pairs(Res, Thresholds),
     [begin
 	 {Range, Exprs} = lists:unzip(RangeWithExprAST),
 	 [{{FName, FunName, Arity, _}, _, _,_}| _] = Range,
-	 VarTab = Tabs#tabs.var_tab,
+	 VarTab = var_tab,
 	 VarsToExport = get_vars_to_export(Exprs, {FName, FunName, Arity}, VarTab),
 	 {Ranges, ExportVars, SubSt} = lists:unzip3(C),
 	 %% VarstoExport format : [{name, pos}].
@@ -854,7 +859,7 @@ get_one_clone_class(RangeWithExprAST, ClonePairs, Thresholds, Tabs) ->
      || C<-CloneClasses].
 
     
-get_one_clone_class_1(RangeWithExprAST, _ClonePair = {Range1, Range2, Subst}, Tabs) ->
+get_one_clone_class_1(RangeWithExprAST, _ClonePair = {Range1, Range2, Subst}) ->
     case RangeWithExprAST -- Range1 == [] of
       true ->
 	    %% Range is a sub list of Range1.
@@ -865,7 +870,7 @@ get_one_clone_class_1(RangeWithExprAST, _ClonePair = {Range1, Range2, Subst}, Ta
 	    SubSubst = lists:append(lists:sublist(Subst, StartIndex, Len)),
 	    {_, Exprs2} = lists:unzip(SubRange2),
 	    [{{{FName, FunName, Arity, _}, _, _, _},_}| _] = SubRange2,
-	    VarTab = Tabs#tabs.var_tab,
+	    VarTab = var_tab,
 	    VarsToExport2 = get_vars_to_export(Exprs2, {FName, FunName, Arity}, VarTab),
 	    %% Exprs from the first member of the clone pair which are going to 
             %% be replaced by new variables, and the new variables will be exported.
@@ -1171,20 +1176,24 @@ integer_list_to_string([I|Is], Acc) ->
     integer_list_to_string(Is, S++Acc).
 
     
-search_for_clones(Dir, [], _Thresholds) ->
-    OutFileName = filename:join(Dir, "wrangler_suffix_tree"),
-    write_file(OutFileName, []),
-    {ok, OutFileName};
-search_for_clones(Dir, Data, Thresholds) ->
+search_for_clones(Dir, Thresholds) ->
     MinLen = Thresholds#threshold.min_len,
     MinFreq= Thresholds#threshold.min_freq,
-    NumOfIndexStrs=integer_to_list(length(Data))++"\r\n",
-    IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
-					     ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
-						{_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
-    SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
-    wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
-                                                        MinFreq, 1, SuffixTreeExec).
+    NumOfIndexStrs=integer_to_list(ets:info(expr_seq_hash_tab, size))++"\r\n",
+    Data = ets:tab2list(expr_seq_hash_tab),
+    case Data of 
+        [] ->
+            OutFileName = filename:join(Dir, "wrangler_suffix_tree"),
+            write_file(OutFileName, []),
+            {ok, OutFileName};
+        _ ->
+            IndexStr = NumOfIndexStrs++lists:append([integer_list_to_string(Is)
+                                                     ||{_SeqNo, _FFA, ExpHashIndexPairs} <- Data,
+                                                       {_, Is}<-[lists:unzip(ExpHashIndexPairs)]]),
+            SuffixTreeExec = filename:join(code:priv_dir(wrangler), "gsuffixtree"),
+            wrangler_suffix_tree:get_clones_by_suffix_tree_inc(Dir, IndexStr, MinLen,
+                                                               MinFreq, 1, SuffixTreeExec)
+    end.
    
    
 
@@ -1305,9 +1314,6 @@ same_expr(Expr1, Expr2) ->
     wrangler_misc:concat_toks(Ts1) == wrangler_misc:concat_toks(Ts2).
 
 
-create_ets(Ets) ->
-    ets:new(Ets, [set, public]).
-  
 -spec(check_parameters/5::(MinLen :: integer(), MinToks :: integer(),
                            MinFreq :: integer(), MaxNewVars :: integer(),
                            SimiScore :: float()) -> 

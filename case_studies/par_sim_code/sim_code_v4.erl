@@ -29,13 +29,13 @@
 %% Author contact: hl@kent.ac.uk, sjt@kent.ac.uk
 %% 
 %% @private
--module(sim_code_v2).
+-module(sim_code_v4).
 
 -export([sim_code_detection/8,sim_code_detection/4]). 
 
 -export([ gen_initial_clone_candidates/3,
           generalise_and_hash_ast/5,
-          check_clone_candidates/3]).
+          check_clone_candidates/2]).
 
 
 -export([init_hash_loop/0, init_clone_check/0, init_ast_loop/1]).
@@ -107,7 +107,7 @@ sim_code_detection_1(Files, Thresholds, HashPid, ASTPid, SearchPaths, TabWidth) 
     ?wrangler_io("\nNumber of initial clone candidates: ~p\n", [length(Cs)]),
     
     ?wrangler_io("\nChecking clone candidates ... \n", []),
-    check_clone_candidates(Thresholds, HashPid, Cs).
+    check_clone_candidates(Thresholds, Cs).
     
 gen_initial_clone_candidates(Files, Thresholds, HashPid) ->
     %% Generate clone candidates using suffix tree based clone detection techniques.
@@ -306,12 +306,7 @@ get_clone_candidates(Pid, Thresholds, Dir) ->
 	{Pid, {ok, OutFileName}}->
 	    {ok, OutFileName}
     end.
-get_clone_in_range(Pid, C) ->
-    Pid! {get_clone_in_range, self(), C},
-    receive
-	{Pid, C1} ->
-	    C1
-    end.
+
 stop_hash_process(Pid) ->
     Pid!stop.
 
@@ -348,18 +343,7 @@ hash_loop(NextSeqNo) ->
 	    {ok, OutFileName} = search_for_clones(Dir, Thresholds),
             From ! {self(), {ok, OutFileName}},
             hash_loop(NextSeqNo);
-	{get_clone_in_range, From, {Ranges, Len, Freq}} ->
-	    F0 = fun ({ExprSeqId, ExprIndex}, L) ->
-			 [{ExprSeqId, {M, F, A}, Exprs}] = ets:lookup(expr_seq_hash_tab, ExprSeqId),
-			 Es = lists:sublist(Exprs, ExprIndex, L),
-			 [{{M,F,A,Index}, Toks, {{StartLoc, EndLoc}, StartLine}, IsNew}
-			  || {{Index, Toks, {StartLoc, EndLoc}, StartLine, IsNew}, _HashIndex} <- Es]
-		 end,
-	    C1 = {[F0(R, Len) || R <- Ranges], {Len, Freq}},
-	    From ! {self(), C1},
-	   %% hash_loop({NextSeqNo, NewData});
-            hash_loop(NextSeqNo);
-	stop ->
+        stop ->
             ets:delete(expr_hash_tab),
             ets:delete(expr_seq_hash_tab),
             ok
@@ -372,10 +356,10 @@ hash_loop(NextSeqNo) ->
 %%                                                                    %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_clone_candidates(Thresholds, HashPid, Cs) ->
+check_clone_candidates(Thresholds, Cs) ->
     CloneCheckerPid = start_clone_check_process(),
     %% examine each clone candiate and filter false positives.
-    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid, HashPid, 1),
+    Cs2 = examine_clone_candidates(Cs, Thresholds, CloneCheckerPid),
     Cs3 = combine_clones_by_au(Cs2),
     stop_clone_check_process(CloneCheckerPid),
     [{R, L, F, C}||{R, L, F, C}<-Cs3, length(R)>=2].
@@ -395,8 +379,8 @@ stop_clone_check_process(Pid) ->
 add_new_clones(Pid, Clones) ->
     Pid ! {add_clone, Clones}.
 
-get_final_clone_classes(Pid, ASTTab) ->
-    Pid ! {get_clones, self(), ASTTab},
+get_final_clone_classes(Pid) ->
+    Pid ! {get_clones, self()},
     receive
         {Pid, Cs} ->
 	  Cs
@@ -409,7 +393,7 @@ clone_check_loop(Cs, CandidateClassPairs) ->
 		     || Clone <- Clones],
             clone_check_loop(Clones1++Cs, [{hash_a_clone_candidate(Candidate), Clones}
                                            |CandidateClassPairs]);
-	{get_clones, From, _ASTTab} ->
+	{get_clones, From} ->
 	    ?debug("TIME3:\n~p\n", [time()]),
 	    Cs0=remove_sub_clones(Cs),
 	    Cs1=[{AbsRanges, Len, Freq, AntiUnifier}||
@@ -426,12 +410,34 @@ clone_check_loop(Cs, CandidateClassPairs) ->
  
 %%=============================================================================
 %% check each candidate clone, and drive real clone classes.
+%% Refactoring3: refactored to remove the dependences between consecutive recursions.
+%% Refactoring4: turn recursive function into lists:foreach.
+%% Refactoring5: turn lists:foreach into para_lib:pforeach.
+examine_clone_candidates(Cs, Thresholds, CloneCheckerPid) ->
+    NumberedCs = lists:zip(Cs, lists:seq(1, length(Cs))),
+    Time1 =now(),
+    para_lib:pforeach(fun({C, Nth}) ->
+                     examine_a_clone_candidate({C,Nth},Thresholds,
+                                               CloneCheckerPid)
+             end,NumberedCs),
+    Time2 = now(),
+    TotalTime  = timer:now_diff(Time2, Time1),
+    io:format("Time for clone examination:~p\n", [TotalTime/1000]),
+    get_final_clone_classes(CloneCheckerPid).
 
-examine_clone_candidates([],_Thresholds,CloneCheckerPid,_HashPid,_Num) ->
-    get_final_clone_classes(CloneCheckerPid,ast_tab);
-examine_clone_candidates([C| Cs],Thresholds,CloneCheckerPid,HashPid,Num) ->
-    output_progress_msg(Num), 
-    C1 = get_clone_in_range(HashPid,C),
+
+get_clone_in_range(_C={Ranges, Len, Freq}) ->
+    F0 = fun ({ExprSeqId, ExprIndex}, L) ->
+		 [{ExprSeqId, {M, F, A}, Exprs}] = ets:lookup(expr_seq_hash_tab, ExprSeqId),
+		 Es = lists:sublist(Exprs, ExprIndex, L),
+		 [{{M,F,A,Index}, Toks, {{StartLoc, EndLoc}, StartLine}, IsNew}
+		  || {{Index, Toks, {StartLoc, EndLoc}, StartLine, IsNew}, _HashIndex} <- Es]
+	 end,
+    {[F0(R, Len) || R <- Ranges], {Len, Freq}}.
+
+examine_a_clone_candidate({C,Nth},Thresholds,CloneCheckerPid) ->
+    output_progress_msg(Nth),
+    C1 = get_clone_in_range(C),
     MinToks = Thresholds#threshold.min_toks, 
     MinFreq = Thresholds#threshold.min_freq, 
     case remove_short_clones(C1,MinToks,MinFreq) of
@@ -439,14 +445,13 @@ examine_clone_candidates([C| Cs],Thresholds,CloneCheckerPid,HashPid,Num) ->
 	  ok;
       [C2] ->
             case examine_a_clone_candidate(C2,Thresholds) of
-	    [] ->
-		ok;
-	    ClonesWithAU ->
-                  add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
-	  end
-    end, 
-    examine_clone_candidates(Cs,Thresholds,CloneCheckerPid,HashPid,Num+1).
-
+                [] ->
+                    ok;
+                ClonesWithAU ->
+                    add_new_clones(CloneCheckerPid,{C2, ClonesWithAU})
+            end
+    end.
+ 
 output_progress_msg(Num) ->
     case Num rem 10 of
      	1 -> 
