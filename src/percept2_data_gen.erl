@@ -46,5 +46,11 @@ rq_migration_data() ->
                                      ||E<-ets:tab2list(pdb_info)])),
     Str=lists:flatten([io_lib:format("~p.\n", [E])||E<-Data]),
     file:write_file("rq_migration.txt", list_to_binary(Str)).           
-                                                                                                  
-    
+                                                              
+
+
+%% sample command:
+
+%% percept2_sampling:sample([run_queues], {percept2_profile, start, ["rq_migration.dat", {sim_code_v23, sim_code_detection, [["/proj/bencherl/bench/sim_code/data/wrangler"], 5, 40, 2, 4, 0.8, [], 8]}, [process_scheduling]]}, 1, fun()-> true end, ".").             
+
+        
