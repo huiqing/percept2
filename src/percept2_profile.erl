@@ -154,7 +154,7 @@ profile_to_file(FileSpec, Opts) ->
 set_tracer(Port, Opts) ->
     {TraceOpts, ProfileOpts, Mods} = parse_profile_options(Opts),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
-    erlang:trace_pattern(on_load, MatchSpec, [local]),
+    load_modules(Mods),
     [erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
     erlang:trace(all, true, [{tracer, Port}, timestamp, call, return_to, 
                              set_on_spawn, procs| TraceOpts]),
@@ -162,7 +162,18 @@ set_tracer(Port, Opts) ->
     ok.
     
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+load_modules([]) ->
+    ok;
+load_modules([Mod|Mods]) ->
+    case code:ensure_loaded(Mod) of 
+        {module, _} -> load_modules(Mods);
+        {error, _} ->
+            Str = io_lib:format("Percept2 failed to load module ~p, "
+                                "and functions defined in this module are not traced.\n", [Mod]),
+            io:format(lists:flatten(Str)),
+            load_modules(Mods)
+    end.
+           
 -spec(parse_profile_options([percept_option()]) -> 
              {[trace_flags()], [profile_flags()], [mfa()]}).
 parse_profile_options(Opts) ->
