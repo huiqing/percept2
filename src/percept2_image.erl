@@ -363,14 +363,14 @@ percentage(Width, Height, Percentage) ->
     Font = get_font(),
     Im = egd:create(round(Width), round(Height)),
     Black = egd:color(Im, {0, 0, 0}),
-    Green = egd:color(Im, {0, 255, 0}),
+    Orange = egd:color(Im, {255, 165, 0}),
 
     % Ratio and coordinates
 
     X = round(Width - 1 - Percentage*(Width - 1)),
 
     % Paint
-    egd:filledRectangle(Im, {X, 0}, {Width - 1, Height - 1}, Green),
+    egd:filledRectangle(Im, {X, 0}, {Width - 1, Height - 1}, Orange),
     {FontW, _} = egd_font:size(Font), 
     String = lists:flatten(io_lib:format("~.10B %", [round(100*Percentage)])),
 
