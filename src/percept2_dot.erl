@@ -213,6 +213,8 @@ format_vertex({M,F,A}) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
 format_vertex({undefined, _}) ->
     "undefined";
+format_vertex({{M,F,A}, 0}) ->
+    io_lib:format("~p:~p/~p", [M,F,A]);
 format_vertex({{M,F,A},C}) ->
     io_lib:format("~p:~p/~p(~p)", [M,F,A, C]).
 
