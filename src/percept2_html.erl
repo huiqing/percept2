@@ -1064,8 +1064,8 @@ process_info_content_1(_Env, Input) ->
                      term2html(info_msg_received(I))],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
                      term2html(info_msg_sent(I))],
-                    [{th, "accumulated runtime <br>(in microseconds)"},
-                     term2html(I#information.accu_runtime)],
+                    [{th, "accumulated runtime <br>(in milliseconds)"},
+                     term2html(I#information.accu_runtime div 1000)],
                     [{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined})]
                    ] ++ case percept2_db:is_dummy_pid(Pid) of
                             true ->
@@ -1078,7 +1078,7 @@ process_info_content_1(_Env, Input) ->
     WaitingMfas   = percept2_analyzer:waiting_activities(PidActivities),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
     MfaTable = html_table([
-        [{th, "percentage"},
+        [{th, "percentage of <br>total waiting time"},
          {th, "total"},         
          {th, "mean"},
          {th, "stddev"},
@@ -1264,7 +1264,7 @@ function_info_content_1(_Env, Input) ->
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
                             [{th, "M:F/A"},       mfa2html_with_link({Pid, MFA})],
                             [{th, "Call count"}, term2html(F#fun_info.call_count)],
-                            [{th, "Accumulated time"}, term2html(F#fun_info.acc_time)],
+                            [{th, "Accumulated time <br>(in milliseconds)"}, term2html(round(F#fun_info.acc_time/1000))],
                             [{th, "Callers"},     CallersTable], 
                             [{th, "Called"},      CalledTable]
                            ]),
