@@ -14,21 +14,21 @@ init_group(S, G) ->
                       (IfActive(Dir, Id, Ipdu, initial_ipdu_data(com_cfg:get(Dir, Id))))#ipdu_data{
                         pending_notification = Pending };
                    (Sig = #signal_data{kind = K, id = Id}) ->
-			if ?com_bug_030, (Id=='Com_IR26_SiGa' orelse Id=='Com_IR26_SiGb') ->
-				Sig;
-			   true ->
-			 	IfActive(K, Id, Sig, initial_signal_data(com_cfg:get(K, Id)))
-			end
+                        if ?com_bug_030, (Id=='Com_IR26_SiGa' orelse Id=='Com_IR26_SiGb') ->
+                                Sig;
+                           true ->
+                                IfActive(K, Id, Sig, initial_signal_data(com_cfg:get(K, Id)))
+                        end
                  end,
         S3 = car_lib:safe_map(Clear, S),
-	%% to reflect bug 030, we must copy signal values into the ipdu data
-	%% (in the absence of bug 030, this is a no-op)
-	lists:foldr(
-	  fun(#signal_data{kind=rx,id=Id},S0) -> copy_signal_to_ipdu({rx,Id},S0);
-	     (_,S0)                           -> S0
-	  end, 
-	  S3,
-	  S3#state.signals);
+        %% to reflect bug 030, we must copy signal values into the ipdu data
+        %% (in the absence of bug 030, this is a no-op)
+        lists:foldr(
+          fun(#signal_data{kind=rx,id=Id},S0) -> copy_signal_to_ipdu({rx,Id},S0);
+             (_,S0)                           -> S0
+          end, 
+          S3,
+          S3#state.signals);
       false -> S
     end,
   reset_timers(clear_group_update_bits(S2, G), G).

@@ -9,7 +9,7 @@
 -include("../include/percept2.hrl").
 
 %%% --------------------------------%%%
-%%% 	Callgraph Image generation  %%%
+%%%     Callgraph Image generation  %%%
 %%% --------------------------------%%%
 -spec(gen_callgraph_img(Pid::pid_value()) -> ok|no_image|dot_not_found|gen_svg_failed).
 gen_callgraph_img(Pid) ->
@@ -101,10 +101,10 @@ to_dot(MG, File) ->
     EdgeList=[{{X, Y}, Label} || {_, X, Y, Label} <- Edges],
     EdgeList1 = combine_edges(lists:keysort(1,EdgeList)),
     edge_list_to_dot(EdgeList1, File, "CallGraph").
-    		
-combine_edges(Edges) ->	
+                
+combine_edges(Edges) -> 
     combine_edges(Edges, []).
-combine_edges([], Acc) ->		
+combine_edges([], Acc) ->               
     Acc;
 combine_edges([{{X,Y}, Label}|Tl], [{X,Y, Label1}|Acc]) ->
     combine_edges(Tl, [{X, Y, Label+Label1}|Acc]);
@@ -220,13 +220,13 @@ format_vertex({{M,F,A},C}) ->
 
 format_edge(V1, V2, Label) ->
     String = ["\"",format_vertex(V1),"\"", " -> ",
-	      "\"", format_vertex(V2), "\""],
+              "\"", format_vertex(V2), "\""],
     [String, " [", "label=", "\"", format_label(Label), "\"",
      "fontsize=20 fontname=\"Verdana\"", "];\n"].
                        
 
 %%% ------------------------------------%%%
-%%% 	Process tree image generation   %%%
+%%%     Process tree image generation   %%%
 %%% ------------------------------------%%%
 gen_process_tree_img() ->
     Pid=spawn_link(?MODULE, gen_process_tree_img_1, [self()]),
@@ -344,7 +344,7 @@ format_process_tree_vertex(Other)  ->
     
 format_process_tree_edge(V1, V2, Label, CleanPid) ->
     String = ["\"",format_process_tree_vertex({V1, CleanPid}),"\"", " -> ",
-	      "\"", format_process_tree_vertex({V2, CleanPid}), "\""],
+              "\"", format_process_tree_vertex({V2, CleanPid}), "\""],
     [String, " [", "label=", "\"", format_label(Label),
      "\"",  "fontsize=20 fontname=\"Verdana\"", "];\n"].
 

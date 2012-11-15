@@ -17,19 +17,19 @@
 %% %CopyrightEnd%
 
 %% @doc Utility functions to operate on percept data. These functions should
-%%	be considered experimental. Behaviour may change in future releases.
+%%      be considered experimental. Behaviour may change in future releases.
 
 -module(percept2_analyzer).
--export([	
-	waiting_activities/1,
-	activities2count/2,
-	activities2count/3,
-	activities2count2/2,
-	analyze_activities/2,
-	runnable_count/1,
-	runnable_count/2, minmax_activities/2,
-	mean/1
-	]).
+-export([       
+        waiting_activities/1,
+        activities2count/2,
+        activities2count/3,
+        activities2count2/2,
+        analyze_activities/2,
+        runnable_count/1,
+        runnable_count/2, minmax_activities/2,
+        mean/1
+        ]).
 
 -include("../include/percept2.hrl").
 
@@ -37,15 +37,15 @@
 
 %%==========================================================================
 %%
-%% 		Interface functions
+%%              Interface functions
 %%
 %%==========================================================================
 %% @spec mean([number()]) -> {Mean, StdDev, N}
-%%	Mean = float()
-%%	StdDev = float()
-%%	N = integer()
+%%      Mean = float()
+%%      StdDev = float()
+%%      N = integer()
 %% @doc Calculates the mean and the standard deviation of a set of
-%%	numbers.
+%%      numbers.
 
 %% mean([])      -> {0, 0, 0}; 
 %% mean([Value]) -> {Value, 0, 1};
@@ -111,14 +111,14 @@ activity_start_states([#activity{id = Id, state = State}|Acts], D) ->
 
 
 %% @spec activities2count(#activity{}, timestamp()) -> Result
-%%	Result = [{Time, ProcessCount, PortCount}]
-%%	Time = float()
-%%	ProcessCount = integer()
-%%	PortCount = integer()
+%%      Result = [{Time, ProcessCount, PortCount}]
+%%      Time = float()
+%%      ProcessCount = integer()
+%%      PortCount = integer()
 %% @doc Calculate the resulting active processes and ports during
-%%	the activity interval.
-%%	Also checks active/inactive consistency.
-%%	A task will always begin with an active state and end with an inactive state.
+%%      the activity interval.
+%%      Also checks active/inactive consistency.
+%%      A task will always begin with an active state and end with an inactive state.
 
 activities2count(Acts, StartTs) when is_list(Acts) -> activities2count(Acts, StartTs, separated).
 
@@ -127,56 +127,56 @@ activities2count(Acts, StartTs, Type) when is_list(Acts) ->
 
 activities2count_loop([], _, _, Out) -> lists:reverse(Out);
 activities2count_loop(
-	[#activity{timestamp = Ts, id = Id, runnable_count = {ProcsRc, PortsRc}} | Acts], 
-	{StartTs, {Procs, Ports}}, separated, Out) ->
+        [#activity{timestamp = Ts, id = Id, runnable_count = {ProcsRc, PortsRc}} | Acts], 
+        {StartTs, {Procs, Ports}}, separated, Out) ->
     
     Time = ?seconds(Ts, StartTs),
     case Id of 
-	Id when is_port(Id) ->
-	    Entry = {Time, Procs, PortsRc},
-	    activities2count_loop(Acts, {StartTs, {Procs, PortsRc}}, separated, [Entry | Out]);
-	{pid, _} ->
-	    Entry = {Time, ProcsRc, Ports},
-	    activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, separated, [Entry | Out]);
-	_ ->
-   	    activities2count_loop(Acts, {StartTs,{Procs, Ports}}, separated, Out)
+        Id when is_port(Id) ->
+            Entry = {Time, Procs, PortsRc},
+            activities2count_loop(Acts, {StartTs, {Procs, PortsRc}}, separated, [Entry | Out]);
+        {pid, _} ->
+            Entry = {Time, ProcsRc, Ports},
+            activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, separated, [Entry | Out]);
+        _ ->
+            activities2count_loop(Acts, {StartTs,{Procs, Ports}}, separated, Out)
     end;
 activities2count_loop(
-	[#activity{ timestamp = Ts, id = Id, runnable_count ={ProcsRc, PortsRc}} | Acts], 
-	{StartTs, {Procs, Ports}}, summated, Out) ->
-	
+        [#activity{ timestamp = Ts, id = Id, runnable_count ={ProcsRc, PortsRc}} | Acts], 
+        {StartTs, {Procs, Ports}}, summated, Out) ->
+        
     Time = ?seconds(Ts, StartTs), 
     case Id of 
-	Id when is_port(Id) ->
-	    Entry = {Time, Procs + PortsRc},
-	    activities2count_loop(Acts, {StartTs, {Procs, PortsRc}}, summated, [Entry | Out]);
-	{pid, _}  ->
-	    Entry = {Time, ProcsRc + Ports},
-	    activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, summated, [Entry | Out])
+        Id when is_port(Id) ->
+            Entry = {Time, Procs + PortsRc},
+            activities2count_loop(Acts, {StartTs, {Procs, PortsRc}}, summated, [Entry | Out]);
+        {pid, _}  ->
+            Entry = {Time, ProcsRc + Ports},
+            activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, summated, [Entry | Out])
     end.
 
 %% @spec waiting_activities([#activity{}]) -> FunctionList
-%%	FunctionList = [{Seconds, Mfa, {Mean, StdDev, N}}]
-%%	Seconds = float()
-%%	Mfa = mfa()
-%%	Mean = float()
-%%	StdDev = float()
-%%	N = integer()
+%%      FunctionList = [{Seconds, Mfa, {Mean, StdDev, N}}]
+%%      Seconds = float()
+%%      Mfa = mfa()
+%%      Mean = float()
+%%      StdDev = float()
+%%      N = integer()
 %% @doc Calculates the time, both average and total, that a process has spent
-%%	in a receive state at specific function. However, if there are multiple receives
-%%	in a function it cannot differentiate between them.
+%%      in a receive state at specific function. However, if there are multiple receives
+%%      in a function it cannot differentiate between them.
 
 waiting_activities(Activities) ->
     ListedMfas = waiting_activities_mfa_list(Activities, []),
     Unsorted = lists:foldl(
-    	fun (Mfa, MfaList) ->
+        fun (Mfa, MfaList) ->
                 {_Total0, WaitingTimes} = get({waiting_mfa, Mfa}),
                 % cleanup
                 erlang:erase({waiting_mfa, Mfa}),
                 % statistics of receive waiting places
                 {Total, Mean, StdDev, N} = mean(WaitingTimes),
                 [{Total, Mfa, {Mean, StdDev, N}} | MfaList]
-	end, [], ListedMfas),
+        end, [], ListedMfas),
     lists:sort(fun ({A,_,_},{B,_,_}) ->
                        if 
                            A > B -> true;
@@ -187,59 +187,59 @@ waiting_activities(Activities) ->
 
 %% Generate lists of receive waiting times per mfa
 %% Out:
-%%	ListedMfas = [mfa()]
+%%      ListedMfas = [mfa()]
 %% Intrisnic:
-%%	get({waiting, mfa()}) ->
-%%	[{waiting, mfa()}, {Total, [WaitingTime]})
-%%	WaitingTime = float()
+%%      get({waiting, mfa()}) ->
+%%      [{waiting, mfa()}, {Total, [WaitingTime]})
+%%      WaitingTime = float()
 
 waiting_activities_mfa_list([], ListedMfas) -> ListedMfas;
 waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
     #activity{id = Pid, state = Act, timestamp = Time, where = MFA, in_out=_InOut} = Activity,
     case Act of 
-    	active ->
-	    waiting_activities_mfa_list(Activities, ListedMfas);
-	inactive ->
-	    % Want to know how long the wait is in a receive,
-	    % it is given via the next activity
-	    case Activities of
-	    	[] -> 
+        active ->
+            waiting_activities_mfa_list(Activities, ListedMfas);
+        inactive ->
+            % Want to know how long the wait is in a receive,
+            % it is given via the next activity
+            case Activities of
+                [] -> 
                         [Info] = percept2_db:select({information, Pid}),
                         case Info#information.stop of
-			    undefined ->
-			        % get profile end time
-			        Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
-			    Time2 ->
-			        Waited = ?seconds(Time2, Time)
-		        end,
-		        case get({waiting_mfa, MFA}) of
-			    undefined ->
+                            undefined ->
+                                % get profile end time
+                                Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
+                            Time2 ->
+                                Waited = ?seconds(Time2, Time)
+                        end,
+                        case get({waiting_mfa, MFA}) of
+                            undefined ->
                                 put({waiting_mfa, MFA}, {Waited, [Waited]}),
-			        [MFA | ListedMfas];
-		    	{Total, TimedMfa} ->
+                                [MFA | ListedMfas];
+                        {Total, TimedMfa} ->
                             put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
-			    ListedMfas
-		    end;
-		[#activity{timestamp=Time2, id = Pid, state = active} | _ ] ->
-		    % Calculate waiting time
+                            ListedMfas
+                    end;
+                [#activity{timestamp=Time2, id = Pid, state = active} | _ ] ->
+                    % Calculate waiting time
                     Waited = ?seconds(Time2, Time),
-		    % Get previous entry
-   		    case get({waiting_mfa, MFA}) of
-		    	undefined ->
-			    % add entry to list
+                    % Get previous entry
+                    case get({waiting_mfa, MFA}) of
+                        undefined ->
+                            % add entry to list
                             put({waiting_mfa, MFA}, {Waited, [Waited]}),
-			    waiting_activities_mfa_list(Activities, [MFA|ListedMfas]);
-			{Total, TimedMfa} ->
+                            waiting_activities_mfa_list(Activities, [MFA|ListedMfas]);
+                        {Total, TimedMfa} ->
                             put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
-			    waiting_activities_mfa_list(Activities, ListedMfas)
-		    end;
-		 _ -> error
-	    end
+                            waiting_activities_mfa_list(Activities, ListedMfas)
+                    end;
+                 _ -> error
+            end
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-%	Analyze interval for concurrency
+%       Analyze interval for concurrency
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -253,13 +253,13 @@ analyze_activities(Threshold, Activities) ->
 
 %% runnable_count(Activities, StartValue) -> RunnableCount
 %% In:
-%% 	Activities = [activity()]
-%%	StartValue = integer()
+%%      Activities = [activity()]
+%%      StartValue = integer()
 %% Out:
-%%	RunnableCount = [{integer(), activity()}]
+%%      RunnableCount = [{integer(), activity()}]
 %% Purpose:
-%%	Calculate the runnable count of a given interval of generic
-%% 	activities.
+%%      Calculate the runnable count of a given interval of generic
+%%      activities.
 
 %% @spec runnable_count([#activity{}]) -> [{integer(),#activity{}}]
 %% @hidden
@@ -282,16 +282,16 @@ runnable_count([], _ , Out) ->
     lists:reverse(Out);
 runnable_count([A | As], PrevCount, Out) ->
     case A#activity.state of 
-	active ->
-	    runnable_count(As, PrevCount + 1, [{PrevCount + 1, A} | Out]);
-	inactive ->
-	    runnable_count(As, PrevCount - 1, [{PrevCount - 1, A} | Out])
+        active ->
+            runnable_count(As, PrevCount + 1, [{PrevCount + 1, A} | Out]);
+        inactive ->
+            runnable_count(As, PrevCount - 1, [{PrevCount - 1, A} | Out])
     end.
 
 %% In:
-%%	Threshold = integer(),
-%%	RunnableActivities = [{Rc, activity()}]
-%%	Rc = integer()
+%%      Threshold = integer(),
+%%      RunnableActivities = [{Rc, activity()}]
+%%      Rc = integer()
 
 analyze_runnable_activities(Threshold, RunnableActivities) ->
     analyze_runnable_activities(Threshold, RunnableActivities, []).
@@ -300,27 +300,27 @@ analyze_runnable_activities( _z, [], Out) ->
     lists:reverse(Out);
 analyze_runnable_activities(Threshold, [{Rc, Act} | RunnableActs], Out) ->
     if 
-	Rc =< Threshold ->
-	    analyze_runnable_activities(Threshold, RunnableActs, [{Rc,Act} | Out]);
-	true ->
-	    analyze_runnable_activities(Threshold, RunnableActs, Out)
+        Rc =< Threshold ->
+            analyze_runnable_activities(Threshold, RunnableActs, [{Rc,Act} | Out]);
+        true ->
+            analyze_runnable_activities(Threshold, RunnableActs, Out)
     end.
 
 %% minmax_activity(Activities, Count) -> {Min, Max}
 %% In:
-%%	Activities = [activity()]
-%%	InitialCount = non_neg_integer()
+%%      Activities = [activity()]
+%%      InitialCount = non_neg_integer()
 %% Out:
-%%	{Min, Max}
-%%	Min = non_neg_integer()
-%%	Max = non_neg_integer()
+%%      {Min, Max}
+%%      Min = non_neg_integer()
+%%      Max = non_neg_integer()
 %% Purpose:
-%% 	Minimal and maximal activity during an activity interval.
-%%	Initial activity count needs to be supplied.	 
+%%      Minimal and maximal activity during an activity interval.
+%%      Initial activity count needs to be supplied.     
 
 %% @spec minmax_activities([#activity{}], integer()) -> {integer(), integer()}
-%% @doc	Calculates the minimum and maximum of runnable activites (processes
-%	and ports) during the interval of reffered by the activity list.
+%% @doc Calculates the minimum and maximum of runnable activites (processes
+%       and ports) during the interval of reffered by the activity list.
 
 minmax_activities(Activities, Count) ->
     minmax_activities(Activities, Count, {Count, Count}).
@@ -328,8 +328,8 @@ minmax_activities([], _, Out) ->
     Out;
 minmax_activities([A|Acts], Count, {Min, Max}) ->
     case A#activity.state of
-	active ->
-	   minmax_activities(Acts, Count + 1, {Min, lists:max([Count + 1, Max])});
-	inactive ->
-	   minmax_activities(Acts, Count - 1, {lists:min([Count - 1, Min]), Max})
+        active ->
+           minmax_activities(Acts, Count + 1, {Min, lists:max([Count + 1, Max])});
+        inactive ->
+           minmax_activities(Acts, Count - 1, {lists:min([Count - 1, Min]), Max})
     end.

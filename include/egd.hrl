@@ -21,19 +21,19 @@
 -type rgb() :: {byte(), byte(), byte()}.
 
 -record(image_object, {
-	type,
-	points = [],
-	span,
-	internals,
-	intervals,
-	color}). % RGBA in float values
+        type,
+        points = [],
+        span,
+        internals,
+        intervals,
+        color}). % RGBA in float values
 
 -record(image, {
-	width,
-	height,
-	objects = [],
-	background = {1.0,1.0,1.0,1.0},
-	image}).
+        width,
+        height,
+        objects = [],
+        background = {1.0,1.0,1.0,1.0},
+        image}).
 
 -define(debug, void).
 

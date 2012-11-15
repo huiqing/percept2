@@ -38,20 +38,20 @@ binary(Image, Type) ->
 parallel_binary(Image = #image{ height = Height },Type) ->
     case erlang:min(erlang:system_info(schedulers), Height) of
         1 ->
-	    % if the height or the number of schedulers is 1
-	    % do the scanlines in this process.
-	    W  = Image#image.width,
-	    Bg = Image#image.background,
-	    Os = Image#image.objects,
-	    erlang:list_to_binary([scanline(Y, Os, {0,0,W - 1, Bg}, Type)
-				   || Y <- lists:seq(1, Height)]);
-	Np ->
-	    Pids    = start_workers(Np, Type),
-    	    Handler = handle_workers(Height, Pids),
-    	    init_workers(Image, Handler, Pids),
-	    Res = receive_binaries(Height),
-    	    finish_workers(Pids),
-	    Res
+            % if the height or the number of schedulers is 1
+            % do the scanlines in this process.
+            W  = Image#image.width,
+            Bg = Image#image.background,
+            Os = Image#image.objects,
+            erlang:list_to_binary([scanline(Y, Os, {0,0,W - 1, Bg}, Type)
+                                   || Y <- lists:seq(1, Height)]);
+        Np ->
+            Pids    = start_workers(Np, Type),
+            Handler = handle_workers(Height, Pids),
+            init_workers(Image, Handler, Pids),
+            Res = receive_binaries(Height),
+            finish_workers(Pids),
+            Res
     end.
 
 start_workers(Np, Type) ->
@@ -63,27 +63,27 @@ start_workers(Np, Type, Pids) when Np > 0 ->
 
 worker(Type) ->
     receive
-	{Pid, data, #image{ objects = Os, width = W, background = Bg }} -> 
-	    worker(Os, W, Bg, Type, Pid)
+        {Pid, data, #image{ objects = Os, width = W, background = Bg }} -> 
+            worker(Os, W, Bg, Type, Pid)
     end.
 
 worker(Objects, Width, Bg, Type, Collector) ->
     receive
-    	{Pid, scan, {Ys, Ye}} ->
-	    lists:foreach(fun
-		(Y) ->
-		    Bin = erlang:list_to_binary(scanline(Y, Objects, {0,0,Width - 1, Bg}, Type)),
-		    Collector ! {scan, Y, Bin}
-		end, lists:seq(Ys,Ye)),
-	    Pid ! {self(), scan_complete},
-	    worker(Objects, Width, Bg, Type, Collector);
-    	{Pid, scan, Y} ->
-	    Bin = erlang:list_to_binary(scanline(Y, Objects, {0,0,Width - 1, Bg}, Type)),
-	    Collector ! {scan, Y, Bin},
-	    Pid ! {self(), scan_complete},
-	    worker(Objects, Width, Bg, Type, Collector);
-	{_, done} ->
-	 ok
+        {Pid, scan, {Ys, Ye}} ->
+            lists:foreach(fun
+                (Y) ->
+                    Bin = erlang:list_to_binary(scanline(Y, Objects, {0,0,Width - 1, Bg}, Type)),
+                    Collector ! {scan, Y, Bin}
+                end, lists:seq(Ys,Ye)),
+            Pid ! {self(), scan_complete},
+            worker(Objects, Width, Bg, Type, Collector);
+        {Pid, scan, Y} ->
+            Bin = erlang:list_to_binary(scanline(Y, Objects, {0,0,Width - 1, Bg}, Type)),
+            Collector ! {scan, Y, Bin},
+            Pid ! {self(), scan_complete},
+            worker(Objects, Width, Bg, Type, Collector);
+        {_, done} ->
+         ok
     end.
 
 init_workers(_Image, _Handler, []) -> ok;
@@ -99,14 +99,14 @@ handle_workers(_, 0, _) -> ok;
 handle_workers(H, Hi, Np) when H > 0 ->
     N = trunc(Hi/(2*Np)),
     receive 
-	{Pid, scan_complete} -> 
-	    if N < 2 ->
-	    	Pid ! {self(), scan, Hi},
-		handle_workers(H, Hi - 1, Np);
-	    true ->
-	    	Pid ! {self(), scan, {Hi - N, Hi}},
-	   	handle_workers(H, Hi - 1 - N, Np)
-	end
+        {Pid, scan_complete} -> 
+            if N < 2 ->
+                Pid ! {self(), scan, Hi},
+                handle_workers(H, Hi - 1, Np);
+            true ->
+                Pid ! {self(), scan, {Hi - N, Hi}},
+                handle_workers(H, Hi - 1 - N, Np)
+        end
     end.
 
 finish_workers([]) -> ok;
@@ -121,7 +121,7 @@ receive_binaries(0, Bins) -> erlang:list_to_binary(Bins);
 receive_binaries(H, Bins) when H > 0 ->
     receive
         {scan, H, Bin} -> 
-	    receive_binaries(H - 1, [Bin|Bins])
+            receive_binaries(H - 1, [Bin|Bins])
     end.
 
 scanline(Y, Os, {_,_,Width,_}=LSB, Type) ->
@@ -161,11 +161,11 @@ simplify_trans([],_,_,_,Acc) ->
     Acc;
 simplify_trans([{{L,_,_},_}|_] = Trans,Type,Layers,OldC,Acc) ->
     {NextTrans,RestTrans} =
-	lists:splitwith(fun({{L1,_,_},_}) when L1 == L ->
-				true;
-			   (_) ->
-				false
-			end, Trans),
+        lists:splitwith(fun({{L1,_,_},_}) when L1 == L ->
+                                true;
+                           (_) ->
+                                false
+                        end, Trans),
     {C,NewLayers} = color(NextTrans,Layers,Type,OldC),
     case OldC of
         C -> %% No change in color, so transition unnecessary.
@@ -216,12 +216,12 @@ parse_objects_on_line(Y, Width, Objects) ->
 parse_objects_on_line(_Y, _Z, _, [], Out) -> lists:flatten(Out);
 parse_objects_on_line(Y, Z, Width, [O|Os], Out) ->
     case is_object_on_line(Y, O) of
-    	false ->
-	    parse_objects_on_line(Y, Z + 1, Width, Os, Out);
-	true ->
-	    OLs  = object_line_data(Y, Z, O),
-	    TOLs = trim_object_line_data(OLs, Width),
-	    parse_objects_on_line(Y, Z + 1, Width, Os, [TOLs|Out])
+        false ->
+            parse_objects_on_line(Y, Z + 1, Width, Os, Out);
+        true ->
+            OLs  = object_line_data(Y, Z, O),
+            TOLs = trim_object_line_data(OLs, Width),
+            parse_objects_on_line(Y, Z + 1, Width, Os, [TOLs|Out])
     end.
 
 trim_object_line_data(OLs, Width) ->
@@ -237,27 +237,27 @@ trim_object_line_data([{Z, Xl, Xr, C}|OLs], Width, Out) ->
 
 % object_line_data
 % In:
-%	Y :: index of height
-%	Z :: index of depth
-%	Object :: image_object()
+%       Y :: index of height
+%       Z :: index of depth
+%       Object :: image_object()
 % Out:
-%	OLs = [{Z, Xl, Xr, Color}]
-%	Z = index of height
-%	Xl = left X index
-%	Xr = right X index 
+%       OLs = [{Z, Xl, Xr, Color}]
+%       Z = index of height
+%       Xl = left X index
+%       Xr = right X index 
 % Purpose:
-%	Calculate the length (start and finish index) of an objects horizontal
-%	line given the height index.
+%       Calculate the length (start and finish index) of an objects horizontal
+%       line given the height index.
 
 object_line_data(Y, Z, Object) -> 
     object_line_data(Y, Z, Object, Object#image_object.type).
 object_line_data(Y, Z, #image_object{ span = {X0, Y0, X1, Y1}, color = C}, rectangle) ->
     if
-	Y0 =:= Y ; Y1 =:= Y ->
-    	    [{Z, X0, X1, C}];
-	true ->
-    	    [{Z, X0, X0, C},
-	     {Z, X1, X1, C}]
+        Y0 =:= Y ; Y1 =:= Y ->
+            [{Z, X0, X1, C}];
+        true ->
+            [{Z, X0, X0, C},
+             {Z, X1, X1, C}]
     end;
 
 object_line_data(_Y, Z, #image_object{ span = {X0, _, X1, _}, color = C}, filled_rectangle) ->
@@ -265,25 +265,25 @@ object_line_data(_Y, Z, #image_object{ span = {X0, _, X1, _}, color = C}, filled
 
 object_line_data(Y, Z, #image_object{ internals={Xr,Yr,Yr2}, span = {X0,Y0,X1,Y1}, color = C}, filled_ellipse) ->
     if 
-    	X1 - X0 == 0; Y1 - Y0 == 0 ->
-	    [{Z, X0, X1, C}];
-	true ->
-	    Yo  = trunc(Y - Y0 - Yr),
-	    Yo2 = Yo*Yo,
-	    Xo  = math:sqrt((1 - Yo2/Yr2))*Xr,
-	    [{Z, round(X0 - Xo + Xr), round(X0 + Xo + Xr), C}]
+        X1 - X0 == 0; Y1 - Y0 == 0 ->
+            [{Z, X0, X1, C}];
+        true ->
+            Yo  = trunc(Y - Y0 - Yr),
+            Yo2 = Yo*Yo,
+            Xo  = math:sqrt((1 - Yo2/Yr2))*Xr,
+            [{Z, round(X0 - Xo + Xr), round(X0 + Xo + Xr), C}]
     end;
 
 object_line_data(Y, Z, #image_object{ intervals = Is, color = C}, filled_triangle) ->
     case lists:keyfind(Y, 1, Is) of
-   	{Y, Xl, Xr} -> [{Z, Xl, Xr, C}];
-	false -> []
+        {Y, Xl, Xr} -> [{Z, Xl, Xr, C}];
+        false -> []
     end;    
 
 object_line_data(Y, Z, #image_object{ intervals = Is, color = C}, line) ->
     case dict:find(Y, Is) of
-	{ok, Ls} -> [{Z, Xl, Xr, C}||{Xl,Xr} <- Ls];
-	_ -> []
+        {ok, Ls} -> [{Z, Xl, Xr, C}||{Xl,Xr} <- Ls];
+        _ -> []
     end;
 
 object_line_data(Y, Z, #image_object{ color = C, intervals = Is}, polygon) ->
@@ -329,8 +329,8 @@ precompile_objects([O = #image_object{ type = filled_ellipse, span = {X0,Y0,X1,Y
 precompile_objects([O = #image_object{ type = arc, points = [P0,P1], internals = D }| Os], Out) ->
     Es = egd_primitives:arc_to_edges(P0, P1, D),
     Ls = lists:foldl(fun
-    	({Ep0, Ep1}, D0) ->
-	    ls_list2dict(line_ls(Ep0, Ep1), D0)
+        ({Ep0, Ep1}, D0) ->
+            ls_list2dict(line_ls(Ep0, Ep1), D0)
     end, dict:new(), Es),
     precompile_objects(Os, [O#image_object{ type = line, intervals = Ls } | Out]);
 
@@ -347,8 +347,8 @@ triangle_ls(P1,P2,P3) ->
     % From that point, two lines will be drawn to the 
     % other points.
     % For each Y step, 
-  	% bresenham_line_interval for each of the two lines
-	% Find the left most and the right most for those lines
+        % bresenham_line_interval for each of the two lines
+        % Find the left most and the right most for those lines
     % At an end point, a new line to the point already being drawn
     % repeat same procedure as above
     [Sp1, Sp2, Sp3] = tri_pt_ysort([P1,P2,P3]),   
@@ -365,28 +365,28 @@ triangle_ls_lp(LSs1, P1, [], P2, Out) ->
     N2 = length(SLSs),
     N1 = length(LSs1),
     if 
-	N1 > N2 ->
-	    [_|ILSs] = LSs1,
-    	    triangle_ls_lp(ILSs, SLSs, Out);
-	N2 > N1 ->
-	    [_|ILSs] = SLSs,
-    	    triangle_ls_lp(LSs1, ILSs, Out);
-	true ->
-    	    triangle_ls_lp(LSs1, SLSs, Out)
+        N1 > N2 ->
+            [_|ILSs] = LSs1,
+            triangle_ls_lp(ILSs, SLSs, Out);
+        N2 > N1 ->
+            [_|ILSs] = SLSs,
+            triangle_ls_lp(LSs1, ILSs, Out);
+        true ->
+            triangle_ls_lp(LSs1, SLSs, Out)
     end;
 triangle_ls_lp([], P1, LSs2, P2, Out) ->
     SLSs = tri_ls_ysort(line_ls(P1,P2)),
     N1 = length(SLSs),
     N2 = length(LSs2),
     if 
-	N1 > N2 ->
-	    [_|ILSs] = SLSs,
-    	    triangle_ls_lp(ILSs, LSs2, Out);
-	N2 > N1 ->
-	    [_|ILSs] = LSs2,
-    	    triangle_ls_lp(SLSs, ILSs, Out);
-	true ->
-	    triangle_ls_lp(SLSs, LSs2, Out)
+        N1 > N2 ->
+            [_|ILSs] = SLSs,
+            triangle_ls_lp(ILSs, LSs2, Out);
+        N2 > N1 ->
+            [_|ILSs] = LSs2,
+            triangle_ls_lp(SLSs, ILSs, Out);
+        true ->
+            triangle_ls_lp(SLSs, LSs2, Out)
     end;
 triangle_ls_lp([LS1|LSs1],P1,[LS2|LSs2],P2, Out) ->
     {Y, Xl1, Xr1} = LS1,
@@ -408,35 +408,35 @@ triangle_ls_lp([LS1|LSs1], [LS2|LSs2], Out) ->
 tri_pt_ysort(Pts) ->
     % {X,Y}
     lists:sort(
-	fun ({_,Y1},{_,Y2}) ->
-	   if Y1 > Y2 -> false; true -> true end
-	end, Pts).
+        fun ({_,Y1},{_,Y2}) ->
+           if Y1 > Y2 -> false; true -> true end
+        end, Pts).
 
 tri_ls_ysort(LSs) ->
     % {Y, Xl, Xr}
     lists:sort(
-	fun ({Y1,_,_},{Y2,_,_}) ->
-	   if Y1 > Y2 -> false; true -> true end
-	end, LSs).
+        fun ({Y1,_,_},{Y2,_,_}) ->
+           if Y1 > Y2 -> false; true -> true end
+        end, LSs).
 
 % polygon_ls
 % In:
-%	Pts :: [{X,Y}]
+%       Pts :: [{X,Y}]
 % Out:
-% 	LSs :: [{Y,Xl,Xr}]
+%       LSs :: [{Y,Xl,Xr}]
 % Purpose:
-%	Make polygon line spans
+%       Make polygon line spans
 % Algorithm:
-%	1. Find the left most (lm) point
-%	2. Find the two points adjacent to that point
-%		The tripplet will make a triangle
-%	3. Ensure no points lies within the triangle
-%	4a.No points within triangle, 
-%		make triangle,
-%	   	remove lm point
-%		1.
-%	4b.point(s) within triangle,
-%				
+%       1. Find the left most (lm) point
+%       2. Find the two points adjacent to that point
+%               The tripplet will make a triangle
+%       3. Ensure no points lies within the triangle
+%       4a.No points within triangle, 
+%               make triangle,
+%               remove lm point
+%               1.
+%       4b.point(s) within triangle,
+%                               
 
 
 polygon_ls(Pts) ->
@@ -456,8 +456,8 @@ polygon_tri(Pts) ->
 polygon_tri([P1,P2,P3],Tris) -> [{P1,P2,P3}|Tris];
 polygon_tri([P2,P1,P3|Pts], Tris) ->
     case polygon_tri_test(P1,P2,P3,Pts) of
-	false -> polygon_tri(polygon_lm_pt([P2,P3|Pts]), [{P1,P2,P3}|Tris]);
-	[LmPt|Ptsn] -> polygon_tri([P2,P1,LmPt,P3|Ptsn], Tris)
+        false -> polygon_tri(polygon_lm_pt([P2,P3|Pts]), [{P1,P2,P3}|Tris]);
+        [LmPt|Ptsn] -> polygon_tri([P2,P1,LmPt,P3|Ptsn], Tris)
     end.
 
 polygon_tri_test(P1,P2,P3, Pts) ->
@@ -466,19 +466,19 @@ polygon_tri_test(P1,P2,P3, Pts) ->
 polygon_tri_test(_,_,_, [], _) -> false;
 polygon_tri_test(P1,P2,P3,[Pt|Pts], Ptsr) ->
     case point_inside_triangle(Pt, P1,P2,P3) of
-    	false -> polygon_tri_test(P1,P2,P3, Pts, [Pt|Ptsr]);
-    	true -> [Pt|Pts] ++ lists:reverse(Ptsr) 
+        false -> polygon_tri_test(P1,P2,P3, Pts, [Pt|Ptsr]);
+        true -> [Pt|Pts] ++ lists:reverse(Ptsr) 
     end.
 
 % polygon_lm_pt
 % In:
-%	Pts ::  [{X,Y}]
+%       Pts ::  [{X,Y}]
 % Out
-%	LmPts = [{X0,Y0},{Xmin,Y0},{X1,Y1},...]
+%       LmPts = [{X0,Y0},{Xmin,Y0},{X1,Y1},...]
 % Purpose:
-%	 The order of the list is important
-%	 rotate the elements until Xmin is first
-%	 This is not extremly fast.
+%        The order of the list is important
+%        rotate the elements until Xmin is first
+%        This is not extremly fast.
 
 polygon_lm_pt(Pts) ->
     Xs = [X||{X,_}<-Pts],
@@ -508,17 +508,17 @@ ls_list2dict([], D) -> D;
 ls_list2dict([{Y, Xl, Xr}|Ls], D) ->
     case dict:is_key(Y, D) of
         false -> ls_list2dict(Ls, dict:store(Y, [{Xl, Xr}], D));
-	true  -> ls_list2dict(Ls, dict:append(Y, {Xl, Xr}, D))
+        true  -> ls_list2dict(Ls, dict:append(Y, {Xl, Xr}, D))
     end.
 
 %% line_ls
 %% In:
-%%	P1 :: point()
-%%	P2 :: point()
+%%      P1 :: point()
+%%      P2 :: point()
 %% Out:
-%%	{{Ymin,Ymax}, LSD :: line_step_data()}
+%%      {{Ymin,Ymax}, LSD :: line_step_data()}
 %% Purpose:
-%% 	Instead of points -> intervals
+%%      Instead of points -> intervals
 
 
 line_ls({Xi0, Yi0},{Xi1,Yi1}) ->
@@ -526,13 +526,13 @@ line_ls({Xi0, Yi0},{Xi1,Yi1}) ->
     Steep = abs(Yi1 - Yi0) > abs(Xi1 - Xi0),
 
     {Xs0, Ys0, Xs1, Ys1} = case Steep of
-	true -> {Yi0,Xi0,Yi1,Xi1};
-	false -> {Xi0,Yi0,Xi1,Yi1}
+        true -> {Yi0,Xi0,Yi1,Xi1};
+        false -> {Xi0,Yi0,Xi1,Yi1}
     end,
 
     {X0,Y0,X1,Y1} = case Xs0 > Xs1 of
-	true -> {Xs1,Ys1,Xs0,Ys0};
-	false -> {Xs0,Ys0,Xs1,Ys1}
+        true -> {Xs1,Ys1,Xs0,Ys0};
+        false -> {Xs0,Ys0,Xs1,Ys1}
     end,
 
     DX = X1 - X0,
@@ -541,17 +541,17 @@ line_ls({Xi0, Yi0},{Xi1,Yi1}) ->
     Error = -DX/2,
 
     Ystep = case Y0 < Y1 of
-	true -> 1;
-	false -> -1
+        true -> 1;
+        false -> -1
     end, 
     line_ls_step(X0, X1,Y0, DX, DY, Ystep, Error, X0, Steep, []).
 
 %% line_ls_step_(not)_steep
 %% In:
 %% Out:
-%%	[{Yi, Xl,Xr}]
+%%      [{Yi, Xl,Xr}]
 %% Purpose:
-%% 	Produce an line_interval for each Yi (Y index)	
+%%      Produce an line_interval for each Yi (Y index)  
 
 line_ls_step(X, X1, Y, Dx, Dy, Ys, E, X0, false = Steep, LSs) when X < X1, E >= 0 ->
     line_ls_step(X+1,X1,Y+Ys,Dx,Dy,Ys, E - Dx + Dy, X+1, Steep, [{Y,X0,X}|LSs]);
@@ -601,9 +601,9 @@ text_intervals({Xtl,Ytl}, Fh, Font, [Code|Chars], Out) ->
 text_intervals_vertical( _, [], Out) -> Out;
 text_intervals_vertical({Xtl, Ytl}, [LS|LSs], Out) -> 
     H = lists:foldl( 
-	fun ({Xl,Xr}, RLSs) ->
-	    [{Ytl, Xl + Xtl, Xr + Xtl}|RLSs]
-	end, [], LS),
+        fun ({Xl,Xr}, RLSs) ->
+            [{Ytl, Xl + Xtl, Xr + Xtl}|RLSs]
+        end, [], LS),
     text_intervals_vertical({Xtl, Ytl+1}, LSs, [H|Out]).
 
 
@@ -618,7 +618,7 @@ eps_objects(H,[O|Os], Out) -> eps_objects(H,Os, [eps_object(H,O)|Out]).
 
 eps_object(H,#image_object{ type = text_horizontal, internals = {_Font,Text}, points = [{X,Y}], color={R,G,B,_}}) ->
     s("/Times-Roman findfont\n14 scalefont\nsetfont\n~.4f ~.4f ~.4f setrgbcolor\nnewpath\n~p ~p moveto\n(~s) show~n",
-	[R,G,B,X,H-(Y + 10), Text]);
+        [R,G,B,X,H-(Y + 10), Text]);
 eps_object(H,#image_object{ type = filled_ellipse, points = [{X1,Y1p},{X2,Y2p}], color={R,G,B,_}}) ->
     Y1 = H - Y1p,
     Y2 = H - Y2p,
@@ -627,23 +627,23 @@ eps_object(H,#image_object{ type = filled_ellipse, points = [{X1,Y1p},{X2,Y2p}],
     Cx = X1 + Xr,
     Cy = Y1 + Yr,
     s("~.4f ~.4f ~.4f setrgbcolor\nnewpath\n~p ~p ~p ~p 0 360 ellipse fill\n", 
-	[R,G,B,Cx,Cy,Xr,Yr]);
+        [R,G,B,Cx,Cy,Xr,Yr]);
 eps_object(H,#image_object{ type = arc, points = [P0, P1], internals = D, color={R,G,B,_}}) ->
     Es = egd_primitives:arc_to_edges(P0, P1, D),
     [s("~.4f ~.4f ~.4f setrgbcolor\n", [R,G,B])|lists:foldl(fun
-    	({{X1,Y1},{X2,Y2}}, Eps) ->
-    	    [s("newpath\n~p ~p moveto\n~p ~p lineto\n1 setlinewidth\nstroke\n", [X1,H-Y1,X2,H-Y2])|Eps]
+        ({{X1,Y1},{X2,Y2}}, Eps) ->
+            [s("newpath\n~p ~p moveto\n~p ~p lineto\n1 setlinewidth\nstroke\n", [X1,H-Y1,X2,H-Y2])|Eps]
     end, [], Es)];
  
 eps_object(H,#image_object{ type = line, points = [{X1,Y1}, {X2,Y2}], color={R,G,B,_}}) ->
     s("~.4f ~.4f ~.4f setrgbcolor\nnewpath\n~p ~p moveto\n~p ~p lineto\n1 setlinewidth\nstroke\n", 
-	[R,G,B,X1,H-Y1,X2,H-Y2]);
+        [R,G,B,X1,H-Y1,X2,H-Y2]);
 eps_object(H,#image_object{ type = rectangle, points = [{X1,Y1}, {X2,Y2}], color={R,G,B,_}}) ->
     s("~.4f ~.4f ~.4f setrgbcolor\nnewpath\n~p ~p moveto\n~p ~p lineto\n~p ~p lineto\n~p ~p lineto\n~p ~p lineto\n1 setlinewidth\nstroke\n", 
-	[R,G,B,X1,H-Y1,X2,H-Y1,X2,H-Y2,X1,H-Y2,X1,H-Y1]);
+        [R,G,B,X1,H-Y1,X2,H-Y1,X2,H-Y2,X1,H-Y2,X1,H-Y1]);
 eps_object(H,#image_object{ type = filled_rectangle, points = [{X1,Y1}, {X2,Y2}], color={R,G,B,_}}) ->
     s("~.4f ~.4f ~.4f setrgbcolor\nnewpath\n~p ~p moveto\n~p ~p lineto\n~p ~p lineto\n~p ~p lineto\n~p ~p lineto\nclosepath\nfill\n", 
-	[R,G,B,X1,H-Y1,X2,H-Y1,X2,H-Y2,X1,H-Y2,X1,H-Y1]);
+        [R,G,B,X1,H-Y1,X2,H-Y1,X2,H-Y2,X1,H-Y2,X1,H-Y1]);
 eps_object(_,_) -> "".
 
 s(Format, Terms) -> lists:flatten(io_lib:format(Format, Terms)).

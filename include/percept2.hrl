@@ -17,9 +17,9 @@
 %% %CopyrightEnd%
 %% 
 
-%%% -------------------	%%%
-%%% Type definitions	%%%
-%%% -------------------	%%%
+%%% ------------------- %%%
+%%% Type definitions    %%%
+%%% ------------------- %%%
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 -type true_mfa() :: {atom(), atom(), byte() | list()}.
 -type state() :: 'active' | 'inactive'.
@@ -29,14 +29,14 @@
 
 %% for removing warnings from dialyzer.
 -type special_atom()::'_'|'$0'|'$1'|'$2'|'$3'|'$4'|'$5'.
-%%% -------------------	%%%
-%%% 	Records		%%%
-%%% -------------------	%%%
+%%% ------------------- %%%
+%%%     Records         %%%
+%%% ------------------- %%%
 -record(activity, {
-          timestamp 		 :: timestamp()|special_atom(), 
-          id 			 :: pid_value() | port()|special_atom(),
-          state = undefined	 :: state() | 'undefined'|special_atom(),
-          where = undefined	 :: true_mfa() | 'undefined'|special_atom(),
+          timestamp              :: timestamp()|special_atom(), 
+          id                     :: pid_value() | port()|special_atom(),
+          state = undefined      :: state() | 'undefined'|special_atom(),
+          where = undefined      :: true_mfa() | 'undefined'|special_atom(),
           runnable_count = {0,0} :: {non_neg_integer(), non_neg_integer()}|special_atom(),
           in_out = []            :: [{atom, timestamp()}]|special_atom()
          }).
@@ -49,20 +49,20 @@
           }).
 
 -record(information, {
-          id			 :: pid_value() | port()|special_atom(), 
-          name = undefined	 :: atom()| string()|'undefined'|special_atom(), 
-          entry = undefined	 :: true_mfa()|'undefined'|special_atom(), 
-          start = undefined 	 :: timestamp()|'undefined'|special_atom(),
-          stop = undefined	 :: timestamp()|'undefined'|special_atom(), 
-          parent = undefined 	 :: pid_value()|'undefined'|special_atom(),
+          id                     :: pid_value() | port()|special_atom(), 
+          name = undefined       :: atom()| string()|'undefined'|special_atom(), 
+          entry = undefined      :: true_mfa()|'undefined'|special_atom(), 
+          start = undefined      :: timestamp()|'undefined'|special_atom(),
+          stop = undefined       :: timestamp()|'undefined'|special_atom(), 
+          parent = undefined     :: pid_value()|'undefined'|special_atom(),
           ancestors =[]          :: [pid_value()]|special_atom(),
           rq_history=[]          :: [{timestamp(), non_neg_integer()}]|special_atom(),
-          children = []		 :: [pid_value()]|special_atom(),
+          children = []          :: [pid_value()]|special_atom(),
           msgs_received ={0, 0}  :: {non_neg_integer(), non_neg_integer()}|special_atom(),
           msgs_sent     ={0, 0}  :: {non_neg_integer(), non_neg_integer()}|special_atom(),
           accu_runtime = 0       :: integer()|special_atom(),
           hidden_pids = []       :: [pid_value()]|special_atom()
-	}).
+        }).
  
 -record(inter_node, {
           timed_from_node    ::{timestamp(),node()}|{special_atom(), special_atom()},
@@ -103,9 +103,9 @@
          }).
 
 
-%%% -------------------	%%%
-%%% 	Macros		%%%
-%%% -------------------	%%%
+%%% ------------------- %%%
+%%%     Macros          %%%
+%%% ------------------- %%%
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
 %%-define(debug, 9).

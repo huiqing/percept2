@@ -20,8 +20,8 @@
 %% 
 %% @doc Percept Collector 
 %%
-%%	This module provides the user interface for the percept data
-%	collection (profiling).
+%%      This module provides the user interface for the percept data
+%       collection (profiling).
 %% 
 
 -module(percept2_profile).
@@ -30,13 +30,13 @@
          start/2, 
          start/3,
          stop/0
-      	]).
+        ]).
 
 -include("../include/percept2.hrl").
 
 %%==========================================================================
 %%
-%% 		Type definitions 
+%%              Type definitions 
 %%
 %%==========================================================================
 -type port_number() :: integer().
@@ -57,7 +57,7 @@
     
 %%==========================================================================
 %%
-%% 		Interface functions
+%%              Interface functions
 %%
 %%==========================================================================
 
@@ -70,24 +70,24 @@ start(FileSpec, Options) ->
     profile_to_file(FileSpec,Options). 
 
 %%@doc Starts profiling at the entrypoint specified by the MFA. All events are collected, 
-%%	this means that processes outside the scope of the entry-point are also profiled. 
-%%	No explicit call to stop/0 is needed, the profiling stops when
-%%	the entry function returns.
+%%      this means that processes outside the scope of the entry-point are also profiled. 
+%%      No explicit call to stop/0 is needed, the profiling stops when
+%%      the entry function returns.
 -spec start(FileSpec::file:filename()|
                                 {file:filename(), wrap, Suffix::string(),
                                  WrapSize::pos_integer(), WrapCnt::pos_integer()},
-	    Entry :: {atom(), atom(), list()},
+            Entry :: {atom(), atom(), list()},
             Options :: [percept_option()]) ->
                    'ok' | {'already_started', port_number()} |
                    {'error', 'not_started'}.
 start(FileSpec, _Entry={Mod, Fun, Args}, Options) ->
     case whereis(percept2_port) of
-	undefined ->
-	    profile_to_file(FileSpec,Options),
+        undefined ->
+            profile_to_file(FileSpec,Options),
             _Res=erlang:apply(Mod, Fun, Args),
             stop();  
-	Port ->
-	    {already_started, Port}
+        Port ->
+            {already_started, Port}
     end.
 
 deliver_all_trace() -> 
@@ -112,18 +112,18 @@ stop() ->
     erlang:trace_pattern({'_', '_', '_'}, false, [local]),
     deliver_all_trace(), 
     case whereis(percept2_port) of
-    	undefined -> 
-	    {error, not_started};
-	Port ->
-	    erlang:port_command(Port, 
+        undefined -> 
+            {error, not_started};
+        Port ->
+            erlang:port_command(Port, 
                                 erlang:term_to_binary({profile_stop, erlang:now()})),
             erlang:port_close(Port),
-       	    ok
+            ok
     end. 
 
 %%==========================================================================
 %%
-%% 		Auxiliary functions 
+%%              Auxiliary functions 
 %%
 %%==========================================================================
 -spec profile_to_file(FileSpec::file:filename()|
@@ -133,22 +133,22 @@ stop() ->
                              {'ok', port()} | {'already_started', port()}.
 profile_to_file(FileSpec, Opts) ->
     case whereis(percept2_port) of 
-	undefined ->
-	    io:format("Starting profiling.~n", []),
+        undefined ->
+            io:format("Starting profiling.~n", []),
 
-	    erlang:system_flag(multi_scheduling, block),
-	    Port =  (dbg:trace_port(file, FileSpec))(),
+            erlang:system_flag(multi_scheduling, block),
+            Port =  (dbg:trace_port(file, FileSpec))(),
             % Send start time
-	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
-	    erlang:system_flag(multi_scheduling, unblock),
-		
-	    %% Register Port
-    	    erlang:register(percept2_port, Port),
-	    set_tracer(Port, Opts), 
-	    {ok, Port};
-	Port ->
-	    io:format("Profiling already started at port ~p.~n", [Port]),
-	    {already_started, Port}
+            erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
+            erlang:system_flag(multi_scheduling, unblock),
+                
+            %% Register Port
+            erlang:register(percept2_port, Port),
+            set_tracer(Port, Opts), 
+            {ok, Port};
+        Port ->
+            io:format("Profiling already started at port ~p.~n", [Port]),
+            {already_started, Port}
     end.
 -spec(set_tracer(pid()|port(), [percept_option()]) -> ok).
 set_tracer(Port, Opts) ->
@@ -185,23 +185,23 @@ parse_profile_options([Head|Tail],{TraceOpts, ProfileOpts, ModOpts}) ->
     [Opt|Others] = get_flags(Head),
     NewOpts = Others ++ Tail,
     case Opt of
-	procs ->
-	    parse_profile_options(
+        procs ->
+            parse_profile_options(
               NewOpts, 
               {[procs|TraceOpts],
                [runnable_procs|ProfileOpts], ModOpts});
-	ports ->
-	    parse_profile_options(
+        ports ->
+            parse_profile_options(
               NewOpts,
               {[ports|TraceOpts],
                [runnable_ports|ProfileOpts], ModOpts});
         scheduler ->
-	    parse_profile_options(
+            parse_profile_options(
               NewOpts, 
               {TraceOpts,
                [scheduler|ProfileOpts], ModOpts});
         exclusive ->
-	    parse_profile_options(
+            parse_profile_options(
               NewOpts, 
               {TraceOpts,
                [exclusive| ProfileOpts], ModOpts});
@@ -210,7 +210,7 @@ parse_profile_options([Head|Tail],{TraceOpts, ProfileOpts, ModOpts}) ->
               NewOpts, 
               {[call, return_to, arity|TraceOpts],
                ProfileOpts, Mods ++ ModOpts});
-	_ -> 
+        _ -> 
             case lists:member(Opt, trace_flags()) orelse
                 lists:member(Opt, profile_flags()) of
                 true ->

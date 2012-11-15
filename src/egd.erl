@@ -37,7 +37,7 @@
 
 %%==========================================================================
 %%
-%% 		Type definitions 
+%%              Type definitions 
 %%
 %%==========================================================================
 
@@ -54,7 +54,7 @@
 
 %%==========================================================================
 %%
-%%		Interface functions	
+%%              Interface functions     
 %%
 %%==========================================================================
 
@@ -93,13 +93,13 @@ render(Image, Type) ->
 
 %% @spec render(egd_image(), png | raw_bitmap, [render_option()]) -> binary() 
 %% @doc Renders a binary from the primitives specified by egd_image(). The
-%% 	binary can either be a raw bitmap with rgb tripplets or a binary in png
-%%	format.
+%%      binary can either be a raw bitmap with rgb tripplets or a binary in png
+%%      format.
 
 -spec render(
-	Image :: egd_image(), 
-	Type :: 'png' | 'raw_bitmap' | 'eps',
-	Options :: [render_option()]) -> binary().
+        Image :: egd_image(), 
+        Type :: 'png' | 'raw_bitmap' | 'eps',
+        Options :: [render_option()]) -> binary().
 
 render(Image, Type, Options) ->
     {render_engine, RenderType} = proplists:lookup(render_engine, Options),
@@ -109,7 +109,7 @@ render(Image, Type, Options) ->
 %% @spec information(egd_image()) -> ok
 %% @hidden
 %% @doc Writes out information about the image. This is a debug feature
-%%	mainly.
+%%      mainly.
 
 information(Pid) ->
     cast(Pid, information),
@@ -119,10 +119,10 @@ information(Pid) ->
 %% @doc Creates a line object from P1 to P2 in the image.
 
 -spec line(
-	Image :: egd_image(),
-	P1 :: point(),
-	P2 :: point(),
-	Color :: color()) -> 'ok'.
+        Image :: egd_image(),
+        P1 :: point(),
+        P2 :: point(),
+        Color :: color()) -> 'ok'.
 
 line(Image, P1, P2, Color) ->
     cast(Image, {line, P1, P2, Color}),
@@ -234,55 +234,55 @@ init(W,H) ->
 
 loop(Image) ->
     receive
-	% Quitting
-	{egd, _Pid, destroy} -> ok;
-	
-	% Rendering
-    	{egd, Pid, {render, BinaryType, RenderType}} ->
-	    case BinaryType of
-		raw_bitmap ->
-		    Bitmap = egd_render:binary(Image, RenderType),
-		    Pid ! {egd, self(), Bitmap},
-		    loop(Image);
-		eps ->
-		    Eps = egd_render:eps(Image),
-		    Pid ! {egd, self(), Eps},
-		    loop(Image);
-		png ->
-		    Bitmap = egd_render:binary(Image, RenderType),
-		    Png = egd_png:binary(
-			Image#image.width,
-			Image#image.height,
-			Bitmap),
-		    Pid ! {egd, self(), Png},
-		    loop(Image);
-		Unhandled ->
-		    Pid ! {egd, self(), {error, {format, Unhandled}}},
-		    loop(Image)
-	     end;
+        % Quitting
+        {egd, _Pid, destroy} -> ok;
+        
+        % Rendering
+        {egd, Pid, {render, BinaryType, RenderType}} ->
+            case BinaryType of
+                raw_bitmap ->
+                    Bitmap = egd_render:binary(Image, RenderType),
+                    Pid ! {egd, self(), Bitmap},
+                    loop(Image);
+                eps ->
+                    Eps = egd_render:eps(Image),
+                    Pid ! {egd, self(), Eps},
+                    loop(Image);
+                png ->
+                    Bitmap = egd_render:binary(Image, RenderType),
+                    Png = egd_png:binary(
+                        Image#image.width,
+                        Image#image.height,
+                        Bitmap),
+                    Pid ! {egd, self(), Png},
+                    loop(Image);
+                Unhandled ->
+                    Pid ! {egd, self(), {error, {format, Unhandled}}},
+                    loop(Image)
+             end;
 
-	% Drawing primitives
-	{egd, _Pid, {line, P1, P2, C}} ->
-	    loop(egd_primitives:line(Image, P1, P2, C));
-	{egd, _Pid, {text, P, Font, Text, C}} ->
-	    loop(egd_primitives:text(Image, P, Font, Text, C));
-	{egd, _Pid, {filled_ellipse, P1, P2, C}} ->
-	    loop(egd_primitives:filledEllipse(Image, P1, P2, C));
-	{egd, _Pid, {filled_rectangle, P1, P2, C}} ->
-	    loop(egd_primitives:filledRectangle(Image, P1, P2, C));
-	{egd, _Pid, {filled_triangle, P1, P2, P3, C}} ->
-	    loop(egd_primitives:filledTriangle(Image, P1, P2, P3, C));
-	{egd, _Pid, {polygon, Pts, C}} ->
-	    loop(egd_primitives:polygon(Image, Pts, C));
-	{egd, _Pid, {arc, P1, P2, C}} ->
-	    loop(egd_primitives:arc(Image, P1, P2, C));
-	{egd, _Pid, {arc, P1, P2, D, C}} ->
-	    loop(egd_primitives:arc(Image, P1, P2, D, C));
-	{egd, _Pid, {rectangle, P1, P2, C}} ->
-	    loop(egd_primitives:rectangle(Image, P1, P2, C));
-	{egd, _Pid, information} ->
-	    egd_primitives:info(Image),
-	    loop(Image);
-	 _ ->
-	    loop(Image)
+        % Drawing primitives
+        {egd, _Pid, {line, P1, P2, C}} ->
+            loop(egd_primitives:line(Image, P1, P2, C));
+        {egd, _Pid, {text, P, Font, Text, C}} ->
+            loop(egd_primitives:text(Image, P, Font, Text, C));
+        {egd, _Pid, {filled_ellipse, P1, P2, C}} ->
+            loop(egd_primitives:filledEllipse(Image, P1, P2, C));
+        {egd, _Pid, {filled_rectangle, P1, P2, C}} ->
+            loop(egd_primitives:filledRectangle(Image, P1, P2, C));
+        {egd, _Pid, {filled_triangle, P1, P2, P3, C}} ->
+            loop(egd_primitives:filledTriangle(Image, P1, P2, P3, C));
+        {egd, _Pid, {polygon, Pts, C}} ->
+            loop(egd_primitives:polygon(Image, Pts, C));
+        {egd, _Pid, {arc, P1, P2, C}} ->
+            loop(egd_primitives:arc(Image, P1, P2, C));
+        {egd, _Pid, {arc, P1, P2, D, C}} ->
+            loop(egd_primitives:arc(Image, P1, P2, D, C));
+        {egd, _Pid, {rectangle, P1, P2, C}} ->
+            loop(egd_primitives:rectangle(Image, P1, P2, C));
+        {egd, _Pid, information} ->
+            egd_primitives:info(Image),
+            loop(Image);
+         _ ->
+            loop(Image)
     end.
