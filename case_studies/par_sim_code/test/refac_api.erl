@@ -81,18 +81,18 @@ start_end_loc1(Expr) ->
 get_range1(Node) ->
     As = refac_syntax:get_ann(Node),
     case lists:keysearch(range, 1, As) of
-	{value, {range, {S, E}}} -> 
+        {value, {range, {S, E}}} -> 
             {S, E};
-	_ -> 
+        _ -> 
             {{0,0},{0,0}} 
     end.
 
 get_range(Node) ->
     As = refac_syntax:get_ann(Node),
     case lists:keysearch(range, 1, As) of
-	{value, {range, {S, E}}} -> 
+        {value, {range, {S, E}}} -> 
             {S, E};
-	_ -> 
+        _ -> 
             {{0,0},{0,0}} 
     end.
 
@@ -101,14 +101,14 @@ get_range(Node) ->
 %%      until the new name is not a member of `UsedNames'.
 %%@spec make_new_name(atom(), [atom()]) ->atom()
 
--spec make_new_name(string(), [atom()]) ->atom().		   
+-spec make_new_name(string(), [atom()]) ->atom().                  
 make_new_name(BaseName, UsedNames) ->
     NewName = list_to_atom(atom_to_list(BaseName) ++ "_1"),
     case ordsets:is_element(NewName, UsedNames) of
-	true ->
-	    make_new_name(NewName, UsedNames);
-	_ -> 
-	    NewName
+        true ->
+            make_new_name(NewName, UsedNames);
+        _ -> 
+            NewName
     end.
 
 %% =====================================================================
@@ -136,9 +136,9 @@ is_fun_name(Name) ->
 is_var_name_tail(Name) ->
     case Name of
       [H| T] ->
-	  (is_upper(H) or is_lower(H) or 
-	   is_digit(H) or (H == 64) or (H == 95)) and
-	    is_var_name_tail(T);
+          (is_upper(H) or is_lower(H) or 
+           is_digit(H) or (H == 64) or (H == 95)) and
+            is_var_name_tail(T);
       [] -> true
     end.
 
@@ -241,7 +241,7 @@ bound_vars(Node) ->
 %%@spec bound_var_names([syntaxTree()]|syntaxTree())-> [atom()]
 
 -spec(bound_var_names(Node::[syntaxTree()]|syntaxTree())-> [atom()]).
-bound_var_names(Node)->		       
+bound_var_names(Node)->                
     element(1, lists:unzip(bound_vars(Node))).
 
 
@@ -503,41 +503,41 @@ is_exported({FunName, Arity}, FileOrModInfo) ->
 
 is_exported_1({FunName, Arity}, ModInfo) ->
     ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
-		    {value, {attributes, Attrs}} -> 
-			lists:member({compile, export_all}, Attrs);
-		    false -> false
-		end,
-    ExpExport= 	case lists:keysearch(exports, 1, ModInfo) of
-		    {value, {exports, ExportList}} ->
+                    {value, {attributes, Attrs}} -> 
+                        lists:member({compile, export_all}, Attrs);
+                    false -> false
+                end,
+    ExpExport=  case lists:keysearch(exports, 1, ModInfo) of
+                    {value, {exports, ExportList}} ->
                         lists:member({FunName, Arity}, ExportList);
-		    _ -> false
-		end,
+                    _ -> false
+                end,
     ImpExport or ExpExport.
 
 is_exported_2({FunName, Arity}, ModInfo) ->
     ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
-		    {value, {attributes, Attrs}} -> 
-			lists:member({compile, export_all}, Attrs);
-		    false -> false
-		end,
-    ExpExport= 	case lists:keysearch(exports, 1, ModInfo) of
-		    {value, {exports, ExportList}} ->
+                    {value, {attributes, Attrs}} -> 
+                        lists:member({compile, export_all}, Attrs);
+                    false -> false
+                end,
+    ExpExport=  case lists:keysearch(exports, 1, ModInfo) of
+                    {value, {exports, ExportList}} ->
                         lists:member({FunName, Arity}, ExportList);
-		    _ -> false
-		end,
+                    _ -> false
+                end,
     ImpExport or ExpExport.
 
 is_exported_3({FunName, Arity}, ModInfo) ->
     ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
-		    {value, {attributes, Attrs}} -> 
-			lists:member({compile, export_all}, Attrs);
-		    false -> false
-		end,
-    ExpExport= 	case lists:keysearch(exports, 1, ModInfo) of
-		    {value, {exports, ExportList}} ->
+                    {value, {attributes, Attrs}} -> 
+                        lists:member({compile, export_all}, Attrs);
+                    false -> false
+                end,
+    ExpExport=  case lists:keysearch(exports, 1, ModInfo) of
+                    {value, {exports, ExportList}} ->
                         lists:member({FunName, Arity}, ExportList);
-		    _ -> false
-		end,
+                    _ -> false
+                end,
     ImpExport or ExpExport.
 
 %% =====================================================================
@@ -579,20 +579,20 @@ is_import(Node, ModName) ->
       -> [token()]|{error, term()}).
 tokenize(File, WithLayout, TabWidth) ->
     case file:read_file(File) of
-	{ok, Bin} ->
-	    S = erlang:binary_to_list(Bin),
-	    case WithLayout of 
-		true -> 
-		    {ok, Ts, _} = refac_scan_with_layout:string(
+        {ok, Bin} ->
+            S = erlang:binary_to_list(Bin),
+            case WithLayout of 
+                true -> 
+                    {ok, Ts, _} = refac_scan_with_layout:string(
                                     S, {1,1}, TabWidth, 
                                     refac_misc:file_format(File)),
-		    Ts;
-		_ -> {ok, Ts, _} = refac_scan:string(
+                    Ts;
+                _ -> {ok, Ts, _} = refac_scan:string(
                                      S, {1,1}, TabWidth,
                                      refac_misc:file_format(File)),
-		     Ts
-	    end;
-	{error, Reason} ->
+                     Ts
+            end;
+        {error, Reason} ->
             {error, Reason}
     end.
 
@@ -801,7 +801,7 @@ mask_variables(Exp) when is_list(Exp) ->
 mask_variables(Exp) ->
     ast_traverse_api:full_buTP(
       fun (Node, _Others) ->
-	      do_mask_variables(Node)
+              do_mask_variables(Node)
       end, Exp, {}).
 
 do_mask_variables(Node) ->
@@ -911,7 +911,7 @@ subst(Expr, Subst) ->
  
 do_subst(Node, Subst) ->
     case refac_syntax:type(Node) of
-	variable ->
+        variable ->
             VarName = refac_syntax:variable_name(Node),
             case lists:keysearch(VarName, 1, Subst) of
                 {value, {VarName, Expr}} ->
@@ -950,7 +950,7 @@ do_subst(Node, Subst) ->
                 _ ->
                     {Node, false} 
             end;
-	_ -> {Node, false}
+        _ -> {Node, false}
     end.
                                    
 is_meta_list_variable(VarName) ->
@@ -1364,13 +1364,13 @@ do_search_matching_code_list(FileName, AST, {Template, Cond, ReturnFun}) ->
 
 get_expr_seqs(T) ->
     case refac_syntax:type(T) of
-	clause ->
-	    refac_syntax:clause_body(T);
-	block_expr ->
-	    refac_syntax:block_expr_body(T);
-	try_expr ->
-	    refac_syntax:try_expr_body(T);
-	_ -> []
+        clause ->
+            refac_syntax:clause_body(T);
+        block_expr ->
+            refac_syntax:block_expr_body(T);
+        try_expr ->
+            refac_syntax:try_expr_body(T);
+        _ -> []
     end.
 
 do_search_matching_code_non_list(FileName, AST, {Template, Cond, ReturnFun}) ->

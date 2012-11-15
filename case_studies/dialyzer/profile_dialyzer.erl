@@ -32,22 +32,22 @@ list_dirs(Dirs, Ext) ->
 
 list_dir(Dir, Extension) ->
     case file:list_dir(Dir) of
-	{error, _} = Error-> Error;
-	{ok, Filenames} ->
-	    FullFilenames = [filename:join(Dir, F) || F <-Filenames ],
-	    Matches1 = [F || F <- FullFilenames,
-                             file_type(F) =:= {ok, 'directory'}],			 
-	    Matches2 = [F || F <- FullFilenames,
-			     file_type(F) =:= {ok, 'regular'},
-			     filename:extension(F) =:= Extension],
-	    {ok, lists:sort(Matches1 ++ Matches2)}
+        {error, _} = Error-> Error;
+        {ok, Filenames} ->
+            FullFilenames = [filename:join(Dir, F) || F <-Filenames ],
+            Matches1 = [F || F <- FullFilenames,
+                             file_type(F) =:= {ok, 'directory'}],                        
+            Matches2 = [F || F <- FullFilenames,
+                             file_type(F) =:= {ok, 'regular'},
+                             filename:extension(F) =:= Extension],
+            {ok, lists:sort(Matches1 ++ Matches2)}
     end.
 
 -spec file_type(file:filename()) ->
-		       {ok, 'device' | 'directory' | 'regular' | 'other'} |
-		       {error, any()}.
+                       {ok, 'device' | 'directory' | 'regular' | 'other'} |
+                       {error, any()}.
 file_type(Filename) ->
     case file:read_file_info(Filename) of
-	{ok, FI} -> {ok, FI#file_info.type};
-	Error    -> Error
+        {ok, FI} -> {ok, FI#file_info.type};
+        Error    -> Error
     end.

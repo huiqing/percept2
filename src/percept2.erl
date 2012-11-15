@@ -46,15 +46,15 @@
 
 -export([
         profile/2, 
-	profile/3,
+        profile/3,
         stop_profile/0, 
 
-	start_webserver/0, 
-	start_webserver/1, 
-	stop_webserver/0, 
-	stop_webserver/1, 
+        start_webserver/0, 
+        start_webserver/1, 
+        stop_webserver/0, 
+        stop_webserver/1, 
 
-	analyze/1,
+        analyze/1,
         stop_db/0]).
 
 %% Application callback functions.
@@ -70,7 +70,7 @@
 
 %%---------------------------------------------------------%%
 %%                                                         %%
-%% 		Application callback functions             %%
+%%              Application callback functions             %%
 %%                                                         %%
 %%---------------------------------------------------------%%
 %% @doc none
@@ -97,7 +97,7 @@ stop_db() ->
 
 %%---------------------------------------------------------%%
 %%                                                         %%
-%% 		Interface functions                        %%
+%%              Interface functions                        %%
 %%                                                         %%
 %%---------------------------------------------------------%%
 %%@doc Profile to file. Process/scheduler/port activities are 
@@ -127,8 +127,8 @@ profile(FileSpec, Modules) ->
 %% on for the whole duration until the entry function retures and the 
 %% the profiling has concluded.
 -spec profile(FileSpec :: filespec(),
-	      Entry :: {atom(), atom(), list()},
-	      Modules:: [module_name()]) ->
+              Entry :: {atom(), atom(), list()},
+              Modules:: [module_name()]) ->
                      'ok' | {'already_started', port()} | {'error', 'not_started'}.
 profile(FileSpec, MFA, Modules) ->
     percept2_profile:start(FileSpec, MFA, 
@@ -147,7 +147,7 @@ stop_profile() ->
                      'ok' | {'error', any()}.
 analyze(FileNames) ->
     case percept2_db:start(FileNames) of
-	{started, FileNameSubDBPairs} ->
+        {started, FileNameSubDBPairs} ->
             analyze_par_1(FileNameSubDBPairs);
         {restarted, FileNameSubDBPairs} ->
             analyze_par_1(FileNameSubDBPairs)
@@ -186,35 +186,35 @@ loop_analyzer_par(Pids) ->
     end.
             
 %% @spec start_webserver() -> {started, Hostname, Port} | {error, Reason}
-%%	Hostname = string()
-%%	Port = integer()
-%%	Reason = term() 
+%%      Hostname = string()
+%%      Port = integer()
+%%      Reason = term() 
 %% @doc Starts webserver. An available port number will be assigned by inets.
 -spec start_webserver() ->{'started', string(), pos_integer()} | {'error', any()}.
 start_webserver() ->
     start_webserver(0).
 
 %% @spec start_webserver(integer()) -> {started, Hostname, AssignedPort} | {error, Reason}
-%%	Hostname = string()
-%%	AssignedPort = integer()
-%%	Reason = term() 
+%%      Hostname = string()
+%%      AssignedPort = integer()
+%%      Reason = term() 
 %% @doc Starts webserver with a given port number. If port number is 0, an available port number will 
-%%	be assigned by inets.
+%%      be assigned by inets.
 -spec start_webserver(Port :: non_neg_integer()) ->
                              {'started', string(), pos_integer()} | {'error', any()}.
 start_webserver(Port) when is_integer(Port) ->
     application:load(percept2),
     case whereis(percept_httpd) of
-	undefined ->
-	    {ok, Config} = get_webserver_config("percept2", Port),
+        undefined ->
+            {ok, Config} = get_webserver_config("percept2", Port),
             inets:start(),
-	    case inets:start(httpd, Config) of
-		{ok, Pid} ->
-		    AssignedPort = find_service_port_from_pid(inets:services_info(), Pid),
-		    {ok, Host} = inet:gethostname(),
-		    %% workaround until inets can get me a service from a name.
-		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
-		    register(percept_httpd, Mem),
+            case inets:start(httpd, Config) of
+                {ok, Pid} ->
+                    AssignedPort = find_service_port_from_pid(inets:services_info(), Pid),
+                    {ok, Host} = inet:gethostname(),
+                    %% workaround until inets can get me a service from a name.
+                    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
+                    register(percept_httpd, Mem),
                     rm_tmp_files(),
                     case ets:info(history_html) of 
                         undefined ->
@@ -226,20 +226,20 @@ start_webserver(Port) when is_integer(Port) ->
                     Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
                     egd_font:load(Filename),
                     {started, Host, AssignedPort};
-		{error, Reason} ->
-		    {error, {inets, Reason}}
+                {error, Reason} ->
+                    {error, {inets, Reason}}
             end;
-	_ ->
-	    {error, already_started}
+        _ ->
+            {error, already_started}
     end.
 
 %% @spec stop_webserver() -> ok | {error, not_started}  
 %% @doc Stops webserver.
 stop_webserver() ->
     case whereis(percept_httpd) of
-    	undefined -> 
-	    {error, not_started};
-	Pid ->
+        undefined -> 
+            {error, not_started};
+        Pid ->
             do_stop([], Pid)
     end.
 
@@ -276,7 +276,7 @@ stop_webserver(Port) ->
     do_stop(Port,[]).
 %%==========================================================================
 %%
-%% 		Auxiliary functions 
+%%              Auxiliary functions 
 %%
 %%==========================================================================
 
@@ -296,18 +296,18 @@ parse_and_insert(Filename,SubDB, Parent) ->
    
 parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0, Parent) ->
     receive
-	{'DOWN',Ref,process, Pid, noproc} ->
-	    Msg=lists:flatten(io_lib:format(
+        {'DOWN',Ref,process, Pid, noproc} ->
+            Msg=lists:flatten(io_lib:format(
                                 "Incorrect file or malformed trace file: ~s~n", [Filename])),
             Parent ! {error, Msg};
-    	{parse_complete, {Pid, Count}} ->
+        {parse_complete, {Pid, Count}} ->
             Pid ! {ack, self()},
             T1 = erlang:now(),
-	    io:format("Parsed ~p entries from ~p in ~p s.~n", [Count, Filename, ?seconds(T1, T0)]),
+            io:format("Parsed ~p entries from ~p in ~p s.~n", [Count, Filename, ?seconds(T1, T0)]),
             Parent ! {self(), done};
-	{'DOWN',Ref, process, Pid, normal} -> 
+        {'DOWN',Ref, process, Pid, normal} -> 
             parse_and_insert_loop(Filename, Pid, Ref, SubDB,T0,Parent);
-	{'DOWN',Ref, process, Pid, Reason} -> 
+        {'DOWN',Ref, process, Pid, Reason} -> 
             Parent ! {error, Reason};
         Msg -> 
             io:format("parse_and_insert_loop, unhandled: ~p\n", [Msg]), 
@@ -338,9 +338,9 @@ find_service_pid_from_port([], _) ->
 find_service_pid_from_port([{_, Pid, Options} | Services], Port) ->
     case lists:keyfind(port, 1, Options) of
         {port, Port} ->
-	    Pid;
-	false ->
-	    find_service_pid_from_port(Services, Port)
+            Pid;
+        false ->
+            find_service_pid_from_port(Services, Port)
     end.
 
 find_service_port_from_pid([], _) ->
@@ -350,7 +350,7 @@ find_service_port_from_pid([{_, Pid, Options} | _], Pid) ->
         {port, Port} ->
             Port;
         false ->
-	    undefined
+            undefined
     end;
 find_service_port_from_pid([{_, _, _} | Services], Pid) ->
     find_service_port_from_pid(Services, Pid).
@@ -358,17 +358,17 @@ find_service_port_from_pid([{_, _, _} | Services], Pid) ->
 %% service memory
 service_memory({Pid, Port, Host}) ->
     receive
-	quit -> 
-	    ok;
-	{Reply, get_port} ->
-	    Reply ! Port,
-	    service_memory({Pid, Port, Host});
-	{Reply, get_host} -> 
-	    Reply ! Host,
-	    service_memory({Pid, Port, Host});
-	{Reply, get_pid} -> 
-	    Reply ! Pid,
-	    service_memory({Pid, Port, Host})
+        quit -> 
+            ok;
+        {Reply, get_port} ->
+            Reply ! Port,
+            service_memory({Pid, Port, Host});
+        {Reply, get_host} -> 
+            Reply ! Host,
+            service_memory({Pid, Port, Host});
+        {Reply, get_pid} -> 
+            Reply ! Pid,
+            service_memory({Pid, Port, Host})
     end.
 
 % Create config data for the webserver 
@@ -380,41 +380,41 @@ get_webserver_config(Servername, Port)
     MimeTypesFile = filename:join([Root,"conf","mime.types"]),
     {ok, MimeTypes} = httpd_conf:load_mime_types(MimeTypesFile),
     Config = [
-	% Roots
-	{server_root, Root},
-	{document_root,filename:join([Root, "htdocs"])},
-	
-	% Aliases
-	{eval_script_alias,{"/eval",[io]}},
+        % Roots
+        {server_root, Root},
+        {document_root,filename:join([Root, "htdocs"])},
+        
+        % Aliases
+        {eval_script_alias,{"/eval",[io]}},
         {erl_script_alias,{"/cgi-bin",[percept2_graph,percept2_html,io]}},
-	{script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
-	{alias,{"/javascript/",filename:join([Root, "scripts"]) ++ "/"}},
-	{alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
-	{alias,{"/css/", filename:join([Root, "css"]) ++ "/"}},
-	
-	% Logs
-	%{transfer_log, filename:join([Path, "logs", "transfer.log"])},
-	%{error_log, filename:join([Path, "logs", "error.log"])},
-	
-	% Configs
-	{default_type,"text/plain"},
-	{directory_index,["index.html"]},
-	{mime_types, MimeTypes},
-	{modules,[mod_alias,
-	          mod_esi,
-	          mod_actions,
-	          mod_cgi,
-	          mod_include,
-	          mod_dir,
-	          mod_get,
-	          mod_head
-	%          mod_log,
-	%          mod_disk_log
-	]},
-	{com_type,ip_comm},
-	{server_name, Servername},
-	{bind_address, any},
-	{port, Port}],
+        {script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
+        {alias,{"/javascript/",filename:join([Root, "scripts"]) ++ "/"}},
+        {alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
+        {alias,{"/css/", filename:join([Root, "css"]) ++ "/"}},
+        
+        % Logs
+        %{transfer_log, filename:join([Path, "logs", "transfer.log"])},
+        %{error_log, filename:join([Path, "logs", "error.log"])},
+        
+        % Configs
+        {default_type,"text/plain"},
+        {directory_index,["index.html"]},
+        {mime_types, MimeTypes},
+        {modules,[mod_alias,
+                  mod_esi,
+                  mod_actions,
+                  mod_cgi,
+                  mod_include,
+                  mod_dir,
+                  mod_get,
+                  mod_head
+        %          mod_log,
+        %          mod_disk_log
+        ]},
+        {com_type,ip_comm},
+        {server_name, Servername},
+        {bind_address, any},
+        {port, Port}],
     {ok, Config}.
 
 

@@ -51,21 +51,21 @@ graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data,HO) ->
             end,
     MinMax = minmax(Data2),
     {Xmin, Ymin, Xmax, Ymax} = MinMax, 
-    graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
-    				lists:min([RYmin, Ymin]),
-    				lists:max([RXmax, Xmax]), 
-			      lists:max([RYmax, Ymax])},Data,HO).
+    graf1(Width, Height,{       lists:min([RXmin, Xmin]), 
+                                lists:min([RYmin, Ymin]),
+                                lists:max([RXmax, Xmax]), 
+                              lists:max([RYmax, Ymax])},Data,HO).
 
 %% graph(Widht, Height, Data) = Image
 %% In:
-%%	Width = integer(),
-%%	Height = integer(),
-%%	Data = [{Time, Procs, Ports}]
-%%	Time = float()
-%%	Procs = integer()
-%%	Ports = integer()
+%%      Width = integer(),
+%%      Height = integer(),
+%%      Data = [{Time, Procs, Ports}]
+%%      Time = float()
+%%      Procs = integer()
+%%      Ports = integer()
 %% Out:
-%%	Image = binary()
+%%      Image = binary()
 graph(Width, Height, [], _) ->
     error_graph(Width, Height,"No trace data recorded.");
 graph(Width,Height,Data,HO) ->
@@ -184,31 +184,31 @@ draw_xticks(Image, Color, XticksArea, {Xmin, Xmax}, Data) ->
     {FontW, _FontH} = egd_font:size(Font),
     egd:filledRectangle(Image, {trunc(X0), Y}, {trunc(X0 + Width), Y}, Color), 
     lists:foldl(
-    	fun ({X,_,_}, PX) ->
-	    X1 = trunc(Offset + X*DX),
-	    
-	    % Optimization:
-	    % if offset has past half the previous text
-	    % start checking this text
-	    
-	    if 
-	    	X1 > PX ->
-		    Text = lists:flatten(io_lib:format("~.3f", [float(X)])),
-		    TextLength = length(Text),
-		    TextWidth = TextLength*FontW,
-		    Spacing = 2,
-		    if 
-		    	X1 > PX + round(TextWidth/2) + Spacing ->
-		    	    egd:line(Image, {X1, Y - 3}, {X1, Y + 3}, Color),
-		    	    text(Image, {X1 - round(TextWidth/2), Y + 2}, Font, Text, Color),
-			    X1 + round(TextWidth/2) + Spacing;
-			true ->
-			    PX
-		    end;
-		true ->
-		    PX
-	    end
-	end, 0, Data).
+        fun ({X,_,_}, PX) ->
+            X1 = trunc(Offset + X*DX),
+            
+            % Optimization:
+            % if offset has past half the previous text
+            % start checking this text
+            
+            if 
+                X1 > PX ->
+                    Text = lists:flatten(io_lib:format("~.3f", [float(X)])),
+                    TextLength = length(Text),
+                    TextWidth = TextLength*FontW,
+                    Spacing = 2,
+                    if 
+                        X1 > PX + round(TextWidth/2) + Spacing ->
+                            egd:line(Image, {X1, Y - 3}, {X1, Y + 3}, Color),
+                            text(Image, {X1 - round(TextWidth/2), Y + 2}, Font, Text, Color),
+                            X1 + round(TextWidth/2) + Spacing;
+                        true ->
+                            PX
+                    end;
+                true ->
+                    PX
+            end
+        end, 0, Data).
 
 draw_yticks(Im, Color, TickArea, {_,Ymax}, HOffset) ->
     #graph_area{x = X0, y = Y0, width = Width, height = Height} = TickArea,
@@ -216,8 +216,8 @@ draw_yticks(Im, Color, TickArea, {_,Ymax}, HOffset) ->
     X = trunc(X0 + Width),
     Dy = (Height)/(Ymax),
     Yts = if 
-	Height/(Ymax*12) < 1.0 -> round(1 + Ymax*15/Height);
-	true -> 1
+        Height/(Ymax*12) < 1.0 -> round(1 + Ymax*15/Height);
+        true -> 1
     end,
     egd:filledRectangle(Im, {X, trunc(0 + Y0)}, {X, trunc(Y0 + Height)}, Color),
     draw_yticks0(Im, Font, Color, 0, Yts, Ymax, {X, Height, Dy}, HOffset).
@@ -238,12 +238,12 @@ draw_yticks0(_, _, _, _, _, _, _,_) -> ok.
 
 %% activities(Width, Height, Range, Activities) -> Binary
 %% In:
-%%	Width = integer()
-%%	Height = integer()
-%%	Range = {float(), float()}
-%%	Activities = [{float(), active | inactive}]
+%%      Width = integer()
+%%      Height = integer()
+%%      Range = {float(), float()}
+%%      Activities = [{float(), active | inactive}]
 %% Out:
-%%	Binary = binary()
+%%      Binary = binary()
 
 activities(Width, Height, {UXmin, UXmax}, Activities) ->
     Xs = [ X || {X,_} <- Activities],
@@ -295,12 +295,12 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa2 - Xmin*Dx),
     case State of
-	inactive ->
+        inactive ->
             egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cw),
             egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
             draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
                           Dx, [{Xa2, Act2, InOutXas2} | Acts]);
-	active ->
+        active ->
             Cr = egd:color(Image, {255, 165, 0}),
             draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
                                    Dx, Xa1, Xa2, InOutXas1),
@@ -374,11 +374,11 @@ percentage(Width, Height, Percentage) ->
     {FontW, _} = egd_font:size(Font), 
     String = lists:flatten(io_lib:format("~.10B %", [round(100*Percentage)])),
 
-    text(	Im, 
-		{round(Width/2 - (FontW*length(String)/2)), 0}, 
-    		Font,
-		String,
-		Black),
+    text(       Im, 
+                {round(Width/2 - (FontW*length(String)/2)), 0}, 
+                Font,
+                String,
+                Black),
     egd:rectangle(Im, {X, 0}, {Width - 1, Height - 1}, Black),
     
     Binary = egd:render(Im, png),
@@ -399,11 +399,11 @@ calltime_percentage(Width, Height, CallTime, Percentage) ->
     {FontW, _} = egd_font:size(Font), 
     String = lists:flatten(io_lib:format("~.3f      ~.10B%",
                                          [float(CallTime), round(100*Percentage)])),
-    text(	Im, 
-		{round(Width/2 - (FontW*length(String)/2)), 0}, 
-    		Font,
-		String,
-		Black),
+    text(       Im, 
+                {round(Width/2 - (FontW*length(String)/2)), 0}, 
+                Font,
+                String,
+                Black),
     egd:rectangle(Im, {0, 0}, {X-1, Height - 1}, Black),
     
     Binary = egd:render(Im, png),
@@ -503,12 +503,12 @@ draw_cross_graft1(Im, [{X1, Y1}|Data], C={B, _}, GA) ->
 draw_cross_graft1(_Im, [], _, _) -> ok.
 
 %% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
-%%	X = number()
-%%	Y = number()
-%%	MinX = number()
-%%	MinY = number()
-%%	MaxX = number()
-%%	MaxY = number()
+%%      X = number()
+%%      Y = number()
+%%      MinX = number()
+%%      MinY = number()
+%%      MaxX = number()
+%%      MaxY = number()
 %% @doc Returns the min and max of a set of 2-dimensional numbers.
 minmax(Data) ->
     Xs = [ X || {X,_Y} <- Data],

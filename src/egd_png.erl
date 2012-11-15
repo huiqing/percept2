@@ -76,13 +76,13 @@ bitmap2png(W, H, Bitmap,Z) ->
 compress_image(I,RowLen, Bin, Acc) ->
     Pos = I*RowLen,
     case Bin of
-	<<_:Pos/binary,Row:RowLen/binary,_/binary>> ->
-	    Filtered = filter_row(Row,RowLen),
-	    compress_image(I+1,RowLen,Bin,[Filtered|Acc]);
-	_ when Pos == size(Bin) ->
-	    Filtered = list_to_binary(lists:reverse(Acc)),
-	    Compressed = zlib:compress(Filtered),
-	    Compressed
+        <<_:Pos/binary,Row:RowLen/binary,_/binary>> ->
+            Filtered = filter_row(Row,RowLen),
+            compress_image(I+1,RowLen,Bin,[Filtered|Acc]);
+        _ when Pos == size(Bin) ->
+            Filtered = list_to_binary(lists:reverse(Acc)),
+            Compressed = zlib:compress(Filtered),
+            Compressed
     end.
 
 filter_row(Row,_RowLen) ->

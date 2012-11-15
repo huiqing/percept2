@@ -30,28 +30,28 @@
 %%
 %% Information:
 %% {Key, Description, Size}
-%%	Key :: {Font :: atom(), information}
-%%	Description :: any(), Description header from font file 
-%%	Size :: {W :: integer(), H :: integer()}
+%%      Key :: {Font :: atom(), information}
+%%      Description :: any(), Description header from font file 
+%%      Size :: {W :: integer(), H :: integer()}
 %%
 %% Glyphs:
 %% {Key, Translation LSs} where
-%%	Key :: {Font :: atom(), Code :: integer()}, Code = glyph char code
-%%	Translation :: {
-%%		W  :: integer(), % BBx width
-%%		H  :: integer(), % BBx height
-%%		X0 :: integer(), % X start
-%%		Y0 :: integer(), % Y start
-%%		Xm :: integer(), % Glyph X move when drawing
-%%	    }
-%%	LSs :: [[{Xl :: integer(), Xr :: integer()}]]
-%%	The first list is height (top to bottom), the inner list is the list
-%%	of line spans for the glyphs horizontal pixels.
+%%      Key :: {Font :: atom(), Code :: integer()}, Code = glyph char code
+%%      Translation :: {
+%%              W  :: integer(), % BBx width
+%%              H  :: integer(), % BBx height
+%%              X0 :: integer(), % X start
+%%              Y0 :: integer(), % Y start
+%%              Xm :: integer(), % Glyph X move when drawing
+%%          }
+%%      LSs :: [[{Xl :: integer(), Xr :: integer()}]]
+%%      The first list is height (top to bottom), the inner list is the list
+%%      of line spans for the glyphs horizontal pixels.
 %%
 
 %%==========================================================================
 %%
-%%		Interface functions	
+%%              Interface functions     
 %%
 %%==========================================================================
 
@@ -70,7 +70,7 @@ load(Filename) ->
 
 %%==========================================================================
 %%
-%%		Internal functions	
+%%              Internal functions      
 %%
 %%==========================================================================
 
@@ -92,13 +92,13 @@ font_insert(Font, Description, Dimensions) ->
 is_font_loaded(Font) ->
     try
         case ets:lookup(egd_font_table, {Font, information}) of 
-  	    [] -> false;
-	    _ -> true
+            [] -> false;
+            _ -> true
         end
     catch
-	error:_ ->
-	    initialize_table(),
-	    false
+        error:_ ->
+            initialize_table(),
+            false
     end.
     
 
@@ -107,12 +107,12 @@ load_font_header({_Type, _Version, Font}) ->
     
 load_font_body({Key,Desc,W,H,Glyphs,Bitmaps}) ->
     case is_font_loaded(Key) of
-	true  -> Key;
-	false ->
-	    % insert dimensions
-	    font_insert(Key, Desc, {W,H}),
-	    parse_glyphs(Glyphs, Bitmaps, Key),
-	    Key
+        true  -> Key;
+        false ->
+            % insert dimensions
+            font_insert(Key, Desc, {W,H}),
+            parse_glyphs(Glyphs, Bitmaps, Key),
+            Key
     end.
 
 parse_glyphs([], _ , _Key) -> ok;
@@ -136,40 +136,40 @@ render_glyph(W, {Hi,H}, X0, Y0,Xm, Bitmask , LSs) ->
     O = N*Hi,
     <<_:O/binary, Submask/binary>> = Bitmask,
      LS = render_glyph_horizontal(
-	Submask,         % line glyph bitmask
-	{down, W - 1},   % loop state
-	W - 1,           % Width
-	[]),             % Linespans
+        Submask,         % line glyph bitmask
+        {down, W - 1},   % loop state
+        W - 1,           % Width
+        []),             % Linespans
     render_glyph(W,{Hi+1,H},X0,Y0,Xm, Bitmask, [LS|LSs]).
 
 render_glyph_horizontal(Value, {Pr, Px}, 0, Spans) ->
     Cr = bit_spin(Value, 0),
     case {Pr,Cr} of
-	{up  , up  } -> % closure of interval since its last
-	    [{0, Px}|Spans];
-	{up  , down} -> % closure of interval
-	    [{1, Px}|Spans];
-	{down, up  } -> % beginning of interval
-	    [{0,  0}|Spans];
-	{down, down} -> % no change in interval
-	    Spans
+        {up  , up  } -> % closure of interval since its last
+            [{0, Px}|Spans];
+        {up  , down} -> % closure of interval
+            [{1, Px}|Spans];
+        {down, up  } -> % beginning of interval
+            [{0,  0}|Spans];
+        {down, down} -> % no change in interval
+            Spans
     end;
 render_glyph_horizontal(Value, {Pr, Px}, Cx, Spans) ->
     Cr = bit_spin(Value, Cx),
     case {Pr,Cr} of
-	{up  , up  } -> % no change in interval
-	    render_glyph_horizontal(Value, {Cr, Px}, Cx - 1, Spans);
-	{up  , down} -> % closure of interval
-	    render_glyph_horizontal(Value, {Cr, Cx}, Cx - 1, [{Cx+1,Px}|Spans]);
-	{down, up  } -> % beginning of interval
-	    render_glyph_horizontal(Value, {Cr, Cx}, Cx - 1, Spans);
-	{down, down} -> % no change in interval
-	    render_glyph_horizontal(Value, {Cr, Px}, Cx - 1, Spans)
+        {up  , up  } -> % no change in interval
+            render_glyph_horizontal(Value, {Cr, Px}, Cx - 1, Spans);
+        {up  , down} -> % closure of interval
+            render_glyph_horizontal(Value, {Cr, Cx}, Cx - 1, [{Cx+1,Px}|Spans]);
+        {down, up  } -> % beginning of interval
+            render_glyph_horizontal(Value, {Cr, Cx}, Cx - 1, Spans);
+        {down, down} -> % no change in interval
+            render_glyph_horizontal(Value, {Cr, Px}, Cx - 1, Spans)
     end.
 
 bit_spin(Value, Cx) ->
     <<_:Cx, Bit:1, _/bits>> = Value,
     case Bit of
-	1 -> up;
-	0 -> down
+        1 -> up;
+        0 -> down
     end.

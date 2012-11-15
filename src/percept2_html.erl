@@ -47,7 +47,7 @@
 -include_lib("kernel/include/file.hrl").
 
 %%% --------------------------- %%%
-%%% 	API functions     	%%%
+%%%     API functions           %%%
 %%% --------------------------- %%%
 
 -spec(overview_page(pid(), list(), string()) -> ok | {error, term()}).
@@ -283,7 +283,7 @@ deliver_page(SessionID, Menu, Content) ->
     mod_esi:deliver(SessionID, footer()).
    
 %%% --------------------------- %%%
-%%% 	loal functions   	%%%
+%%%     loal functions          %%%
 %%% --------------------------- %%%
 error_page(SessionID, _Env, _Input) ->
     StackTrace = lists:flatten(
@@ -299,7 +299,7 @@ error_page(SessionID, _Env, _Input) ->
 
 
 %%% --------------------------- %%%
-%%% 	Content pages     	%%%
+%%%     Content pages           %%%
 %%% --------------------------- %%%
 
 %%% overview content page.
@@ -318,14 +318,14 @@ overview_content_1(_Env, Input) ->
     Procs = percept2_db:select({information, procs_count}),
     Ports = percept2_db:select({information, ports_count}),
     InformationTable = 
-	"<table>" ++
-	table_line(["Profile time:", TotalProfileTime]) ++
+        "<table>" ++
+        table_line(["Profile time:", TotalProfileTime]) ++
         table_line(["Schedulers:", erlang:system_info(schedulers)]) ++
-	table_line(["Processes:", Procs]) ++
+        table_line(["Processes:", Procs]) ++
         table_line(["Ports:", Ports]) ++
-    	table_line(["Min. range:", Min]) ++
-    	table_line(["Max. range:", Max]) ++
-    	"</table>",
+        table_line(["Min. range:", Min]) ++
+        table_line(["Max. range:", Max]) ++
+        "</table>",
     Header = "
     <div id=\"content\">
     <div>" ++ InformationTable ++ "</div>\n
@@ -333,31 +333,31 @@ overview_content_1(_Env, Input) ->
     <input name=data_min type=hidden value=" ++ term2html(float(Min)) ++ ">
     <input name=data_max type=hidden value=" ++ term2html(float(Max)) ++ ">\n",
     RangeTable = 
-	"<table>"++
-	table_line([
-	    "Min:", 
-	    "<input name=range_min value=" ++ term2html(float(Min)) ++">",
-	    "<select name=\"graph_select\" onChange=\"select_image()\">
-	      	<option value=\"" ++ url_graph(Min,Max,[]) ++ "\">Ports & Processes </option>
+        "<table>"++
+        table_line([
+            "Min:", 
+            "<input name=range_min value=" ++ term2html(float(Min)) ++">",
+            "<select name=\"graph_select\" onChange=\"select_image()\">
+                <option value=\"" ++ url_graph(Min,Max,[]) ++ "\">Ports & Processes </option>
                 <option value=\"" ++ url_sched_graph(Min, Max, []) ++ "\">Schedulers </option>
                 <option value=\"" ++ url_ports_graph(Min, Max, []) ++ "\">Ports </option>
-	    	<option value=\"" ++ url_procs_graph(Min, Max, []) ++ "\">Processes </option>
+                <option value=\"" ++ url_procs_graph(Min, Max, []) ++ "\">Processes </option>
             </select>",
-	    "<input type=submit value=Update>"
-	    ]) ++
-	table_line([
-	    "Max:", 
-	    "<input name=range_max value=" ++ term2html(float(Max)) ++">",
-            "",
-	    "<a href=\"/cgi-bin/percept2_html/codelocation_page?range_min=" ++
-	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++"\">Code location</a>"
+            "<input type=submit value=Update>"
             ]) ++
-    	"</table>",
+        table_line([
+            "Max:", 
+            "<input name=range_max value=" ++ term2html(float(Max)) ++">",
+            "",
+            "<a href=\"/cgi-bin/percept2_html/codelocation_page?range_min=" ++
+            term2html(Min) ++ "&range_max=" ++ term2html(Max) ++"\">Code location</a>"
+            ]) ++
+        "</table>",
     MainTable = 
-	"<table>" ++
-	table_line([div_tag_graph("percept_graph")]) ++
-	table_line([RangeTable]) ++
-	"</table>",
+        "<table>" ++
+        table_line([div_tag_graph("percept_graph")]) ++
+        table_line([RangeTable]) ++
+        "</table>",
     Footer = "</div></form>",
     Header ++ MainTable ++ Footer.
     
@@ -365,26 +365,26 @@ overview_content_1(_Env, Input) ->
 div_tag_graph(Name) ->
    %background:url('/images/loader.gif') no-repeat center;
     "<div id=\""++Name++"\" 
-	onMouseDown=\"select_down(event)\" 
-	onMouseMove=\"select_move(event)\" 
-	onMouseUp=\"select_up(event)\"
+        onMouseDown=\"select_down(event)\" 
+        onMouseMove=\"select_move(event)\" 
+        onMouseUp=\"select_up(event)\"
 
-	style=\"
-	background-size: 100%;
-	background-origin: content;
-	width: 100%;
-	position:relative; 
-	\">
-	
-	<div id=\"percept_areaselect\"
-	style=\"background-color:#ef0909;
-	position:relative;
-	visibility:hidden;
-      	border-left: 1px solid #101010;
-	border-right: 1px solid #101010;
-	z-index:2;
-	width:40px;
-	height:40px;\"></div></div>".
+        style=\"
+        background-size: 100%;
+        background-origin: content;
+        width: 100%;
+        position:relative; 
+        \">
+        
+        <div id=\"percept_areaselect\"
+        style=\"background-color:#ef0909;
+        position:relative;
+        visibility:hidden;
+        border-left: 1px solid #101010;
+        border-right: 1px solid #101010;
+        z-index:2;
+        width:40px;
+        height:40px;\"></div></div>".
 
 url_graph(Min,Max,Pids) ->
     graph("/cgi-bin/percept2_graph/graph",Min,Max,Pids).
@@ -402,7 +402,7 @@ url_procs_graph(Min, Max, Pids) ->
             Pids :: [pid()]) -> string().
 graph(Func,Min,Max,Pids) ->
     Func ++ "?range_min=" ++ term2html(float(Min))
-    	++ "&range_max=" ++ term2html(float(Max))
+        ++ "&range_max=" ++ term2html(float(Max))
         ++ "&pids=" ++ pids2request(Pids).
 
 -spec(pids2request([pid_value()]) ->  string()).
@@ -663,7 +663,7 @@ active_funcs_content_2(Min, Max, _StartTs, ActiveFuns, Pids) ->
                         end, "", PidsWithCallgraph),
             Header =
                 "<div id=\"content\">
-        	<form name=callgraph_slice method=POST action=/cgi-bin/percept2_html/callgraph_slice_visualisation_page>
+                <form name=callgraph_slice method=POST action=/cgi-bin/percept2_html/callgraph_slice_visualisation_page>
                  <input name=range_min type=hidden value=" ++ term2html(Min) ++ ">
                  <input name=range_max type=hidden value=" ++ term2html(Max) ++ ">
                 \n",
@@ -671,10 +671,10 @@ active_funcs_content_2(Min, Max, _StartTs, ActiveFuns, Pids) ->
                 InfoTable ++
                 "<br></br>" ++
                 "<table>
-	           <tr><td><select name=\"pid\">"++PidList ++
+                   <tr><td><select name=\"pid\">"++PidList ++
                 "</select></td>
                  <td width=200><input type=submit value=\"Call Graph Slice\" /></td></tr>
-        	</table>" 
+                </table>" 
                 ++"<br></br>"
                 ++ Table ++
                 "</div></form>"
@@ -713,8 +713,8 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
     <input name=node2 type=hidden value=" ++ term2html(Node2) ++ ">
     \n",
     RangeTable = 
-	"<table>"++
-	table_line([
+        "<table>"++
+        table_line([
                     "Min:", 
                     "<input name=range_min value=" ++ term2html(float(Min)) ++">",
                     "Max:", 
@@ -724,10 +724,10 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
         "</table>",
     
     MainTable = 
-	"<table>" ++
-	table_line([div_tag_graph("percept_graph")]) ++
-     	table_line([RangeTable]) ++
-	"</table>",
+        "<table>" ++
+        table_line([div_tag_graph("percept_graph")]) ++
+        table_line([RangeTable]) ++
+        "</table>",
     Footer = "</div></form>",
     Header ++ MainTable ++ Footer.
     
@@ -738,15 +738,15 @@ summary_report_content() ->
 %%% databases content page.
 databases_content() ->
     "<div id=\"content\">
-	<form name=load_percept_file method=post action=/cgi-bin/percept2_html/load_database_page>
-	<center>
-	<table>
-	    <tr><td>Enter file to analyse:</td><td><input type=hidden name=path /></td></tr>
-	    <tr><td><input type=file name=file size=40 /></td><td><input type=submit value=Load onClick=\"path.value = file.value;\" /></td></tr>
-	</table>
-	</center>
-	</form>
-	</div>". 
+        <form name=load_percept_file method=post action=/cgi-bin/percept2_html/load_database_page>
+        <center>
+        <table>
+            <tr><td>Enter file to analyse:</td><td><input type=hidden name=path /></td></tr>
+            <tr><td><input type=file name=file size=40 /></td><td><input type=submit value=Load onClick=\"path.value = file.value;\" /></td></tr>
+        </table>
+        </center>
+        </form>
+        </div>". 
 
 %%% databases content page.
 load_database_content(SessionId, _Env, Input) ->
@@ -758,20 +758,20 @@ load_database_content(SessionId, _Env, Input) ->
     
     mod_esi:deliver(SessionId, "<div id=\"content\">"), 
     case file:read_file_info(Filename) of
-	{ok, _} ->
-    	    Content = "<center>
-    	    Parsing: " ++ Filename ++ "<br>
-    	    </center>",
-	    mod_esi:deliver(SessionId, Content),
-	        case percept2:analyze([Filename]) of
-		    {error, Reason} ->
+        {ok, _} ->
+            Content = "<center>
+            Parsing: " ++ Filename ++ "<br>
+            </center>",
+            mod_esi:deliver(SessionId, Content),
+                case percept2:analyze([Filename]) of
+                    {error, Reason} ->
                         mod_esi:deliver(SessionId, error_msg("Analyze" ++ term2html(Reason)));
-		    _ ->
-		        Complete = "<center><a href=\"/cgi-bin/percept2_html/overview_page\">View</a></center>",
-	                mod_esi:deliver(SessionId, Complete)
-	        end;
-	{error, Reason} ->
-	    mod_esi:deliver(SessionId, error_msg("File" ++ term2html(Reason)))
+                    _ ->
+                        Complete = "<center><a href=\"/cgi-bin/percept2_html/overview_page\">View</a></center>",
+                        mod_esi:deliver(SessionId, Complete)
+                end;
+        {error, Reason} ->
+            mod_esi:deliver(SessionId, error_msg("File" ++ term2html(Reason)))
     end,
     mod_esi:deliver(SessionId, "</div>"). 
 
@@ -851,26 +851,26 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                       [Prepare, SubTable|Out]
               end, [], ProcessTree),
     if 
-	length(ProcsHtml) > 0 ->
+        length(ProcsHtml) > 0 ->
             " <tr><td>
- 	   <table align=center width=1000 cellspacing=10 border=0>
-		<tr>
-		<td align=middle width=40><b>Select</b></td>
+           <table align=center width=1000 cellspacing=10 border=0>
+                <tr>
+                <td align=middle width=40><b>Select</b></td>
                 <td align=middle width=40> <b>[+/-]</b></td>
-		<td align=middle width=80><b>Pid</b></td>
-		<td align=middle width=80><b>Lifetime</b></td>
-	        <td align=middle width=80><b>Name</b></td>
-		<td align=middle width=80><b>Parent</b></td>
+                <td align=middle width=80><b>Pid</b></td>
+                <td align=middle width=80><b>Lifetime</b></td>
+                <td align=middle width=80><b>Name</b></td>
+                <td align=middle width=80><b>Parent</b></td>
                 <td align=middle width=80><b>#RQ_chgs</b></td>
                 <td align=middle width=80><b>#msgs_received</b></td>
                 <td align=middle width=80><b>#msgs_sent</b></td>
                 <td align=middle width=100><b>Entrypoint</b></td>
                 <td align=middle width=140><b> Callgraph </b></td>    
-		</tr>" ++
-		lists:flatten(ProcsHtml) ++ 
-	    "</table>
-	    </td></tr>";
-	true ->
+                </tr>" ++
+                lists:flatten(ProcsHtml) ++ 
+            "</table>
+            </td></tr>";
+        true ->
             ""
     end.
 
@@ -913,19 +913,19 @@ mk_ports_html(Ports, ProfileTime) ->
                         [Prepare|Out]
                 end, [], Ports),        
     if length(PortsHtml) > 0 ->
-    	   " <tr><td><b>Ports</b></td></tr>
+           " <tr><td><b>Ports</b></td></tr>
             <table width=900  border=1 cellspacing=10 cellpadding=2>
-		<tr>
-	        <td align=middle width=80><b>Port Id</b></td>
-		<td align=middle width=80><b>Lifetime</b></td>
+                <tr>
+                <td align=middle width=80><b>Port Id</b></td>
+                <td align=middle width=80><b>Lifetime</b></td>
                 <td align=middle width=80><b>Entry</b></td>
-	        <td align=middle width=80><b>Name</b></td>
-		<td align=middle width=80><b>Parent</b></td>
-               	</tr>" ++
-	      lists:flatten(PortsHtml) ++
-		"</table>
-	    </td></tr>";
-	true ->
+                <td align=middle width=80><b>Name</b></td>
+                <td align=middle width=80><b>Parent</b></td>
+                </tr>" ++
+              lists:flatten(PortsHtml) ++
+                "</table>
+            </td></tr>";
+        true ->
           ""
     end.
  
@@ -1002,15 +1002,15 @@ parent_pids([T|Ts], Out) ->
 
 procstarttime(TS) ->
     case TS of
-    	undefined -> 0.0;
-	    TS -> ?seconds(TS,(percept2_db:select({system, start_ts})))
+        undefined -> 0.0;
+            TS -> ?seconds(TS,(percept2_db:select({system, start_ts})))
     end.
 
 procstoptime(TS) ->
     case TS of
             undefined -> ?seconds((percept2_db:select({system, stop_ts})),
                               (percept2_db:select({system, start_ts})));
-	    TS -> ?seconds(TS, (percept2_db:select({system, start_ts})))
+            TS -> ?seconds(TS, (percept2_db:select({system, start_ts})))
     end.
 
 
@@ -1032,16 +1032,16 @@ process_info_content_1(_Env, Input) ->
                              ""
                      end,
     TimeTable = html_table([
-	[{th, ""}, 
-	 {th, "Timestamp"}, 
-	 {th, "Profile Time"}],
-	[{td, "Start"},
-	 term2html(I#information.start),
-	 term2html(procstarttime(I#information.start))],
-	[{td, "Stop"},
-	 term2html(I#information.stop),
-	 term2html(procstoptime(I#information.stop))]
-	]),   
+        [{th, ""}, 
+         {th, "Timestamp"}, 
+         {th, "Profile Time"}],
+        [{td, "Start"},
+         term2html(I#information.start),
+         term2html(procstarttime(I#information.start))],
+        [{td, "Stop"},
+         term2html(I#information.stop),
+         term2html(procstoptime(I#information.stop))]
+        ]),   
     CleanPid = percept2_db:select({system, nodes})==1,
     InfoTable = html_table
                   ([
@@ -1151,12 +1151,12 @@ functions_content(FunCallTree) ->
     Table=if length(FunsHtml) >0 ->
                   "<table border=1 cellspacing=10 cellpadding=2 bgcolor=\"#FFFFFF\">
                   <tr>
-	          <td align=left width=80><b> Pid </b></td>
+                  <td align=left width=80><b> Pid </b></td>
                   <td align=left width=80><b> [+/-] </b></td>
-		  <td align=right width=160><b> module:function/arity </b></td>
-	          <td align=right width=80><b> call count </b></td>   
+                  <td align=right width=160><b> module:function/arity </b></td>
+                  <td align=right width=80><b> call count </b></td>   
                   <td align=right width=120><b> graph visualisation </b></td>    
-	          </tr>" ++
+                  </tr>" ++
                       lists:flatten(FunsHtml) ++ 
                       "</table>" ;
              true ->
@@ -1390,24 +1390,24 @@ inter_node_message_content_1(_Env, Nodes) ->
                          Out ++ "<option value=\""++atom_to_list(Node)++"\">"++atom_to_list(Node)++"</option>"
                  end, "", Nodes),    
     "<div id=\"content\">
-	<form name=inter_node_message method=POST action=/cgi-bin/percept2_html/inter_node_message_graph_page>
-	<center>
+        <form name=inter_node_message method=POST action=/cgi-bin/percept2_html/inter_node_message_graph_page>
+        <center>
          <table>
-	    <tr><td width=200>From node:</td>
+            <tr><td width=200>From node:</td>
                 <td width=200>To node:</td></tr>
-	    <tr><td><select name=\"node1\">"++NodeList ++
+            <tr><td><select name=\"node1\">"++NodeList ++
             "</select></td>
             <td><select name=\"node2\">"++NodeList++
         "</select></td>
          <td width=200><input type=submit value=\"Generate Graph\" /></td></tr>
-	</table>
-	</center>
-	</form>
-	</div>". 
+        </table>
+        </center>
+        </form>
+        </div>". 
 
     
 %%% --------------------------- %%%
-%%% 	Utility functions	%%%
+%%%     Utility functions       %%%
 %%% --------------------------- %%%
 
 %% Should be in string stdlib?
@@ -1503,7 +1503,7 @@ has_callgraph(Pid) ->
     CallTree/=[].
 
 %%% --------------------------- %%%
-%%% 	to html          	%%%
+%%%     to html                 %%%
 %%% --------------------------- %%%
 pid2html(Pid={pid, {_P1, P2, P3}}, true) ->
     PidValue = pid2str(Pid),
@@ -1555,7 +1555,7 @@ msg2html(Msg) ->
     end.
 
 %%% --------------------------- %%%
-%%% 	percept conversions    	%%%
+%%%     percept conversions     %%%
 %%% --------------------------- %%%
 -spec image_string(Request :: string()) -> string().
 image_string(Request) ->
@@ -1585,7 +1585,7 @@ image_string_tail(Request, [{Type, Value} | Opts], Out) ->
     image_string_tail(Request, Opts, [Opt|Out]).
         
 %%% --------------------------- %%%
-%%% 	percept conversions    	%%%
+%%%     percept conversions     %%%
 %%% --------------------------- %%%
 -spec pid2str(Pid :: pid()|pid_value()) ->  string().
 pid2str(Pid) when is_pid(Pid) ->
@@ -1618,7 +1618,7 @@ string2mfa(String) ->
     
 
 %%% --------------------------- %%%
-%%% 	get value       	%%%
+%%%     get value               %%%
 %%% --------------------------- %%%
 -spec get_option_value(Option :: string(), Options :: [{string(),any()}]) ->
                               {'error', any()} | boolean() | pid_value() | [pid_value()] | number().
@@ -1642,10 +1642,10 @@ get_option_value(Option, Options) ->
 
 get_default_option_value(Option) ->
     case Option of 
-    	"fillcolor" -> false;
-	"range_min" -> float(0.0);
-	"pids" -> [];
-	"range_max" ->
+        "fillcolor" -> false;
+        "range_min" -> float(0.0);
+        "pids" -> [];
+        "range_max" ->
             ?seconds((percept2_db:select({system, stop_ts})),
                      (percept2_db:select({system, start_ts})));
         "width" -> 800;
@@ -1656,18 +1656,18 @@ get_default_option_value(Option) ->
 get_number_value(Value) ->
     % Try float
     case string:to_float(Value) of
-    	{error, no_float} ->
-	    % Try integer
-	    case string:to_integer(Value) of
-		{error, _} -> {error, illegal_number};
-		{Integer, _} -> Integer
-	    end;
-	{error, _} -> {error, illegal_number};
-	{Float, _} -> Float
+        {error, no_float} ->
+            % Try integer
+            case string:to_integer(Value) of
+                {error, _} -> {error, illegal_number};
+                {Integer, _} -> Integer
+            end;
+        {error, _} -> {error, illegal_number};
+        {Float, _} -> Float
     end.
 
 %%% --------------------------- %%%
-%%% 	html prime functions	%%%
+%%%     html prime functions    %%%
 %%% --------------------------- %%%
 -spec header()->string().
 header() -> header([]).
@@ -1707,9 +1707,9 @@ common_header(HeaderData)->
            function toggle(lnkid, tbid)
            {
            if(document.all)
-		     {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == \"block\" ? \"none\" : \"block\";}
+                     {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == \"block\" ? \"none\" : \"block\";}
            else
-		    {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == \"table\" ? \"none\" : \"table\";}
+                    {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == \"table\" ? \"none\" : \"table\";}
            document.getElementById(lnkid).value = document.getElementById(lnkid).value == \"[-]\" ? \"[+]\" : \"[-]\";
           }
      </script>
@@ -1730,8 +1730,8 @@ menu(Input) ->
 
 menu_1(Min, Max) ->
     "<div id=\"menu\" class=\"menu_tabs\">
-	<ul>
-     	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
+        <ul>
+        <li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
         <li><a href=/cgi-bin/percept2_html/summary_report_page>summary report</a></li>
         <li><a href=/cgi-bin/percept2_html/inter_node_message_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">inter-node messaging</a></li>
@@ -1741,13 +1741,13 @@ menu_1(Min, Max) ->
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">ports</a></li>
         <li><a href=/cgi-bin/percept2_html/process_tree_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">processes</a></li>
-      	<li><a href=/cgi-bin/percept2_html/overview_page>overview</a></li>
+        <li><a href=/cgi-bin/percept2_html/overview_page>overview</a></li>
      </ul></div>\n".
    
 %%% -------------------------------------%%%
 %%%  check cached istory htmls; reuse or %%%
 %%%  regenerate.                         %%%
-%%%         	                         %%%
+%%%                                      %%%
 %%% ------------------------------------ %%%
 -spec gen_content(list(), term(), string(), 
                   fun((_,_) -> nonempty_string())) ->
@@ -1769,14 +1769,14 @@ gen_content(Env,Input,CacheKey,Fun) ->
             end
     end.
 %%% --------------------------- %%%
-%%% 	Errror messages     	%%%
+%%%     Errror messages         %%%
 %%% --------------------------- %%%
 -spec error_msg(Error::string()) -> string().
 error_msg(Error) ->
     "<table width=400>
-	<tr height=5><td></td> <td></td></tr>
-	<tr><td width=150 align=left><b>Error: </b></td> <td align=left>"++ Error ++ "</td></tr>
-	<tr height=5><td></td> <td></td></tr>
+        <tr height=5><td></td> <td></td></tr>
+        <tr><td width=150 align=left><b>Error: </b></td> <td align=left>"++ Error ++ "</td></tr>
+        <tr height=5><td></td> <td></td></tr>
      </table>\n".
 
 blink_msg(Message) ->
@@ -1785,10 +1785,10 @@ blink_msg(Message) ->
 
 %% seconds2ts(Seconds, StartTs) -> TS
 %% In:
-%%	Seconds = float()
-%%	StartTs = timestamp()
+%%      Seconds = float()
+%%      StartTs = timestamp()
 %% Out:
-%%	TS = timestamp()
+%%      TS = timestamp()
 %% @spec seconds2ts(float(), StartTs::{integer(),integer(),integer()}) -> timestamp()
 %% @doc Calculates a timestamp given a duration in seconds and a starting timestamp. 
 seconds2ts(Seconds, {Ms, S, Us}) ->
@@ -1817,8 +1817,8 @@ group_by(_N,[],Acc) -> Acc;
 group_by(N,TupleList = [T| _Ts],Acc) ->
     E = element(N,T),
     {TupleList1,TupleList2} = 
-	lists:partition(fun (T1) ->
-				element(N,T1) == E
-			end,
-			TupleList),
+        lists:partition(fun (T1) ->
+                                element(N,T1) == E
+                        end,
+                        TupleList),
     group_by(N,TupleList2,Acc ++ [TupleList1]).

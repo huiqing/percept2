@@ -90,7 +90,7 @@ bound_vars(Node) ->
 %%@spec bound_var_names([syntaxTree()]|syntaxTree())-> [atom()]
 
 -spec(bound_var_names(Node::[syntaxTree()]|syntaxTree())-> [atom()]).
-bound_var_names(Node)->		       
+bound_var_names(Node)->                
     element(1, lists:unzip(bound_vars(Node))).
 
 
@@ -352,15 +352,15 @@ is_exported({FunName, Arity}, FileOrModInfo) ->
 
 is_exported_1({FunName, Arity}, ModInfo) ->
     ImpExport = case lists:keysearch(attributes, 1, ModInfo) of
-		    {value, {attributes, Attrs}} -> 
-			lists:member({compile, export_all}, Attrs);
-		    false -> false
-		end,
-    ExpExport= 	case lists:keysearch(exports, 1, ModInfo) of
-		    {value, {exports, ExportList}} ->
+                    {value, {attributes, Attrs}} -> 
+                        lists:member({compile, export_all}, Attrs);
+                    false -> false
+                end,
+    ExpExport=  case lists:keysearch(exports, 1, ModInfo) of
+                    {value, {exports, ExportList}} ->
                         lists:member({FunName, Arity}, ExportList);
-		    _ -> false
-		end,
+                    _ -> false
+                end,
     ImpExport or ExpExport.
 
 %% =====================================================================
@@ -402,20 +402,20 @@ is_import(Node, ModName) ->
       -> [token()]|{error, term()}).
 tokenize(File, WithLayout, TabWidth) ->
     case file:read_file(File) of
-	{ok, Bin} ->
-	    S = erlang:binary_to_list(Bin),
-	    case WithLayout of 
-		true -> 
-		    {ok, Ts, _} = refac_scan_with_layout:string(
+        {ok, Bin} ->
+            S = erlang:binary_to_list(Bin),
+            case WithLayout of 
+                true -> 
+                    {ok, Ts, _} = refac_scan_with_layout:string(
                                     S, {1,1}, TabWidth, 
                                     refac_misc:file_format(File)),
-		    Ts;
-		_ -> {ok, Ts, _} = refac_scan:string(
+                    Ts;
+                _ -> {ok, Ts, _} = refac_scan:string(
                                      S, {1,1}, TabWidth,
                                      refac_misc:file_format(File)),
-		     Ts
-	    end;
-	{error, Reason} ->
+                     Ts
+            end;
+        {error, Reason} ->
             {error, Reason}
     end.
 
@@ -624,7 +624,7 @@ mask_variables(Exp) when is_list(Exp) ->
 mask_variables(Exp) ->
     ast_traverse_api:full_buTP(
       fun (Node, _Others) ->
-	      do_mask_variables(Node)
+              do_mask_variables(Node)
       end, Exp, {}).
 
 do_mask_variables(Node) ->
@@ -734,7 +734,7 @@ subst(Expr, Subst) ->
  
 do_subst(Node, Subst) ->
     case refac_syntax:type(Node) of
-	variable ->
+        variable ->
             VarName = refac_syntax:variable_name(Node),
             case lists:keysearch(VarName, 1, Subst) of
                 {value, {VarName, Expr}} ->
@@ -773,6 +773,6 @@ do_subst(Node, Subst) ->
                 _ ->
                     {Node, false} 
             end;
-	_ -> {Node, false}
+        _ -> {Node, false}
     end.
                                    

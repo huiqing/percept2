@@ -18,7 +18,7 @@
 
 %% 
 %% @doc Percept database.
-%%	
+%%      
 %% 
 -module(percept2_db).
 
@@ -51,33 +51,33 @@
 -define(STOP_TIMEOUT, 1000).
 
 %%% ------------------------%%%
-%%% 	Type definitions    %%%
+%%%     Type definitions    %%%
 %%% ------------------------%%%
 
 -type activity_option() ::
-	{ts_min, timestamp()} | 
-	{ts_max, timestamp()} | 
-	{ts_exact, boolean()} |  
-	{mfa, {atom(), atom(), byte()}} | 
-	{state, active | inactive} | 
-	{id, all | procs | ports | pid() | port()}.
+        {ts_min, timestamp()} | 
+        {ts_max, timestamp()} | 
+        {ts_exact, boolean()} |  
+        {mfa, {atom(), atom(), byte()}} | 
+        {state, active | inactive} | 
+        {id, all | procs | ports | pid() | port()}.
 
 -type scheduler_option() ::
-	{ts_min, timestamp()} | 
-	{ts_max, timestamp()} |
-	{ts_exact, boolean()} |
-	{id, scheduler_id()}.
+        {ts_min, timestamp()} | 
+        {ts_max, timestamp()} |
+        {ts_exact, boolean()} |
+        {id, scheduler_id()}.
 
 -type system_option() :: start_ts | stop_ts.
 
 -type information_option() ::
-	all | procs | ports | pid() | port() | procs_count| ports_count.
+        all | procs | ports | pid() | port() | procs_count| ports_count.
 
 -type inter_node_option() ::
         all |{message_acts, {node(), node(), float(), float()}}.
 -type filename()::file:filename().
 %%% ------------------------%%%
-%%% 	Interface functions %%%
+%%%     Interface functions %%%
 %%% ------------------------%%%
 
 %% @doc starts the percept database
@@ -85,10 +85,10 @@
                             {restarted, [{file:filename(), pid()}]}.
 start(TraceFileNames) ->
     case erlang:whereis(percept2_db) of
-    	undefined ->
-	    {started, do_start(TraceFileNames)};
-	PerceptDB ->
-	    {restarted, restart(TraceFileNames,PerceptDB)}
+        undefined ->
+            {started, do_start(TraceFileNames)};
+        PerceptDB ->
+            {restarted, restart(TraceFileNames,PerceptDB)}
     end.
 
 %% @private
@@ -186,17 +186,17 @@ insert(SubDB, Trace) ->
 %% <p>Queries:</p>
 %% <pre>
 %% {system, Option}
-%%	Option = system_option()
-%%	Result = timestamp() 
+%%      Option = system_option()
+%%      Result = timestamp() 
 %% {information, Options}
-%%	Options = [information_option()]
-%%	Result = [#information{}] 
+%%      Options = [information_option()]
+%%      Result = [#information{}] 
 %% {scheduler, Options}
-%%	Options = [sceduler_option()]
-%%	Result = [#activity{}]
+%%      Options = [sceduler_option()]
+%%      Result = [#activity{}]
 %% {activity, Options}
-%%	Options = [activity_option()]
-%%	Result = [#activity{}]
+%%      Options = [activity_option()]
+%%      Result = [#activity{}]
 %% </pre>
 %% <p>
 %% Note: selection of Id's are always OR all other options are considered AND.
@@ -225,7 +225,7 @@ consolidate_db() ->
     end.
 
 %%% ------------------------%%%
-%%% 	Database loop       %%%
+%%%     Database loop       %%%
 %%% ------------------------%%%
 
 -spec init_percept_db(pid(), [filename()]) -> any().
@@ -249,25 +249,25 @@ init_percept_db(Parent, TraceFileNames) ->
 
 loop_percept_db(FileNameSubDBPairs) ->
     receive
-     	{select, Pid, Query} ->
+        {select, Pid, Query} ->
             Res = percept_db_select_query(FileNameSubDBPairs, Query),
             Pid ! {result, Res},
-	    loop_percept_db(FileNameSubDBPairs);
-	{action, stop} ->
+            loop_percept_db(FileNameSubDBPairs);
+        {action, stop} ->
             stop_percept_db(FileNameSubDBPairs);
-	{action, From, consolidate_db} ->
+        {action, From, consolidate_db} ->
             consolidate_db(FileNameSubDBPairs),
             From ! {percept2_db, consolidate_done},
-	    loop_percept_db(FileNameSubDBPairs);
+            loop_percept_db(FileNameSubDBPairs);
         {operate, Pid, {Table, {Fun, Start}}} ->
-	    Result = ets:foldl(Fun, Start, Table),
-	    Pid ! {result, Result},
-	    loop_percept_db(FileNameSubDBPairs);
+            Result = ets:foldl(Fun, Start, Table),
+            Pid ! {result, Result},
+            loop_percept_db(FileNameSubDBPairs);
         {'EXIT', _, normal} ->
             loop_percept_db(FileNameSubDBPairs);
-	_Unhandled -> 
-	    ?dbg(0, "loop_percept_db, unhandled query: ~p~n", [_Unhandled]),
-	    loop_percept_db(FileNameSubDBPairs)
+        _Unhandled -> 
+            ?dbg(0, "loop_percept_db, unhandled query: ~p~n", [_Unhandled]),
+            loop_percept_db(FileNameSubDBPairs)
     end.
 
 loop_percept_sub_db(SubDBIndex) ->
@@ -351,20 +351,20 @@ stop_a_percept_sub_db(SubDBIndex) ->
 %%% -----------------------------%%%
 %%% select_query
 %%% In:
-%%%	Query = {InfoType, Option}
-%%%	InfoType = system | activity | scheduler |
+%%%     Query = {InfoType, Option}
+%%%     InfoType = system | activity | scheduler |
 %%                 information |code | funs      |
 %%                 calltime
 percept_db_select_query(FileNameSubDBPairs, Query) ->
     case Query of
-	{system, _ } -> 
-	    select_query_system(Query);
-	{activity, _ } -> 
-	    select_query_activity(FileNameSubDBPairs, Query);
-    	{scheduler, _} ->
-	    select_query_scheduler(FileNameSubDBPairs, Query);
-	{information, _ } -> 
-	    select_query_information(Query);
+        {system, _ } -> 
+            select_query_system(Query);
+        {activity, _ } -> 
+            select_query_activity(FileNameSubDBPairs, Query);
+        {scheduler, _} ->
+            select_query_scheduler(FileNameSubDBPairs, Query);
+        {information, _ } -> 
+            select_query_information(Query);
         {code, _} ->
             select_query_func(Query);
         {funs, _} ->
@@ -374,20 +374,20 @@ percept_db_select_query(FileNameSubDBPairs, Query) ->
         {inter_node, _} ->
             select_query_inter_node(Query);
         Unhandled ->
-	    io:format("percept_db_select_query, unhandled: ~p~n", [Unhandled]),
-	    []
+            io:format("percept_db_select_query, unhandled: ~p~n", [Unhandled]),
+            []
     end.
 
 percept_sub_db_select_query(SubDBIndex, Query) ->
     ?dbg(0, "Subdb query:\n~p\n", [{SubDBIndex, Query}]),
     case Query of 
         {activity, _ } -> 
-	    select_query_activity_1(SubDBIndex, Query);
+            select_query_activity_1(SubDBIndex, Query);
         {scheduler, _} ->
             select_query_scheduler_1(SubDBIndex, Query);
         Unhandled ->
-	    io:format("percept_sub_db_select_query, unhandled: ~p~n", [Unhandled]),
-	    []
+            io:format("percept_sub_db_select_query, unhandled: ~p~n", [Unhandled]),
+            []
     end.
 
 select_query_inter_node(Query) ->
@@ -411,9 +411,9 @@ select_query_inter_node(Query) ->
             Body =  [{{'$0', '$2'}}],
             ets:select(inter_node, [{Head, Constraints, Body}]);
         Unhandled ->
-	    io:format("select_query_inter_node, unhandled: ~p~n", 
+            io:format("select_query_inter_node, unhandled: ~p~n", 
                       [Unhandled]),
-	    []
+            []
     end.
 
 select_query_func(Query) ->
@@ -466,12 +466,12 @@ select_query_func(Query) ->
         Unhandled ->
             io:format("select_query_func, unhandled: ~p~n", 
                       [Unhandled]),
-	    []
+            []
     end.
 
 %%%========================================%%%
 %%%                                        %%%
-%%% 	process trace events               %%%
+%%%     process trace events               %%%
 %%%                                        %%%
 %%%========================================%%%
 -type dest()::pid()|port()|atom()|{atom, node()}.
@@ -814,7 +814,7 @@ consolidate_runnability_loop(_Tab, '$end_of_table',RunnableStates) ->
     {ok, {get({runnable, procs}), get({runnable, ports}), RunnableStates}};
 consolidate_runnability_loop(Tab, Key, RunnableStates) ->
     case ets:lookup(Tab, Key) of
-	[#activity{id = Id, state = State }] ->
+        [#activity{id = Id, state = State }] ->
             case check_activity_consistency(Id, State,RunnableStates) of 
                 invalid_state ->
                     NextKey = ets:next(Tab, Key),
@@ -835,13 +835,13 @@ consolidate_runnability_loop(Tab, Key, RunnableStates) ->
   
 %% get_runnable_count(Type, Id, State) -> RunnableCount
 %% In: 
-%%	Type = procs | ports
-%%	State = active | inactive
+%%      Type = procs | ports
+%%      State = active | inactive
 %% Out:
-%%	RunnableCount = integer()
+%%      RunnableCount = integer()
 %% Purpose:
-%%	Keep track of the number of runnable ports and processes
-%%	during the profile duration.
+%%      Keep track of the number of runnable ports and processes
+%%      during the profile duration.
 get_runnable_count(Type, State) ->
     case {get({runnable, Type}), State} of 
         {N, active} ->
@@ -851,8 +851,8 @@ get_runnable_count(Type, State) ->
             put({runnable, Type}, N - 1),
             N - 1;
         Unhandled ->
-	    ?dbg(0, "get_runnable_count, unhandled ~p~n", [Unhandled]),
-	    Unhandled
+            ?dbg(0, "get_runnable_count, unhandled ~p~n", [Unhandled]),
+            Unhandled
     end.
 
 %%% select_query_activity
@@ -880,25 +880,25 @@ select_query_activity_1(SubDBIndex, Query) ->
                     case catch select_query_activity_exact_ts(SubDBIndex, Options) of
                     {'EXIT', Reason} ->
                             io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
-			    [];
-		    	Match ->
-			    Match
-		    end;		    
-		false ->
-		    MS = activity_ms(Options),
+                            [];
+                        Match ->
+                            Match
+                    end;                    
+                false ->
+                    MS = activity_ms(Options),
                     Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
                     case catch ets:select(Tab, MS) of
-		    {'EXIT', Reason} ->
-	                    io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
-			    [];
-		    	Match ->
+                    {'EXIT', Reason} ->
+                            io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
+                            [];
+                        Match ->
                             ?dbg(0, "~p items found in tab ~p~n", [length(Match), Tab]),
                             Match
-		    end
-	    end;
-	Unhandled ->
-	    io:format("select_query_activity, unhandled: ~p~n", [Unhandled]),
-    	    []
+                    end
+            end;
+        Unhandled ->
+            io:format("select_query_activity, unhandled: ~p~n", [Unhandled]),
+            []
     end.
 
 %% This only works when all the procs/ports are selected.
@@ -917,47 +917,47 @@ get_runnable_counts(SubDBIndex, Options) ->
 select_query_activity_exact_ts(SubDBIndex, Options) ->
     case { proplists:get_value(ts_min, Options, undefined), 
            proplists:get_value(ts_max, Options, undefined) } of
-	{undefined, undefined} -> [];
-	{undefined, _        } -> [];
-	{_        , undefined} -> [];
-	{TsMin    , TsMax    } ->
+        {undefined, undefined} -> [];
+        {undefined, _        } -> [];
+        {_        , undefined} -> [];
+        {TsMin    , TsMax    } ->
             Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
-	    % Remove unwanted options
-	    Opts = lists_filter([ts_exact], Options),
-	    Ms = activity_ms(Opts),
-	    case ets:select(Tab, Ms) of
-		% no entries within interval
-		[] -> 
-		    Opts2 = lists_filter([ts_max, ts_min], Opts) ++ [{ts_min, TsMax}],
-		    Ms2   = activity_ms(Opts2),
-		    case ets:select(Tab, Ms2, 1) of
-			'$end_of_table' -> [];
-			{[E], _}  -> 
-			    [PrevAct] = ets:lookup(Tab, ets:prev(Tab, E#activity.timestamp)),
-			    [PrevAct#activity{ timestamp = TsMin} , E] 
-		    end;
-		Acts=[Head|_] ->
+            % Remove unwanted options
+            Opts = lists_filter([ts_exact], Options),
+            Ms = activity_ms(Opts),
+            case ets:select(Tab, Ms) of
+                % no entries within interval
+                [] -> 
+                    Opts2 = lists_filter([ts_max, ts_min], Opts) ++ [{ts_min, TsMax}],
+                    Ms2   = activity_ms(Opts2),
+                    case ets:select(Tab, Ms2, 1) of
+                        '$end_of_table' -> [];
+                        {[E], _}  -> 
+                            [PrevAct] = ets:lookup(Tab, ets:prev(Tab, E#activity.timestamp)),
+                            [PrevAct#activity{ timestamp = TsMin} , E] 
+                    end;
+                Acts=[Head|_] ->
                     if
-			Head#activity.timestamp == TsMin -> Acts;
-			true ->
-			    PrevTs = ets:prev(Tab, Head#activity.timestamp),
-			    case ets:lookup(Tab, PrevTs) of
-				[] -> Acts;
-				[PrevAct] -> [PrevAct#activity{timestamp = TsMin}|Acts]
-			    end
-		    end
-	    end
+                        Head#activity.timestamp == TsMin -> Acts;
+                        true ->
+                            PrevTs = ets:prev(Tab, Head#activity.timestamp),
+                            case ets:lookup(Tab, PrevTs) of
+                                [] -> Acts;
+                                [PrevAct] -> [PrevAct#activity{timestamp = TsMin}|Acts]
+                            end
+                    end
+            end
     end.
 
 lists_filter([], Options) -> Options;
 lists_filter([D|Ds], Options) ->
     lists_filter(Ds, lists:filter(
-	fun ({Pred, _}) ->
-	    if 
-		Pred == D -> false;
-		true      -> true
-	    end
-	end, Options)).
+        fun ({Pred, _}) ->
+            if 
+                Pred == D -> false;
+                true      -> true
+            end
+        end, Options)).
 
 % Options:
 % {ts_min, timestamp()}
@@ -973,61 +973,61 @@ lists_filter([D|Ds], Options) ->
 
 activity_ms(Opts) ->
     Head = #activity{
-    	timestamp = '$1',
-	id = '$2',
-	state = '$3',
-	where = '$4',
-	_ = '_'},
+        timestamp = '$1',
+        id = '$2',
+        state = '$3',
+        where = '$4',
+        _ = '_'},
 
     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
     Body = ['$_'],
     
     lists:foldl(
-    	fun (Option, MS) ->
-	    case Option of
-		{id, ports} ->
-	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
-		{id, procs} ->
-	    	    [{Head,[{'==', pid, {element, 1, Head#activity.id}} | Conditions], Body} | MS];
-		{id, ID} when is_port(ID) ->
-	    	    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
+        fun (Option, MS) ->
+            case Option of
+                {id, ports} ->
+                    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
+                {id, procs} ->
+                    [{Head,[{'==', pid, {element, 1, Head#activity.id}} | Conditions], Body} | MS];
+                {id, ID} when is_port(ID) ->
+                    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
                 {id, {pid, {P1, P2, P3}}}->
-	    	    [{Head,[{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conditions], Body} | MS];
-		{id, all} ->
-	    	    [{Head, Conditions,Body} | MS];
-		_ ->
-	    	    io:format("activity_ms id dropped ~p~n", [Option]),
-	    	    MS
-	    end
-	end, [], IDs).
+                    [{Head,[{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conditions], Body} | MS];
+                {id, all} ->
+                    [{Head, Conditions,Body} | MS];
+                _ ->
+                    io:format("activity_ms id dropped ~p~n", [Option]),
+                    MS
+            end
+        end, [], IDs).
 
 activity_count_ms(Opts) ->
     % {activity, Timestamp, State, Mfa}
     Head = #activity{
-    	timestamp = '$1',
+        timestamp = '$1',
         id = '$2',
         state = '$3',
         where = '$4',
         runnable_count='$5',
         _ = '_'
-	},
+        },
 
     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
     Body = [{{'$1', '$5'}}],
     lists:foldl(
-    	fun (Option, MS) ->
-	    case Option of
-		{id, ports} ->
-	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
-		{id, procs} ->
-	    	    [{Head,[{'==', pid, {element, 1, '$2'}} | Conditions], Body} | MS];
+        fun (Option, MS) ->
+            case Option of
+                {id, ports} ->
+                    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
+                {id, procs} ->
+                    [{Head,[{'==', pid, {element, 1, '$2'}} | Conditions], Body} | MS];
                 {id, all} ->
-	    	    [{Head, Conditions,Body} | MS];
-		_ ->
-	    	    io:format("activity_ms id dropped ~p~n", [Option]),
-	    	    MS
-	    end
-	end, [], IDs).
+                    [{Head, Conditions,Body} | MS];
+                _ ->
+                    io:format("activity_ms id dropped ~p~n", [Option]),
+                    MS
+            end
+        end, [], IDs).
 
 activity_ms_and(_, [], Constraints, []) ->
     {Constraints, [{id, all}]};
@@ -1035,24 +1035,24 @@ activity_ms_and(_, [], Constraints, IDs) ->
     {Constraints, IDs};
 activity_ms_and(Head, [Opt|Opts], Constraints, IDs) ->
     case Opt of
-	{ts_min, Min} ->
-	    activity_ms_and(Head, Opts, 
-		[{'>=', Head#activity.timestamp, {Min}} | Constraints], IDs);
-	{ts_max, Max} ->
-	    activity_ms_and(Head, Opts, 
-		[{'=<', Head#activity.timestamp, {Max}} | Constraints], IDs);
-	{id, ID} ->
-	    activity_ms_and(Head, Opts, 
-		Constraints, [{id, ID} | IDs]);
-	{state, State} ->
-	    activity_ms_and(Head, Opts, 
-		[{'==', Head#activity.state, State} | Constraints], IDs);
-	{mfa, Mfa} ->
-	    activity_ms_and(Head, Opts, 
-		[{'==', Head#activity.where, {Mfa}}| Constraints], IDs);
-	_ -> 
-	    io:format("activity_ms_and option dropped ~p~n", [Opt]),
-	    activity_ms_and(Head, Opts, Constraints, IDs)
+        {ts_min, Min} ->
+            activity_ms_and(Head, Opts, 
+                [{'>=', Head#activity.timestamp, {Min}} | Constraints], IDs);
+        {ts_max, Max} ->
+            activity_ms_and(Head, Opts, 
+                [{'=<', Head#activity.timestamp, {Max}} | Constraints], IDs);
+        {id, ID} ->
+            activity_ms_and(Head, Opts, 
+                Constraints, [{id, ID} | IDs]);
+        {state, State} ->
+            activity_ms_and(Head, Opts, 
+                [{'==', Head#activity.state, State} | Constraints], IDs);
+        {mfa, Mfa} ->
+            activity_ms_and(Head, Opts, 
+                [{'==', Head#activity.where, {Mfa}}| Constraints], IDs);
+        _ -> 
+            io:format("activity_ms_and option dropped ~p~n", [Opt]),
+            activity_ms_and(Head, Opts, Constraints, IDs)
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1099,36 +1099,36 @@ pdb_scheduler_loop(ProcRegName)->
 
 select_query_scheduler_1(SubDBIndex, Query) ->
     case Query of
-	{scheduler, Options} when is_list(Options) ->
+        {scheduler, Options} when is_list(Options) ->
             Head = #scheduler{
-	    	timestamp = '$1',
-		id = '$2',
-		state = '$3',
-		active_scheds = '$4'
+                timestamp = '$1',
+                id = '$2',
+                state = '$3',
+                active_scheds = '$4'
              },
-	    Body = ['$_'],
-	    % We don't need id's
+            Body = ['$_'],
+            % We don't need id's
             Constraints = scheduler_ms_and(Head, Options, []),
             Tab = mk_proc_reg_name("pdb_scheduler", SubDBIndex),
             ets:select(Tab, [{Head, Constraints, Body}]);
-	Unhandled ->
-	    io:format("select_query_scheduler_1, unhandled: ~p~n", [Unhandled]),
-	    []
+        Unhandled ->
+            io:format("select_query_scheduler_1, unhandled: ~p~n", [Unhandled]),
+            []
     end.
 
 scheduler_ms_and(_, [], Constraints) -> 
     Constraints;
 scheduler_ms_and(Head, [Opt|Opts], Constraints) ->
     case Opt of
-	{ts_min, Min} ->
-	    scheduler_ms_and(Head, Opts, 
+        {ts_min, Min} ->
+            scheduler_ms_and(Head, Opts, 
                              [{'>=', Head#scheduler.timestamp, {Min}} | Constraints]);
         {ts_max, Max} ->
-	    scheduler_ms_and(Head, Opts, 
+            scheduler_ms_and(Head, Opts, 
                              [{'=<', Head#scheduler.timestamp, {Max}} | Constraints]);
-	_ -> 
-	    io:format("scheduler_ms_and option dropped ~p~n", [Opt]),
-	    scheduler_ms_and(Head, Opts, Constraints)
+        _ -> 
+            io:format("scheduler_ms_and option dropped ~p~n", [Opt]),
+            scheduler_ms_and(Head, Opts, Constraints)
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1199,34 +1199,34 @@ update_information_acc_time_1(Key, Value) ->
 
 update_information_1(#information{id = Id} = NewInfo) ->
     case ets:lookup(pdb_info, Id) of
-    	[] ->
+        [] ->
             ets:insert(pdb_info, NewInfo),
-	    ok;
-	[Info] ->
-	    % Remake NewInfo and Info to lists then substitute
-	    % old values for new values that are not undefined or empty lists.
-	    {_, Result} = lists:foldl(
-	    	fun (InfoElem, {[NewInfoElem | Tail], Out}) ->
-		    case NewInfoElem of
-		    	undefined ->
-			    {Tail, [InfoElem | Out]};
-		    	[] ->
-			    {Tail, [InfoElem | Out]};
+            ok;
+        [Info] ->
+            % Remake NewInfo and Info to lists then substitute
+            % old values for new values that are not undefined or empty lists.
+            {_, Result} = lists:foldl(
+                fun (InfoElem, {[NewInfoElem | Tail], Out}) ->
+                    case NewInfoElem of
+                        undefined ->
+                            {Tail, [InfoElem | Out]};
+                        [] ->
+                            {Tail, [InfoElem | Out]};
                         {0,0} ->
                             {Tail, [InfoElem | Out]};
                         0 ->
                             {Tail, [InfoElem|Out]};
                         _ ->
-			    {Tail, [NewInfoElem | Out]}
-		    end
-		end, {tuple_to_list(NewInfo), []}, tuple_to_list(Info)),
+                            {Tail, [NewInfoElem | Out]}
+                    end
+                end, {tuple_to_list(NewInfo), []}, tuple_to_list(Info)),
                      ets:insert(pdb_info, list_to_tuple(lists:reverse(Result)))
     end.
 
 update_information_child_1(Id, ChildPid) ->
     InternalPid = pid2value(ChildPid),
     case ets:lookup(pdb_info, Id) of
-    	[] ->
+        [] ->
             ets:insert(pdb_info,#information{
                          id = Id,
                          children = [InternalPid]});
@@ -1295,36 +1295,36 @@ update_information_received_1(Pid, MsgSize) ->
 
 select_query_information(Query) ->
     case Query of
-    	{information, all} -> 
-	    ets:select(pdb_info, [{
-		#information{ _ = '_'},
-		[],
-		['$_']
-		}]);
-	{information, procs} ->
-	    ets:select(pdb_info, [{
-		#information{id = {pid,'$1'}, _ = '_'},
+        {information, all} -> 
+            ets:select(pdb_info, [{
+                #information{ _ = '_'},
                 [],
-		['$_']
-		}]);
+                ['$_']
+                }]);
+        {information, procs} ->
+            ets:select(pdb_info, [{
+                #information{id = {pid,'$1'}, _ = '_'},
+                [],
+                ['$_']
+                }]);
         {information, procs_count} ->
              ets:select_count(pdb_info, [{
-		#information{id = {pid, '$1'}, _ = '_'},
-		[],
-		[true]
-		}]);
-	{information, ports} ->
-	    ets:select(pdb_info, [{
-		#information{ id = '$1', _ = '_'},
-		[{is_port, '$1'}],
-		['$_']
-		}]);
+                #information{id = {pid, '$1'}, _ = '_'},
+                [],
+                [true]
+                }]);
+        {information, ports} ->
+            ets:select(pdb_info, [{
+                #information{ id = '$1', _ = '_'},
+                [{is_port, '$1'}],
+                ['$_']
+                }]);
         {information, ports_count} ->
-	    ets:select_count(pdb_info, [{
-		#information{ id = '$1', _ = '_'},
-		[{is_port, '$1'}],
-		[true]
-		}]);
+            ets:select_count(pdb_info, [{
+                #information{ id = '$1', _ = '_'},
+                [{is_port, '$1'}],
+                [true]
+                }]);
         {information, {range_min_max, Ids}} ->
             StartStopTS=[ets:select(pdb_info, 
                                     [{#information{id = Id, start='$2', stop='$3', _ = '_'},
@@ -1334,26 +1334,26 @@ select_query_information(Query) ->
             {Starts, Stops} = lists:unzip(lists:append(StartStopTS)),
             {lists:min(Starts), lists:max(Stops)};
         {information, Id} when is_port(Id) -> 
-	    ets:select(pdb_info, [{
-		#information{ id = Id, _ = '_'},
-		[],
-		['$_']
-		}]);
+            ets:select(pdb_info, [{
+                #information{ id = Id, _ = '_'},
+                [],
+                ['$_']
+                }]);
         {information, Id={pid, _}} -> 
-	    ets:select(pdb_info, [{
-		#information{ id = Id, _ = '_'},
-		[],
-		['$_']
-		}]);
+            ets:select(pdb_info, [{
+                #information{ id = Id, _ = '_'},
+                [],
+                ['$_']
+                }]);
         {information, dummy_pids} -> 
-	    ets:select(pdb_info, [{
-		#information{ id = {pid, '$1'}, _ = '_'},
-		[{is_atom, {element, 2, '$1'}}],
-		['$_']
-		}]);
-	Unhandled ->
-	    io:format("select_query_information, unhandled: ~p~n", [Unhandled]),
-	    []
+            ets:select(pdb_info, [{
+                #information{ id = {pid, '$1'}, _ = '_'},
+                [{is_atom, {element, 2, '$1'}}],
+                ['$_']
+                }]);
+        Unhandled ->
+            io:format("select_query_information, unhandled: ~p~n", [Unhandled]),
+            []
     end.
 
 
@@ -1394,53 +1394,53 @@ pdb_system_loop() ->
     
 update_system_start_ts_1(TS) ->
     case ets:lookup(pdb_system, {system, start_ts}) of
-    	[] ->
-	    ets:insert(pdb_system, {{system, start_ts}, TS});
-	[{{system, start_ts}, StartTS}] ->
-	    DT = ?seconds(StartTS, TS),
-	    if 
-		DT > 0.0 -> ets:insert(pdb_system, {{system, start_ts}, TS});
-	    	true -> ok
-	    end;
-	Unhandled -> 
-	    io:format("update_system_start_ts, unhandled ~p ~n", [Unhandled])
+        [] ->
+            ets:insert(pdb_system, {{system, start_ts}, TS});
+        [{{system, start_ts}, StartTS}] ->
+            DT = ?seconds(StartTS, TS),
+            if 
+                DT > 0.0 -> ets:insert(pdb_system, {{system, start_ts}, TS});
+                true -> ok
+            end;
+        Unhandled -> 
+            io:format("update_system_start_ts, unhandled ~p ~n", [Unhandled])
     end.
-	
+        
 update_system_stop_ts_1(TS) ->
     case ets:lookup(pdb_system, {system, stop_ts}) of
-    	[] ->
-	    ets:insert(pdb_system, {{system, stop_ts}, TS});
-	[{{system, stop_ts}, StopTS}] ->
-	    DT = ?seconds(StopTS, TS),
-	    if 
-		DT < 0.0 -> ets:insert(pdb_system, {{system, stop_ts}, TS});
-	  	true -> ok
-	    end;
-	Unhandled -> 
-	    io:format("update_system_stop_ts, unhandled ~p ~n", [Unhandled])
+        [] ->
+            ets:insert(pdb_system, {{system, stop_ts}, TS});
+        [{{system, stop_ts}, StopTS}] ->
+            DT = ?seconds(StopTS, TS),
+            if 
+                DT < 0.0 -> ets:insert(pdb_system, {{system, stop_ts}, TS});
+                true -> ok
+            end;
+        Unhandled -> 
+            io:format("update_system_stop_ts, unhandled ~p ~n", [Unhandled])
     end.
 
 %%% select_query_system
 select_query_system(Query) ->
     case Query of
-    	{system, start_ts} ->
-    	    case ets:lookup(pdb_system, {system, start_ts}) of
-	    	[] -> undefined;
-		[{{system, start_ts}, StartTS}] -> StartTS
-	    end;
-    	{system, stop_ts} ->
-    	    case ets:lookup(pdb_system, {system, stop_ts}) of
-	    	[] -> undefined;
-		[{{system, stop_ts}, StopTS}] -> StopTS
-	    end;
+        {system, start_ts} ->
+            case ets:lookup(pdb_system, {system, start_ts}) of
+                [] -> undefined;
+                [{{system, start_ts}, StartTS}] -> StartTS
+            end;
+        {system, stop_ts} ->
+            case ets:lookup(pdb_system, {system, stop_ts}) of
+                [] -> undefined;
+                [{{system, stop_ts}, StopTS}] -> StopTS
+            end;
         {system, nodes} ->
             case ets:lookup(pdb_system, {system, nodes}) of
-	    	[] -> 1;
-		[{{system, nodes}, Num}] -> Num
-	    end;
-	Unhandled ->
-	    io:format("select_query_system, unhandled: ~p~n", [Unhandled]),
-	    []
+                [] -> 1;
+                [{{system, nodes}, Num}] -> Num
+            end;
+        Unhandled ->
+            io:format("select_query_system, unhandled: ~p~n", [Unhandled]),
+            []
     end.
 
 
@@ -1609,7 +1609,7 @@ mk_proc_reg_name(RegNamePrefix,Index) ->
 trace_call_1(Pid, MFA, TS, CP, Stack) ->
     Func = mfarity(MFA),
     ?dbg(-1, "trace_call(~p, ~p, ~p, ~p, ~p)~n", 
-	 [Pid, Stack, Func, TS, CP]),
+         [Pid, Stack, Func, TS, CP]),
     case Stack of 
         [[{Func1,TS1}, dummy]|Stack1] when Func1=/=CP ->
             {Caller1, Caller1StartTs}= case Stack1 of 
@@ -1626,20 +1626,20 @@ trace_call_1(Pid, MFA, TS, CP, Stack) ->
     
 trace_call_2(Pid, Func, TS, CP, Stack) ->
     case Stack of
-	[] ->
+        [] ->
             ?dbg(-1, "empty stack\n", []),
             OldStack = 
-		if CP =:= undefined ->
-			Stack;
-		   true ->
-			[[{CP, TS}]]
-		end,
+                if CP =:= undefined ->
+                        Stack;
+                   true ->
+                        [[{CP, TS}]]
+                end,
             [[{Func, TS}] | OldStack];
         [[{suspend, _} | _] | _] ->
-      	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+            throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
-	[[{garbage_collect, _} | _] | _] ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+        [[{garbage_collect, _} | _] | _] ->
+            throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
         [[{Func, _FirstInTS}]] ->
             Stack;
@@ -1648,7 +1648,7 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
         [[{CP, _} | _] | _] when Func==CP ->
             ?dbg(-1, "Current function becomes new stack top.\n", []),
             Stack;
-	[[{CP, _} | _] | _] ->
+        [[{CP, _} | _] | _] ->
             ?dbg(-1, "Current function becomes new stack top.\n", []),
             [[{Func, TS}] | Stack];
         [_, [{CP, _} | _] | _] ->
@@ -1697,10 +1697,10 @@ trace_call_collapse_1(Stack, [], _) ->
     Stack;
 trace_call_collapse_1([{Func0, _} | _] = Stack, [{Func0, _} | S1] = S, N) ->
     case trace_call_collapse_2(Stack, S, N) of
-	true ->
-	    S;
-	false ->
-	    trace_call_collapse_1(Stack, S1, N+1)
+        true ->
+            S;
+        false ->
+            trace_call_collapse_1(Stack, S1, N+1)
     end;
 trace_call_collapse_1(Stack, [_ | S1], N) ->
     trace_call_collapse_1(Stack, S1, N+1).
@@ -1711,8 +1711,8 @@ trace_call_collapse_1(Stack, [_ | S1], N) ->
 trace_call_collapse_2(_, _, 0) ->
     true;
 trace_call_collapse_2([{Func1, _} | [{Func2, _} | _] = Stack2],
-	   [{Func1, _} | [{Func2, _} | _] = S2],
-	   N) ->
+           [{Func1, _} | [{Func2, _} | _] = S2],
+           N) ->
     trace_call_collapse_2(Stack2, S2, N-1);
 trace_call_collapse_2([{Func1, _} | _], [{Func1, _} | _], _N) ->
     false;
@@ -1732,13 +1732,13 @@ trace_call_collapse_2(_Stack, [], _N) ->
 trace_return_to_1(Pid, Func, TS, Stack) ->
     Caller = mfarity(Func),
     ?dbg((-1), "trace_return_to(~p, ~p, ~p)~n~p~n",
-	 [Pid, Caller, TS, Stack]),
+         [Pid, Caller, TS, Stack]),
     case Stack of
-	[[{suspend, _} | _] | _] ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+        [[{suspend, _} | _] | _] ->
+            throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Caller, TS, Stack]});
-	[[{garbage_collect, _} | _] | _] ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+        [[{garbage_collect, _} | _] | _] ->
+            throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Caller, TS, Stack]});
         [_, [{Caller, _}|_]|_] ->
             trace_return_to_2(Pid, Caller, TS, Stack);
@@ -1946,8 +1946,8 @@ is_list_comp(_) ->
 %%%---------------------------%%%
 %% consolidate_db() -> bool()
 %% Purpose:
-%%	Check start/stop time
-%%	Activity consistency
+%%      Check start/stop time
+%%      Activity consistency
 %%      function call tree, and
 %%      generate function inforation.
 
@@ -1958,13 +1958,13 @@ consolidate_db(FileNameSubDBPairs) ->
     SystemProc = mk_proc_reg_name("pdb_system", 1),
     % Check start/stop timestamps
     case percept_db_select_query([], {system, start_ts}) of
-	undefined ->
+        undefined ->
             Min=get_start_time_ts(),
             update_system_start_ts(SystemProc,Min);
         _ -> ok
     end,
     case percept_db_select_query([], {system, stop_ts}) of
-	undefined ->
+        undefined ->
             Max = get_stop_time_ts(LastIndex),
             update_system_stop_ts(SystemProc,Max);
         _ -> ok
@@ -2238,7 +2238,7 @@ add_ancestors(ProcessTree, As) ->
      end
      ||{Parent, Children} <- ProcessTree].
 
-%%% -------------------	---%%%
+%%% ------------------- ---%%%
 %%% compress process tree  %%%
 %%% -----------------------%%%
 
@@ -2333,9 +2333,9 @@ is_dummy_pid({pid, {_, P2, _}}) ->
     is_atom(P2);
 is_dummy_pid(_) -> false.
 
-%%% -------------------	%%%
-%%% Utility functionss	%%%
-%%% -------------------	%%%
+%%% ------------------- %%%
+%%% Utility functionss  %%%
+%%% ------------------- %%%
         
 -spec(mfarity({atom(), atom(), list()}) ->true_mfa()).             
 mfarity({M, F, Args}) when is_list(Args) ->
@@ -2347,17 +2347,17 @@ mfa2informative({erlang, apply, [M, F, Args]})  -> mfa2informative({M, F,Args});
 mfa2informative({erlang, apply, [Fun, Args]}) ->
     FunInfo = erlang:fun_info(Fun), 
     M = case proplists:get_value(module, FunInfo, undefined) of
-	    []        -> undefined_fun_module;
-	    undefined -> undefined_fun_module;
-	    Module    -> Module
-	end,
+            []        -> undefined_fun_module;
+            undefined -> undefined_fun_module;
+            Module    -> Module
+        end,
     F = case proplists:get_value(name, FunInfo, undefined) of
-	    []        -> 
+            []        -> 
                 undefined_fun_function;
-	    undefined -> 
+            undefined -> 
                 undefined_fun_function; 
-	    Function  -> Function
-	end,
+            Function  -> Function
+        end,
     mfa2informative({M, F, Args});
 mfa2informative(Mfa) -> Mfa.
      
@@ -2370,10 +2370,10 @@ group_by(_N,[],Acc) -> Acc;
 group_by(N,TupleList = [T| _Ts],Acc) ->
     E = element(N,T),
     {TupleList1,TupleList2} = 
-	lists:partition(fun (T1) ->
-				element(N,T1) == E
-			end,
-			TupleList),
+        lists:partition(fun (T1) ->
+                                element(N,T1) == E
+                        end,
+                        TupleList),
     group_by(N,TupleList2,Acc ++ [TupleList1]).
 
 -spec pid2value(Pid :: pid()|pid_value()) -> pid_value().

@@ -45,7 +45,7 @@ rename_fun(ModuleFilter, OldFunNameFiler, ArityFilter, NewFunNameGenerator, Seat
     Arity=1,
     NewFunName = NewFunNameGenerator({ModName, FunName, Arity}),
     try_apply(refac_rename_fun, rename_fun_command, 
-	      [ModOrFileName, FunName, Arity, NewFunName, SearchPaths]).
+              [ModOrFileName, FunName, Arity, NewFunName, SearchPaths]).
 
 
 rename_var(ModuleFilter, FunNameFilter, ArityFilter, OldVarNameFilter, NewVarNameGenerator, SearchPaths) ->
