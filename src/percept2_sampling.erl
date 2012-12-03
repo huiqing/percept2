@@ -69,7 +69,7 @@
 
 -record(scheduler_utilisation_info,
         {timestamp::float(),
-         scheduler_utilisation::float()
+         scheduler_utilisation::[{integer(), number(), number()}]
         }).
    
 -record(process_count_info, {
@@ -206,7 +206,7 @@ sample(Items, Time, OutDir) when is_integer(Time)->
     sample(Items, Time, ?INTERVAL,
            fun(_) -> true end, OutDir);
 sample(Items, Entry={_Mod, _Fun, _Args},OutDir) ->
-    sample(Items, Entry, ?INTERVAL, fun()-> true end,OutDir).
+    sample(Items, Entry, ?INTERVAL, fun(_)-> true end,OutDir).
 
 %%@doc Start the profiler and collects information about the system.
 %%

@@ -1680,8 +1680,8 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
  
 %% Collapse tail recursive call stack cycles to prevent them from
 %% growing to infinite length.
-trace_call_collapse([]) ->
-    [];
+%% trace_call_collapse([]) ->
+%%     [];
 trace_call_collapse([_] = Stack) ->
     Stack;
 trace_call_collapse([_, _] = Stack) ->
@@ -1951,7 +1951,7 @@ is_list_comp(_) ->
 %%      function call tree, and
 %%      generate function inforation.
 
--spec consolidate_db([{filename(), pid()}]) ->boolean().
+-spec consolidate_db([{filename(), pid()}]) ->ok.
 consolidate_db(FileNameSubDBPairs) ->
     io:format("Consolidating...~n"),
     LastIndex = length(FileNameSubDBPairs),
@@ -1979,7 +1979,7 @@ consolidate_db(FileNameSubDBPairs) ->
     consolidate_calltree(),
     ?dbg(0,"generate function information ...\n",[]),
     process_func_info(),
-    true.
+    ok.
 
 get_start_time_ts() ->
     AMin = case ets:first(pdb_activity1) of 
@@ -2084,7 +2084,8 @@ consolidate_calltree_2(Pid) ->
     ets:update_element(fun_calltree, Key, {4, Others++Tree#fun_calltree.called}),
     lists:foreach(fun(T)-> 
                           ets:delete_object(fun_calltree, T) 
-                  end, Others).
+                  end, Others),
+    ok.
 
 
 %%%------------------------------------------------------%%%

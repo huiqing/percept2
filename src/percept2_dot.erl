@@ -253,7 +253,7 @@ gen_process_tree_img(ProcessTrees, CleanPid) ->
     dot_to_svg(DotFileName, SvgFileName).
 
 dot_to_svg(DotFileName, SvgFileName) ->
-    case os:find_executable(dot) of
+    case os:find_executable("dot") of
         false ->
             dot_not_found;
         _ ->

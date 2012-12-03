@@ -109,7 +109,7 @@ stop_db() ->
 %% `stop_profile/0' is called.
 %%@see stop_profile/0
 -spec profile(FileSpec::filespec(), Modules::[module_name()])
-             -> {ok, Port} | {already_started, Port}.
+             -> {ok, integer()} | {already_started, port()}.
 profile(FileSpec, Modules) ->
     percept2_profile:start(FileSpec, 
                            ['concurrency',

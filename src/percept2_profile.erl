@@ -78,7 +78,7 @@ start(FileSpec, Options) ->
                                  WrapSize::pos_integer(), WrapCnt::pos_integer()},
 	    Entry :: {atom(), atom(), list()},
             Options :: [percept_option()]) ->
-                   'ok' | {'already_started', port_number()} |
+                   'ok' | {'already_started', port()} |
                    {'error', 'not_started'}.
 start(FileSpec, _Entry={Mod, Fun, Args}, Options) ->
     case whereis(percept2_port) of
@@ -135,7 +135,7 @@ profile_to_file(FileSpec, Opts) ->
     case whereis(percept2_port) of 
 	undefined ->
 	    io:format("Starting profiling.~n", []),
-
+            
 	    erlang:system_flag(multi_scheduling, block),
 	    Port =  (dbg:trace_port(file, FileSpec))(),
             % Send start time
@@ -153,6 +153,7 @@ profile_to_file(FileSpec, Opts) ->
 -spec(set_tracer(pid()|port(), [percept_option()]) -> ok).
 set_tracer(Port, Opts) ->
     {TraceOpts, ProfileOpts, Mods} = parse_profile_options(Opts),
+    io:format("Opts:\n~p\n", [{TraceOpts, ProfileOpts, Mods}]),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
     load_modules(Mods),
     [erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
@@ -169,13 +170,13 @@ load_modules([Mod|Mods]) ->
         {module, _} -> load_modules(Mods);
         {error, _} ->
             Str = io_lib:format("Percept2 failed to load module ~p, "
-                                "and functions defined in this module are not traced.\n", [Mod]),
+                                "and functions defined in this module are not traced.", [Mod]),
             io:format(lists:flatten(Str)),
             load_modules(Mods)
     end.
            
 -spec(parse_profile_options([percept_option()]) -> 
-             {[trace_flags()], [profile_flags()], [mfa()]}).
+             {[trace_flags()], [profile_flags()], [module_name()]}).
 parse_profile_options(Opts) ->
     parse_profile_options(Opts, {[],[],[]}).
 
