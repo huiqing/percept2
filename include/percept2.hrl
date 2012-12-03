@@ -77,10 +77,12 @@
          }).
                  
 -record(fun_calltree, {
-          id                     ::{pid_value(), true_mfa()|undefined, timestamp()}|
-                                   {pid_value(), true_mfa()|undefined, true_mfa()}|
-                                   {special_atom(), special_atom(), special_atom()},
-          cnt =1                 ::pos_integer()|special_atom(),
+          id                     ::{pid_value()|special_atom(), true_mfa()|undefined|special_atom(), 
+                                    timestamp()|special_atom()}|
+                                   {pid_value()|special_atom(), true_mfa()|undefined|special_atom(), true_mfa()|special_atom()}|
+                                   {special_atom(), special_atom(), special_atom()}|
+                                   special_atom(),
+          cnt =1                 ::non_neg_integer()|special_atom(),
           called =[]             ::[#fun_calltree{}]|special_atom(),
           start_ts = undefined   ::timestamp()|undefined|special_atom(),
           end_ts = undefined     ::timestamp()|undefined|special_atom()
