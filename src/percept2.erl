@@ -55,6 +55,7 @@
 	stop_webserver/1, 
 
 	analyze/1,
+        analyze/4,
         stop_db/0]).
 
 %% Application callback functions.
@@ -152,6 +153,19 @@ analyze(FileNames) ->
         {restarted, FileNameSubDBPairs} ->
             analyze_par_1(FileNameSubDBPairs)
     end.
+
+-spec analyze(Filename::file:filename(), Suffix::string(), 
+              StartIndex::pos_integer(), EndIndex::pos_integer()) ->
+                     'ok' | {'error', any()}.
+analyze(FileName, Suffix, StartIndex, EndIndex) 
+  when is_integer(StartIndex) andalso is_integer(EndIndex) ->
+    Index=lists:seq(StartIndex, EndIndex),
+    FileNames=[FileName++integer_to_list(I)++Suffix||I<-Index],
+    analyze(FileNames);
+analyze(_FileName, _Suffux, _, _) ->
+    {error, "Start/end indexes must be integers."}.
+    
+
 
 analyze_par_1(FileNameSubDBPairs) ->
     Self = self(),
