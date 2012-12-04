@@ -128,9 +128,9 @@ graph_1(_Env, Input, Type) ->
             Counts = case Type of 
                          procs_ports ->
                              [{?seconds(TS, StartTs), Procs, Ports}||
-                                         {TS, {Procs, Ports}}
-                                             <-percept2_db:select(
-                                                 {activity,{runnable_counts, Options}})];
+                                 {TS, {Procs, Ports}}
+                                     <-percept2_db:select(
+                                         {activity,{runnable_counts, Options}})];
                          procs ->
                              [{?seconds(TS, StartTs), Procs, 0}||
                                  {TS, {Procs, _Ports}}
@@ -226,28 +226,3 @@ inter_node_message_graph(_Env, Input) ->
 header() ->
     "Content-Type: image/png\r\n\r\n".
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% activity_data() ->
-%%     StartTs = percept2_db:select({system, start_ts}),
-%%     StopTs = percept2_db:select({system, stop_ts}),
-%%     Options =  [{ts_min, StartTs},{ts_max, StopTs}],
-%%     Counts1=[{?seconds(TS, StartTs), Procs, Ports}||
-%%                 {TS, {Procs, Ports}}
-%%                     <-percept2_db:select(
-%%                         {activity,{runnable_counts, Options}})],
-%%     Str = lists:flatten([io_lib:format("{~f, {~p,~p}}.\n", [Sec, Procs, Counts])||{Sec, Procs,Counts}<-Counts1]),
-%%     file:write_file("activity.txt", list_to_binary(Str)).
-    
-
-rq_migration_data() ->
-    StartTs = percept2_db:select({system, start_ts}),
-    Data = lists:sort(lists:append([[{?seconds(Ts, StartTs), E#information.id, Rq}
-                                      ||{Ts, Rq}<-E#information.rq_history]
-                                     ||E<-ets:tab2list(pdb_info)])),
-    io:format("Data:\n~p\n", [Data]),
-    Str=lists:flatten([io_lib:format("~p.\n", [E])||E<-Data]),
-    file:write_file("rq_migration.txt", list_to_binary(Str)).           
-                                                                                                  
-    
