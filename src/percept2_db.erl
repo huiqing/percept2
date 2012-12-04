@@ -531,12 +531,9 @@ insert_profile_trace(SubDBIndex,Trace) ->
             SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
             update_system_stop_ts(SystemProcRegName,Ts);
         {profile, Id, State, Mfa, TS} when is_pid(Id) ->
-             ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-             insert_profile_trace_1(ActivityProcRegName, Id,
-                                    State,Mfa,TS,procs);
+            insert_profile_trace_1(SubDBIndex, Id, State,Mfa,TS,procs);
         {profile, Id, State, Mfa, TS} when is_port(Id) ->
-            ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-            insert_profile_trace_1(ActivityProcRegName, Id, State, Mfa, TS, ports);
+            insert_profile_trace_1(SubDBIndex, Id, State, Mfa, TS, ports);
         {profile, scheduler, Id, State, NoScheds, Ts} ->
             Act= #scheduler{
               timestamp = Ts,
@@ -551,8 +548,9 @@ insert_profile_trace(SubDBIndex,Trace) ->
             %%?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
             ok
     end.
-insert_profile_trace_1(ProcRegName, Id, State, Mfa, TS, ports) ->
-    case check_activity_consistency(Id, State) of 
+insert_profile_trace_1(SubDBIndex,Id, State, Mfa, TS, ports) ->
+    ProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case check_activity_consistency(SubDBIndex, Id, State) of 
         invalid_state ->
             ok;
         valid_state->
@@ -566,8 +564,9 @@ insert_profile_trace_1(ProcRegName, Id, State, Mfa, TS, ports) ->
                                       where = Mfa})
     end;
         
-insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, procs) ->
-    case check_activity_consistency(Id, State) of 
+insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, procs) ->
+    ProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case check_activity_consistency(SubDBIndex, Id, State) of 
         invalid_state ->
             ok;
         valid_state ->
@@ -585,14 +584,14 @@ insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, procs) ->
                                       where = Mfa})
     end.
 
-check_activity_consistency(Id, State) ->
+check_activity_consistency(SubDBIndex, Id, State) ->
     RunnableStates = erlang:get(runnable_states),
     case lists:keyfind(Id,1,RunnableStates) of 
-        {Id, State} ->
+        {Id, State} ->  %% same state. 
             invalid_state;
-        %% false when State == inactive ->
-        %%     invalid_state;
-        false ->
+        false when State == inactive andalso SubDBIndex==1 ->
+            invalid_state;
+        false -> %% not 100% accurate here.
             NewState =[{Id, State}|RunnableStates],
             put(runnable_states, NewState),
             valid_state;
@@ -841,17 +840,6 @@ pdb_activity_loop(ProcRegName)->
             end            
     end.
 
-
-do_consolidate_runnability(Tab, '$end_of_table', _) ->
-    LastKey = ets:last(Tab),
-    [#activity{runnable_procs=RunnableProcs,
-               runnable_ports=RunnablePorts}]=
-        ets:lookup(Tab, LastKey),
-    {ok, {RunnableProcs, RunnablePorts}};    
-do_consolidate_runnability(Tab, Key, {PrevRunnableProcs, PrevRunnablePorts}) ->
-    ets:update_counter(Tab, Key, [{#activity.runnable_procs, PrevRunnableProcs},
-                                  {#activity.runnable_ports, PrevRunnablePorts}]),
-    do_consolidate_runnability(Tab, ets:next(Tab,Key),{PrevRunnableProcs, PrevRunnablePorts}).
 
 %% get_runnable_count(Type, Id, State) -> RunnableCount
 %% In: 
@@ -2071,7 +2059,6 @@ consolidate_runnability_1(CurSubDBIndex, _, LastSubDBIndex)
   when CurSubDBIndex>LastSubDBIndex ->
     ok;
 consolidate_runnability_1(CurSubDBIndex, PreviousRC, LastSubDBIndex) ->
-    io:format("PreviousRC:\n~p\n", [PreviousRC]),
     ActivityProcRegName = mk_proc_reg_name("pdb_activity", CurSubDBIndex),
     Pid = whereis(ActivityProcRegName),
     Pid ! {consolidate_runnability, {self(), CurSubDBIndex, PreviousRC}},
@@ -2079,6 +2066,14 @@ consolidate_runnability_1(CurSubDBIndex, PreviousRC, LastSubDBIndex) ->
         {Pid,done, NewRC} ->
             consolidate_runnability_1(CurSubDBIndex+1, NewRC, LastSubDBIndex)
     end.
+
+do_consolidate_runnability(_Tab, '$end_of_table', PrevRC) ->
+    {ok, PrevRC};    
+do_consolidate_runnability(Tab, Key, {PrevRunnableProcs, PrevRunnablePorts}) ->
+    ets:update_counter(Tab, Key, [{#activity.runnable_procs, PrevRunnableProcs},
+                                  {#activity.runnable_ports, PrevRunnablePorts}]),
+    do_consolidate_runnability(Tab, ets:next(Tab,Key),{PrevRunnableProcs, PrevRunnablePorts}).
+
 
 %%%------------------------------------------------------%%%
 %%%                                                      %%%
