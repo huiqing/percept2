@@ -434,7 +434,7 @@ codelocation_content_1(_Env, Input) ->
                      {td, pid2html(A#activity.id, CleanPid)},
                      {td, term2html(A#activity.state)},
                      {td, mfa2html(A#activity.where)},
-                     {td, term2html(A#activity.runnable_count)}] || {A, D} <- Zip],
+                     {td, term2html({A#activity.runnable_procs, A#activity.runnable_ports})}] || {A, D} <- Zip],
     Table = html_table([
                         [{th, "delta [ms]"},
                          {th, "time [ms]"},
