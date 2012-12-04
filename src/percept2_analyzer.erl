@@ -127,7 +127,7 @@ activities2count(Acts, StartTs, Type) when is_list(Acts) ->
 
 activities2count_loop([], _, _, Out) -> lists:reverse(Out);
 activities2count_loop(
-	[#activity{timestamp = Ts, id = Id, runnable_count = {ProcsRc, PortsRc}} | Acts], 
+	[#activity{timestamp = Ts, id = Id, runnable_procs=ProcsRc, runnable_ports=PortsRc} | Acts], 
 	{StartTs, {Procs, Ports}}, separated, Out) ->
     
     Time = ?seconds(Ts, StartTs),
@@ -142,7 +142,7 @@ activities2count_loop(
    	    activities2count_loop(Acts, {StartTs,{Procs, Ports}}, separated, Out)
     end;
 activities2count_loop(
-	[#activity{ timestamp = Ts, id = Id, runnable_count ={ProcsRc, PortsRc}} | Acts], 
+	[#activity{ timestamp = Ts, id = Id, runnable_procs=ProcsRc,runnable_ports=PortsRc} | Acts], 
 	{StartTs, {Procs, Ports}}, summated, Out) ->
 	
     Time = ?seconds(Ts, StartTs), 
