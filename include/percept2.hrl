@@ -37,7 +37,8 @@
           id 			 :: pid_value() | port()|special_atom(),
           state = undefined	 :: state() | 'undefined'|special_atom(),
           where = undefined	 :: true_mfa() | 'undefined'|special_atom(),
-          runnable_count = {0,0} :: {non_neg_integer(), non_neg_integer()}|special_atom(),
+          runnable_procs=0       :: integer()|special_atom(),
+          runnable_ports=0       :: integer()|special_atom(),
           in_out = []            :: [{atom, timestamp()}]|special_atom()
          }).
 
@@ -111,7 +112,7 @@
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
 %%-define(debug, 9).
-%%-define(debug, 0). 
+%-define(debug, 0). 
 
 -ifdef(debug). 
 dbg(Level, F, A) when Level >= ?debug ->
