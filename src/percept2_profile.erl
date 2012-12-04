@@ -153,7 +153,6 @@ profile_to_file(FileSpec, Opts) ->
 -spec(set_tracer(pid()|port(), [percept_option()]) -> ok).
 set_tracer(Port, Opts) ->
     {TraceOpts, ProfileOpts, Mods} = parse_profile_options(Opts),
-    io:format("Opts:\n~p\n", [{TraceOpts, ProfileOpts, Mods}]),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
     load_modules(Mods),
     [erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
