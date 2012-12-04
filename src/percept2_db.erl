@@ -590,7 +590,7 @@ check_activity_consistency(SubDBIndex, Id, State) ->
         {Id, State} ->  %% same state. 
             invalid_state;
         false when State == inactive andalso SubDBIndex==1 ->
-            invalid_state;
+             invalid_state;
         false -> %% not 100% accurate here.
             NewState =[{Id, State}|RunnableStates],
             put(runnable_states, NewState),
@@ -829,8 +829,7 @@ pdb_activity_loop(ProcRegName)->
             pdb_activity_loop(ProcRegName);
         {consolidate_runnability, {From, SubDBIndex, PreviourRC}} ->
             Tab=mk_proc_reg_name("pdb_activity", SubDBIndex),
-            Key = ets:first(Tab),
-            {ok, NewRC}=do_consolidate_runnability(Tab, Key, PreviourRC), 
+            {ok, NewRC}=do_consolidate_runnability(Tab, PreviourRC), 
             From!{self(), done, NewRC},
             pdb_activity_loop(ProcRegName);
         {action, stop} ->
@@ -2067,8 +2066,19 @@ consolidate_runnability_1(CurSubDBIndex, PreviousRC, LastSubDBIndex) ->
             consolidate_runnability_1(CurSubDBIndex+1, NewRC, LastSubDBIndex)
     end.
 
-do_consolidate_runnability(_Tab, '$end_of_table', PrevRC) ->
-    {ok, PrevRC};    
+do_consolidate_runnability(Tab, PrevRC) ->
+    case  ets:first(Tab) of
+        '$end_of_table' ->
+            {ok, PrevRC};
+        Key ->
+            do_consolidate_runnability(Tab, Key, PrevRC)
+    end.
+do_consolidate_runnability(Tab, '$end_of_table', _PrevRC) ->
+    LastKey = ets:last(Tab),
+    [#activity{runnable_procs=RunnableProcs,
+               runnable_ports=RunnablePorts}]=
+        ets:lookup(Tab, LastKey),
+    {ok, {RunnableProcs, RunnablePorts}};
 do_consolidate_runnability(Tab, Key, {PrevRunnableProcs, PrevRunnablePorts}) ->
     ets:update_counter(Tab, Key, [{#activity.runnable_procs, PrevRunnableProcs},
                                   {#activity.runnable_ports, PrevRunnablePorts}]),
