@@ -316,6 +316,9 @@ start_a_percept_sub_db(Parent, {Index, TraceFileName}) ->
     start_child_process(System, fun init_pdb_system/2),
     start_child_process(FuncInfo, fun init_pdb_func/2),
     start_child_process(Warnings, fun init_pdb_warnings/2),
+    put({runnable, procs}, 0),
+    put({runnable, ports}, 0),
+    put(runnable_states, []),
     Parent ! {percept_sub_db_started, {TraceFileName, self()}},
     loop_percept_sub_db(Index).
 
@@ -548,30 +551,55 @@ insert_profile_trace(SubDBIndex,Trace) ->
             %%?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
             ok
     end.
-insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, Type) ->
-    ActId = if Type == procs -> pid2value(Id);
-               true -> Id
+insert_profile_trace_1(ProcRegName, Id, State, Mfa, TS, ports) ->
+    case check_activity_consistency(Id, State) of 
+        invalid_state ->
+            ok;
+        valid_state->
+            Rc = get_runnable_count(ports, State),
+            update_activity(ProcRegName,
+                            #activity{id = Id,
+                                      state = State,
+                                      timestamp = TS,
+                                      runnable_procs=get({runnable, procs}),
+                                      runnable_ports=Rc,
+                                      where = Mfa})
+    end;
+        
+insert_profile_trace_1(ProcRegName,Id,State,Mfa,TS, procs) ->
+    case check_activity_consistency(Id, State) of 
+        invalid_state ->
+            ok;
+        valid_state ->
+            if State==active->
+                    erlang:put({active, Id}, TS);
+               true -> ok
             end,
-    if Type ==procs andalso State==active->
-            erlang:put({active, Id}, TS);
-       true -> ok
-    end,
-    update_activity(ProcRegName,
-                    #activity{id = ActId,
-                              state = State,
-                              timestamp = TS,
-                              where = Mfa}).
+            Rc = get_runnable_count(procs, State),
+            update_activity(ProcRegName,
+                            #activity{id = pid2value(Id),
+                                      state = State,
+                                      timestamp = TS,
+                                      runnable_procs=Rc,
+                                      runnable_ports=get({runnable, ports}),
+                                      where = Mfa})
+    end.
 
-check_activity_consistency(Id, State, RunnableStates) ->
+check_activity_consistency(Id, State) ->
+    RunnableStates = erlang:get(runnable_states),
     case lists:keyfind(Id,1,RunnableStates) of 
         {Id, State} ->
             invalid_state;
-        false when State == inactive ->
-            invalid_state;
+        %% false when State == inactive ->
+        %%     invalid_state;
         false ->
-            [{Id, State}|RunnableStates];
+            NewState =[{Id, State}|RunnableStates],
+            put(runnable_states, NewState),
+            valid_state;
         _ ->
-            lists:keyreplace(Id, 1, RunnableStates, {Id, State})
+            NewState=lists:keyreplace(Id, 1, RunnableStates, {Id, State}),
+            put(runnable_states, NewState),
+            valid_state
     end.
 
 trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_pid(Pid) ->
@@ -618,8 +646,15 @@ trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  MFA, TS}) when is_pid(Pid)-
     ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
     case erlang:get({active, Pid}) of 
         undefined ->
-            %%io:format("In:active entry does not exist!\n"),
-            ok;
+            erlang:put({active, Pid}, TS),
+            update_activity(ActivityProcRegName,
+                            #activity{id = InternalPid,
+                                      state = active,
+                                      timestamp = TS,
+                                      runnable_procs=get({runnable, procs}),
+                                      runnable_ports=get({runnable, ports}),
+                                      in_out=[{in, TS}],
+                                      where = MFA});
         TS1 ->
             update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
         end;
@@ -777,7 +812,7 @@ pdb_activity_loop(ProcRegName)->
                 [Act] ->
                     ets:update_element(
                       SubTab,  TS1,
-                      {7, [{in, TS}|Act#activity.in_out]})
+                      {#activity.in_out, [{in, TS}|Act#activity.in_out]})
             end,
             pdb_activity_loop(ProcRegName);
         {update_activity, {SubTab, {out, {_Pid, TS1}, _MFA, TS}}} ->
@@ -787,16 +822,17 @@ pdb_activity_loop(ProcRegName)->
                 [Act] ->
                     ets:update_element(
                       SubTab, TS1,
-                      {7, [{out, TS}|Act#activity.in_out]})
+                      {#activity.in_out, [{out, TS}|Act#activity.in_out]})
             end,
             pdb_activity_loop(ProcRegName);
         {update_activity, {SubTab,Activity}} ->
             ets:insert(SubTab, Activity),
             pdb_activity_loop(ProcRegName);
-        {consolidate_runnability, {From, SubDBIndex, {ActiveProcs, ActivePorts, RunnableStates}}} ->
-            {ok, {NewActiveProcs, NewActivePorts, NewRunnableStates}}=
-                do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts}, RunnableStates), 
-            From!{self(), done, {NewActiveProcs, NewActivePorts, NewRunnableStates}},
+        {consolidate_runnability, {From, SubDBIndex, PreviourRC}} ->
+            Tab=mk_proc_reg_name("pdb_activity", SubDBIndex),
+            Key = ets:first(Tab),
+            {ok, NewRC}=do_consolidate_runnability(Tab, Key, PreviourRC), 
+            From!{self(), done, NewRC},
             pdb_activity_loop(ProcRegName);
         {action, stop} ->
             case ets:info(ProcRegName) of 
@@ -804,35 +840,19 @@ pdb_activity_loop(ProcRegName)->
                 _ -> ets:delete(ProcRegName)
             end            
     end.
-do_consolidate_runnability(SubDBIndex, {ActiveProcs, ActivePorts},RunnableStates) ->
-    Tab=mk_proc_reg_name("pdb_activity", SubDBIndex),
-    put({runnable, procs}, ActiveProcs),
-    put({runnable, ports}, ActivePorts),
-    consolidate_runnability_loop(Tab, ets:first(Tab), RunnableStates).
 
-consolidate_runnability_loop(_Tab, '$end_of_table',RunnableStates) ->
-    {ok, {get({runnable, procs}), get({runnable, ports}), RunnableStates}};
-consolidate_runnability_loop(Tab, Key, RunnableStates) ->
-    case ets:lookup(Tab, Key) of
-	[#activity{id = Id, state = State }] ->
-            case check_activity_consistency(Id, State,RunnableStates) of 
-                invalid_state ->
-                    NextKey = ets:next(Tab, Key),
-                    ets:delete(Tab, Key),
-                    consolidate_runnability_loop(Tab, NextKey, RunnableStates);
-                NewRunnableStates when is_port(Id)->
-                    Rc = get_runnable_count(ports, State),
-                    ets:update_element(Tab, Key, {#activity.runnable_count, 
-                                                  {get({runnable, procs}), Rc}}),
-                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates);
-                NewRunnableStates when is_tuple(Id) andalso  element(1, Id)==pid->
-                    Rc = get_runnable_count(procs, State),
-                    ets:update_element(Tab, Key, {#activity.runnable_count, 
-                                                  {Rc, get({runnable, ports})}}),
-                    consolidate_runnability_loop(Tab, ets:next(Tab, Key), NewRunnableStates) 
-            end
-    end.
-  
+
+do_consolidate_runnability(Tab, '$end_of_table', _) ->
+    LastKey = ets:last(Tab),
+    [#activity{runnable_procs=RunnableProcs,
+               runnable_ports=RunnablePorts}]=
+        ets:lookup(Tab, LastKey),
+    {ok, {RunnableProcs, RunnablePorts}};    
+do_consolidate_runnability(Tab, Key, {PrevRunnableProcs, PrevRunnablePorts}) ->
+    ets:update_counter(Tab, Key, [{#activity.runnable_procs, PrevRunnableProcs},
+                                  {#activity.runnable_ports, PrevRunnablePorts}]),
+    do_consolidate_runnability(Tab, ets:next(Tab,Key),{PrevRunnableProcs, PrevRunnablePorts}).
+
 %% get_runnable_count(Type, Id, State) -> RunnableCount
 %% In: 
 %%	Type = procs | ports
@@ -1004,30 +1024,28 @@ activity_ms(Opts) ->
 activity_count_ms(Opts) ->
     % {activity, Timestamp, State, Mfa}
     Head = #activity{
-    	timestamp = '$1',
-        id = '$2',
-        state = '$3',
-        where = '$4',
-        runnable_count='$5',
-        _ = '_'
-	},
-
+      timestamp = '$1',
+      id = '$2',
+      runnable_procs='$3',
+      runnable_ports ='$4',
+      _ = '_'
+     },
     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
-    Body = [{{'$1', '$5'}}],
+    Body = [{{'$1',{{'$3','$4'}}}}],
     lists:foldl(
-    	fun (Option, MS) ->
-	    case Option of
-		{id, ports} ->
-	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
-		{id, procs} ->
-	    	    [{Head,[{'==', pid, {element, 1, '$2'}} | Conditions], Body} | MS];
-                {id, all} ->
-	    	    [{Head, Conditions,Body} | MS];
-		_ ->
-	    	    io:format("activity_ms id dropped ~p~n", [Option]),
-	    	    MS
-	    end
-	end, [], IDs).
+      fun (Option, MS) ->
+              case Option of
+                  {id, ports} ->
+                      [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
+                  {id, procs} ->
+                      [{Head,[{'==', pid, {element, 1, '$2'}} | Conditions], Body} | MS];
+                  {id, all} ->
+                      [{Head, Conditions,Body} | MS];
+                  _ ->
+                      io:format("activity_ms id dropped ~p~n", [Option]),
+                      MS
+              end
+      end, [], IDs).
 
 activity_ms_and(_, [], Constraints, []) ->
     {Constraints, [{id, all}]};
@@ -1245,7 +1263,7 @@ update_information_rq_1(Pid, {TS,RQ}) ->
             ok; %% this should not happen;
         [I] ->
             ets:update_element(
-              pdb_info, Pid, {9, [{TS, RQ}|I#information.rq_history]})
+              pdb_info, Pid, {#information.rq_history, [{TS, RQ}|I#information.rq_history]})
     end.
 
 %% with the parallel version, checking whether a message is 
@@ -1263,7 +1281,7 @@ update_information_sent_1(From, MsgSize, To, Ts) ->
         [I] ->
             {No, Size} =  I#information.msgs_sent,
             ets:update_element(pdb_info, InternalPid, 
-                               {12, {No+1, Size+MsgSize}})
+                               {#information.msgs_sent, {No+1, Size+MsgSize}})
     end.
 
 update_inter_node_message_tab(From, MsgSize, To, Ts) ->
@@ -1290,7 +1308,7 @@ update_information_received_1(Pid, MsgSize) ->
         [I] ->
             {No, Size} = I#information.msgs_received,
             ets:update_element(pdb_info, Pid1,
-                               {11, {No+1, Size+MsgSize}})
+                               {#information.msgs_received, {No+1, Size+MsgSize}})
     end.
 
 select_query_information(Query) ->
@@ -1973,11 +1991,14 @@ consolidate_db(FileNameSubDBPairs) ->
     NumOfNodes=get_num_of_nodes(),
     update_system_nodes_num(SystemProc, NumOfNodes),
 
-    ?dbg(0, "consolidate runnability ...\n",[]),
+    %% ?dbg(0, "consolidate runnability ...\n",[]),
+    %% io:format("consolidate runnability ...\n",[]),
     consolidate_runnability(LastIndex),
-    ?dbg(0, "consolidate function callgraph ...\n",[]),
+    %%?dbg(0, "consolidate function callgraph ...\n",[]),
+    io:format("consolidate function callgraph ...\n",[]),
     consolidate_calltree(),
-    ?dbg(0,"generate function information ...\n",[]),
+    %% ?dbg(0,"generate function information ...\n",[]),
+    io:format("generate function information ...\n",[]),
     process_func_info(),
     ok.
 
@@ -2032,23 +2053,31 @@ get_num_of_nodes() ->
 %%%  consolidate runnability                             %%%
 %%%                                                      %%%
 %%%------------------------------------------------------%%%
+consolidate_runnability(1) -> ok;
 consolidate_runnability(LastSubDBIndex) ->
-    consolidate_runnability_1(1,{0,0,[]},LastSubDBIndex).
+    Tab = mk_proc_reg_name("pdb_activity", 1),
+    LastKey = ets:last(Tab),
+    case LastKey of 
+        'end_of_table' -> 
+            consolidate_runnability_1(2, {0, 0},LastSubDBIndex);
+        _ ->
+            [#activity{runnable_procs=RunnableProcs,
+                       runnable_ports=RunnablePorts}]=
+                ets:lookup(Tab, LastKey),
+            consolidate_runnability_1(2, {RunnableProcs, RunnablePorts}, LastSubDBIndex)
+    end.
 
 consolidate_runnability_1(CurSubDBIndex, _, LastSubDBIndex) 
   when CurSubDBIndex>LastSubDBIndex ->
     ok;
-consolidate_runnability_1(CurSubDBIndex, {ActiveProcs, ActivePorts, RunnableStates},
-                          LastSubDBIndex) ->
+consolidate_runnability_1(CurSubDBIndex, PreviousRC, LastSubDBIndex) ->
+    io:format("PreviousRC:\n~p\n", [PreviousRC]),
     ActivityProcRegName = mk_proc_reg_name("pdb_activity", CurSubDBIndex),
     Pid = whereis(ActivityProcRegName),
-    Pid ! {consolidate_runnability, 
-           {self(), CurSubDBIndex, {ActiveProcs, ActivePorts, RunnableStates}}},
+    Pid ! {consolidate_runnability, {self(), CurSubDBIndex, PreviousRC}},
     receive
-        {Pid,done, {NewActiveProcs, NewActivePorts, NewRunnableStates}} ->
-            consolidate_runnability_1(CurSubDBIndex+1, 
-                                      {NewActiveProcs, NewActivePorts, NewRunnableStates},
-                                      LastSubDBIndex)
+        {Pid,done, NewRC} ->
+            consolidate_runnability_1(CurSubDBIndex+1, NewRC, LastSubDBIndex)
     end.
 
 %%%------------------------------------------------------%%%
@@ -2081,7 +2110,7 @@ consolidate_calltree_2(Pid) ->
                                ['$_']
                               }]),
     Key = Tree#fun_calltree.id,
-    ets:update_element(fun_calltree, Key, {4, Others++Tree#fun_calltree.called}),
+    ets:update_element(fun_calltree, Key, {#fun_calltree.called, Others++Tree#fun_calltree.called}),
     lists:foreach(fun(T)-> 
                           ets:delete_object(fun_calltree, T) 
                   end, Others),
@@ -2134,7 +2163,7 @@ update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
                                            acc_time=Time});
         [FunInfo] ->
             ets:update_element(fun_info, {PidValue, Func},
-                               [{8, FunInfo#fun_info.acc_time+Time}])
+                               [{#fun_info.acc_time, FunInfo#fun_info.acc_time+Time}])
     end.
 
 %% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa()|undefined, non_neg_integer()},
