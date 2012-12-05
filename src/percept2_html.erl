@@ -1014,8 +1014,6 @@ procstoptime(TS) ->
     end.
 
 
-
-
 %%% process_info_content
 process_info_content(Env, Input) ->
     CacheKey = "process_info"++integer_to_list(erlang:crc32(Input)),
@@ -1104,10 +1102,10 @@ process_tree_content(_Env, _Input) ->
     ImgFileName="processtree"++".svg",
     ImgFullFilePath = filename:join(
                         [code:priv_dir(percept2), "server_root",
-                         "images", ImgFileName]),
+                         "svgs", ImgFileName]),
     Content = "<div style=\"text-align:center; align:center\">" ++
         "<h3 style=\"text-align:center;\">Process Tree</h3>"++ 
-        "<object data=\"/images/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
+        "<object data=\"/svgs/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
         " overflow=\"visible\"  scrolling=\"yes\" "++
         "></object>"++
         "</div>",
@@ -1280,11 +1278,11 @@ callgraph_time_content(Env, Input) ->
     ImgFileName="callgraph" ++ pid2str(Pid) ++".svg",
     ImgFullFilePath = filename:join(
                     [code:priv_dir(percept2), "server_root",
-                     "images", ImgFileName]),
+                     "svgs", ImgFileName]),
     Table = calltime_content(Env,Pid),
     Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
         "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++ 
-        "<object data=\"/images/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+        "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
         " overflow=\"visible\"  scrolling=\"yes\" "++
         "></object>"++
         "<h3 style=\"text-align:center;\">" ++ "Accumulated Calltime"++"</h3>"++
@@ -1308,9 +1306,9 @@ callgraph_slice_content(_Env, Input) ->
         term2html(Min)++"_"++term2html(Max)++ ".svg",
     ImgFullFilePath = filename:join(
                     [code:priv_dir(percept2), "server_root",
-                     "images", ImgFileName]),
+                     "svgs", ImgFileName]),
     Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
-        "<object data=\"/images/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+        "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
         " overflow=\"visible\"  scrolling=\"yes\" "++
         "></object>"++
         "</div>",
