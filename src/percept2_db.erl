@@ -2232,7 +2232,7 @@ gen_compressed_process_tree()->
 -spec gen_process_tree/0::()->[process_tree()].
 gen_process_tree() ->
     Res = select({information,procs}),
-    List = lists:keysort(2,Res),  
+    List = lists:keysort(#information.start,Res),  
     gen_process_tree(List, []).
 
 -spec gen_process_tree/2::([#information{}], [process_tree()]) 
@@ -2267,7 +2267,8 @@ add_ancestors(ProcessTree) ->
 
 add_ancestors(ProcessTree, As) ->
     [begin 
-         update_information_element(pdb_info1, Parent#information.id, {8, As}),
+         update_information_element(pdb_info1, Parent#information.id, 
+                                    {#information.ancestors, As}),
          {Parent#information{ancestors=As},         
           add_ancestors(Children, [Parent#information.id|As])}
      end
@@ -2322,7 +2323,7 @@ compress_process_tree_3(ChildrenGroup) ->
                              {C1, _}<-Children, C1#information.name==undefined],
             case length(UnNamedProcs) == length(Children) of
                 true ->
-                    ChildWithMostRunTime = {Proc, _}=get_proc_with_most_runtime(Children),
+                    ChildWithMostRunTime = {Proc, _}=get_proc_with_callgraph_and_most_runtime(Children),
                     Num = length(Cs),
                     LastIndex = get(last_index),
                     put(last_index, LastIndex+1),
@@ -2335,13 +2336,13 @@ compress_process_tree_3(ChildrenGroup) ->
                                           start =lists:min([C1#information.start||{C1,_}<-Cs]),
                                           stop = lists:max([C1#information.stop||{C1, _}<-Cs]),
                                           msgs_received=lists:foldl(fun({P,_}, {R1Acc, R2Acc}) ->
-                                                                           {R1, R2}=P#information.msgs_received,
-                                                                           {R1+R1Acc, R2+R2Acc}
-                                                                   end, {0,0}, Cs),
+                                                                            {R1, R2}=P#information.msgs_received,
+                                                                            {R1+R1Acc, R2+R2Acc}
+                                                                    end, {0,0}, Cs),
                                           msgs_sent = lists:foldl(fun({P, _}, {S1Acc, S2Acc}) ->
-                                                                         {S1, S2} = P#information.msgs_sent,
-                                                                         {S1+S1Acc, S2+S2Acc}
-                                                                 end, {0,0}, Cs),
+                                                                          {S1, S2} = P#information.msgs_sent,
+                                                                          {S1+S1Acc, S2+S2Acc}
+                                                                  end, {0,0}, Cs),
                                           hidden_pids = UnNamedProcs--[Proc#information.id]
                                          },
                     update_information_1(Info),
@@ -2351,8 +2352,15 @@ compress_process_tree_3(ChildrenGroup) ->
             end
     end.
 
+get_proc_with_callgraph_and_most_runtime(Procs) ->
+    Procs1=[Proc||Proc={P,_}<-Procs, has_callgraph(P#information.id)],
+    case Procs1 of 
+        [] -> get_proc_with_most_runtime(Procs);
+        _ ->
+            get_proc_with_most_runtime(Procs1)
+    end.
 get_proc_with_most_runtime([Proc|Procs]) ->
-   get_proc_with_most_runtime(Procs, Proc).
+    get_proc_with_most_runtime(Procs, Proc).
 get_proc_with_most_runtime([], Proc) ->
     Proc;
 get_proc_with_most_runtime([CurP={Proc, _}|Procs], P={Proc1,_}) ->
@@ -2367,6 +2375,14 @@ get_proc_with_most_runtime([CurP={Proc, _}|Procs], P={Proc1,_}) ->
 is_dummy_pid({pid, {_, P2, _}}) ->
     is_atom(P2);
 is_dummy_pid(_) -> false.
+
+has_callgraph(Pid) ->
+    CallTree=ets:select(fun_calltree, 
+                        [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+                          [],
+                          ['$_']
+                         }]), 
+    CallTree/=[].
 
 %%% -------------------	%%%
 %%% Utility functionss	%%%
