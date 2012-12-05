@@ -63,6 +63,8 @@
 
 -include("../include/percept2.hrl").
 
+-compile(export_all).
+
 -type module_name()::atom().
  
 -type filespec()::file:filename()|
@@ -404,6 +406,7 @@ get_webserver_config(Servername, Port)
 	{script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
 	{alias,{"/javascript/",filename:join([Root, "scripts"]) ++ "/"}},
 	{alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
+        {alias,{"/svgs/", percept2_utils:svg_file_dir()}},
 	{alias,{"/css/", filename:join([Root, "css"]) ++ "/"}},
 	
 	% Logs
@@ -433,7 +436,7 @@ get_webserver_config(Servername, Port)
 
 
 rm_tmp_files() ->
-    Dir =filename:join([code:priv_dir(percept2),"server_root", "images"]),
+    Dir =percept2_utils:svg_file_dir(),
     case file:list_dir(Dir) of 
         {error, Error} ->
             {error, Error};

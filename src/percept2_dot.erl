@@ -6,6 +6,8 @@
 
 -export([gen_process_tree_img_1/1]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 
 %%% --------------------------------%%%
@@ -29,12 +31,14 @@ gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
                         "."++integer_to_list(P3),
     BaseName = "callgraph"++PidStr,
     DotFileName = BaseName++".dot",
-    SvgFileName = filename:join(
-                    [code:priv_dir(percept2), "server_root",
-                     "images", BaseName++".svg"]),
+    SvgFileName =gen_svg_file_name(BaseName),
     fun_callgraph_to_dot(CallTree,DotFileName),
     dot_to_svg(DotFileName, SvgFileName).
 
+gen_svg_file_name(BaseName) ->
+    SvgDir = percept2_utils:svg_file_dir(),
+    filename:join([SvgDir, BaseName++".svg"]).
+    
 fun_callgraph_to_dot(CallTree, DotFileName) ->
     Edges=gen_callgraph_edges(CallTree),
     MG = digraph:new(),
@@ -142,9 +146,7 @@ gen_callgraph_slice_img_1(Pid={pid, {P1, P2, P3}}, CallTree, Min, Max) ->
     MaxTsStr=lists:flatten(io_lib:format("~.4f", [Max])),
     BaseName = "callgraph"++PidStr++MinTsStr++"_"++MaxTsStr,
     DotFileName = BaseName++".dot",
-    SvgFileName = filename:join(
-                    [code:priv_dir(percept2), "server_root",
-                     "images", BaseName++".svg"]),
+    SvgFileName = gen_svg_file_name(BaseName),
     fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName),
     dot_to_svg(DotFileName, SvgFileName).
 
@@ -246,9 +248,7 @@ gen_process_tree_img([], _) ->
 gen_process_tree_img(ProcessTrees, CleanPid) ->
     BaseName = "processtree",
     DotFileName = BaseName++".dot",
-    SvgFileName = filename:join(
-                    [code:priv_dir(percept2), "server_root",
-                     "images", BaseName++".svg"]),
+    SvgFileName = gen_svg_file_name(BaseName),
     ok=process_tree_to_dot(ProcessTrees,DotFileName, CleanPid),
     dot_to_svg(DotFileName, SvgFileName).
 
