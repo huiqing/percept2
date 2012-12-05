@@ -59,6 +59,7 @@ install: default
 	install -m 775 -d $(LIB_DIR)/priv/server_root/htdocs
 	install -m 775 -d $(LIB_DIR)/priv/server_root/images
 	install -m 775 -d $(LIB_DIR)/priv/server_root/scripts
+	install -m 775 -d $(LIB_DIR)/priv/server_root/svgs
 	install -m 775 priv/fonts/* $(LIB_DIR)/priv/fonts
 	install -m 755 priv/server_root/conf/* $(LIB_DIR)/priv/server_root/conf
 	install -m 755 priv/server_root/css/* $(LIB_DIR)/priv/server_root/css
