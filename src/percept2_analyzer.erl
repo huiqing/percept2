@@ -31,6 +31,8 @@
 	mean/1
 	]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 
 -define(ts(EndTs,StartTs), timer:now_diff(EndTs, StartTs)).
@@ -81,17 +83,30 @@ mean(List)    ->
 
 activities2count2(Acts, StartTs) -> 
     Start = inactive_start_states(Acts),
-    activities2count2(Acts, StartTs, Start, []).
+    activities2count2(Acts, StartTs, Start, dict:new(),[]).
 
-activities2count2([], _, _, Out) -> lists:reverse(Out);
-activities2count2([#activity{id = {pid,_}, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, Out) ->
-    activities2count2(Acts, StartTs, {Proc + 1, Port}, [{?seconds(Ts, StartTs), Proc + 1, Port}|Out]);
-activities2count2([#activity{ id ={pid, _}, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, Out) ->
-    activities2count2(Acts, StartTs, {Proc - 1, Port}, [{?seconds(Ts, StartTs), Proc - 1, Port}|Out]);
-activities2count2([#activity{ id = Id, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, Out) when is_port(Id) ->
-    activities2count2(Acts, StartTs, {Proc, Port + 1}, [{?seconds(Ts, StartTs), Proc, Port + 1}|Out]);
-activities2count2([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, Out) when is_port(Id) ->
-    activities2count2(Acts, StartTs, {Proc, Port - 1}, [{?seconds(Ts, StartTs), Proc, Port - 1}|Out]).
+activities2count2([], _, _, _, Out) -> lists:reverse(Out);
+activities2count2([#activity{id = Id, timestamp = Ts, state = State} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
+    case dict:find(Id, StateDict) of
+        {ok, State} ->
+            activities2count2(Acts, StartTs, {Proc, Port}, StateDict, [{?seconds(Ts, StartTs), Proc, Port}|Out]);
+        _ ->
+            activities2count3([#activity{id = Id, timestamp = Ts, state = State} | Acts],
+                              StartTs, {Proc, Port}, StateDict,[{?seconds(Ts, StartTs), Proc, Port}|Out])
+    end.
+                          
+activities2count3([#activity{id = Id={pid, _}, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
+    activities2count2(Acts, StartTs, {Proc + 1, Port}, dict:store(Id, active, StateDict),
+                      [{?seconds(Ts, StartTs), Proc + 1, Port}|Out]);
+activities2count3([#activity{ id =Id={pid, _}, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
+    activities2count2(Acts, StartTs, {Proc - 1, Port},  dict:store(Id, inactive, StateDict),
+                      [{?seconds(Ts, StartTs), Proc - 1, Port}|Out]);
+activities2count3([#activity{ id = Id, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
+    activities2count2(Acts, StartTs, {Proc, Port + 1},  dict:store(Id, active, StateDict), 
+                      [{?seconds(Ts, StartTs), Proc, Port + 1}|Out]);
+activities2count3([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
+    activities2count2(Acts, StartTs, {Proc, Port - 1},  dict:store(Id, inactive, StateDict),
+                      [{?seconds(Ts, StartTs), Proc, Port - 1}|Out]).
 
 
 inactive_start_states(Acts) -> 
