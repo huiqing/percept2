@@ -39,7 +39,7 @@
 %% 		Type definitions 
 %%
 %%==========================================================================
--type port_number() :: integer().
+%%-type port_number() :: integer().
 
 -type trace_flags() :: 
         'all' | 'send' |'receive' |'procs'|'call'|'silent'|
