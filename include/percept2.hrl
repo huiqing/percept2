@@ -39,7 +39,7 @@
           where = undefined	 :: true_mfa() | 'undefined'|special_atom(),
           runnable_procs=0       :: integer()|special_atom(),
           runnable_ports=0       :: integer()|special_atom(),
-          in_out = []            :: [{atom, timestamp()}]|special_atom()
+          in_out = []            :: [{atom(), timestamp()}]|special_atom()
          }).
 
 -record(scheduler, {
