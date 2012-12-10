@@ -95,7 +95,7 @@ start(TraceFileNames) ->
 %% @doc restarts the percept database.
 -spec restart([file:filename()],pid())-> [{filename(), pid()}].
 restart(TraceFileNames, PerceptDB)->
-    true=stop_sync(PerceptDB),
+    stop(PerceptDB),
     do_start(TraceFileNames).
 
 %% @private
@@ -112,39 +112,51 @@ do_start(TraceFileNames)->
     end.
     
 %% @doc stops the percept2_db database.
--spec stop()->'not_started' | {'stopped', pid()}.
+-spec stop()->'not_started' | {pid(),'stopped'}.
 stop()->
     stop(percept2_db).
 
 %% @doc Stops a percept database.
--spec stop(pid()|atom()) -> 'not_started' | {'stopped', pid()}.
+-spec stop(pid()|atom()) -> 'not_started' | {pid(), 'stopped'}.
 stop(Pid) when is_pid(Pid) ->
-    Pid! {action, stop},
-    {stopped, Pid};
-
+    Pid! {action, stop, self()},
+    receive
+        {Pid, stopped} ->
+            {Pid, stopped}
+    end;
 stop(ProcRegName) ->
     case erlang:whereis(ProcRegName) of
         undefined -> 
             not_started;
         Pid -> 
-            Pid ! {action, stop},
-            {stopped, Pid}
+            Pid ! {action, stop, self()},
+            receive
+                {Pid, stopped} ->
+                    {Pid, stopped}
+            end
     end.
 -type regname()::atom().
 -spec stop_sync(pid()|regname())-> true.
+stop_sync(RegName) when is_atom(RegName) ->
+    case whereis(RegName) of
+        undefined -> 
+            true;
+        Pid ->
+            stop_sync(Pid)
+    end;
 stop_sync(Pid)->
     MonitorRef = erlang:monitor(process, Pid),
     case stop(Pid) of 
         not_started -> true;
-        {stopped, Pid1} ->
+        {Pid, stopped} ->
             receive
-                {'DOWN', MonitorRef, _Type, Pid1, _Info}->
+                {'DOWN', MonitorRef, _Type, _Pid1, _Info}->
                     true;
-                {'EXIT', Pid1, _Info} ->
+                {'EXIT', _Pid1, _Info} ->
                     true
             after ?STOP_TIMEOUT->
                     erlang:demonitor(MonitorRef, [flush]),
-                    exit(Pid1, kill)
+                    exit(Pid, kill)
             end
     end.
 
@@ -253,8 +265,9 @@ loop_percept_db(FileNameSubDBPairs) ->
             Res = percept_db_select_query(FileNameSubDBPairs, Query),
             Pid ! {result, Res},
 	    loop_percept_db(FileNameSubDBPairs);
-	{action, stop} ->
-            stop_percept_db(FileNameSubDBPairs);
+	{action, stop, From} ->
+            stop_percept_db(FileNameSubDBPairs),
+            From ! {self(), stopped};
 	{action, From, consolidate_db} ->
             consolidate_db(FileNameSubDBPairs),
             From ! {percept2_db, consolidate_done},
@@ -278,8 +291,9 @@ loop_percept_sub_db(SubDBIndex) ->
         {select, Pid, Query} ->
             Pid ! {self(), percept_sub_db_select_query(SubDBIndex, Query)},
             loop_percept_sub_db(SubDBIndex);
-        {action, stop} ->
-            stop_a_percept_sub_db(SubDBIndex);
+        {action, stop, From} ->
+            stop_a_percept_sub_db(SubDBIndex),
+            From ! {self(), stopped};
         {'EXIT', _, normal} ->
             loop_percept_sub_db(SubDBIndex);
         Unhandled ->
@@ -540,7 +554,7 @@ insert_profile_trace(SubDBIndex,Trace) ->
               id =  Id,
               state = State,
               active_scheds = NoScheds},
-              % insert scheduler activity
+                                                % insert scheduler activity
             SchedulerProcRegName = mk_proc_reg_name("pdb_scheduler",
                                                     SubDBIndex),
             update_scheduler(SchedulerProcRegName, Act);
@@ -548,42 +562,40 @@ insert_profile_trace(SubDBIndex,Trace) ->
             %%?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
             ok
     end.
-insert_profile_trace_1(SubDBIndex,Id, State, Mfa, TS, ports) ->
-    ProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-    case check_activity_consistency(SubDBIndex, Id, State) of 
-        invalid_state ->
-            ok;
-        valid_state->
-            Rc = get_runnable_count(ports, State),
-            update_activity(ProcRegName,
-                            #activity{id = Id,
-                                      state = State,
-                                      timestamp = TS,
-                                      runnable_procs=get({runnable, procs}),
-                                      runnable_ports=Rc,
-                                      where = Mfa})
-    end;
-        
-insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, procs) ->
+insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, Type) ->
     ProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
     case check_activity_consistency(SubDBIndex, Id, State) of 
         invalid_state ->
             ok;
         valid_state ->
+            InternalId = case Type of procs ->
+                                 pid2value(Id);
+                             ports -> Id
+                         end,
             if State==active->
                     erlang:put({active, Id}, TS);
-               true -> ok
+               true -> 
+                    TS1=erlang:get({active, Id}),
+                    update_activity(ProcRegName, {erase, InternalId,TS1}),
+                    erlang:erase({active, Id})
             end,
-            Rc = get_runnable_count(procs, State),
+            {ProcRC, PortRC} = case Type of 
+                                   procs ->
+                                       {get_runnable_count(procs, State),
+                                        get({runnable, ports})};
+                                   ports ->
+                                       {get({runnable, procs}),
+                                        get_runnable_count(ports, State)}
+                               end,
             update_activity(ProcRegName,
-                            #activity{id = pid2value(Id),
+                            #activity{id =InternalId,
                                       state = State,
                                       timestamp = TS,
-                                      runnable_procs=Rc,
-                                      runnable_ports=get({runnable, ports}),
+                                      runnable_procs=ProcRC,
+                                      runnable_ports=PortRC,
                                       where = Mfa})
     end.
-
+           
 check_activity_consistency(SubDBIndex, Id, State) ->
     RunnableStates = erlang:get(runnable_states),
     case lists:keyfind(Id,1,RunnableStates) of 
@@ -670,7 +682,6 @@ trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  MFA, TS}) when is_pid(Pid
             update_information_acc_time(ProcRegName, {InternalPid, Elapsed}),
             case erlang:get({active, Pid}) of
                 undefined ->
-                    %%io:format("Out:active entry does not exist!\n"),
                     ok;
                 TS1 ->
                     ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
@@ -743,6 +754,8 @@ trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
 trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName =mk_proc_reg_name("pdb_func", SubDBIndex),
     ProcRegName ! {self(), end_of_trace_file},
+    ActRegName=mk_proc_reg_name("pdb_activity", SubDBIndex),
+    update_activity(ActRegName, end_of_trace_file),
     receive 
         {SubDBIndex, done} ->
             ?dbg(0, "Trace end of trace received done\n", []),
@@ -762,8 +775,8 @@ init_pdb_warnings(ProcRegName, Parent) ->
 
 pdb_warnings_loop()->
     receive
-        {action, stop} ->
-            ok 
+        {action, stop, From} ->
+            From ! {self(), stopped}
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -804,25 +817,33 @@ select_query_activity(FileNameSubDBPairs, Query) ->
 
 pdb_activity_loop(ProcRegName)->
     receive 
-        {update_activity, {SubTab, {in, {_Pid, TS1}, _MFA, TS}}} ->
-            case ets:lookup(SubTab, TS1) of
-                [] ->
-                    ok;
-                [Act] ->
-                    ets:update_element(
-                      SubTab,  TS1,
-                      {#activity.in_out, [{in, TS}|Act#activity.in_out]})
+        {update_activity, {_SubTab,{InOut, {Pid, TS1}, _MFA, TS}}} ->
+            case get({Pid, TS1}) of 
+                undefined ->
+                    put({Pid, TS1}, [{InOut, TS}]);
+                Val ->
+                    put({Pid, TS1}, [{InOut, TS}|Val])
             end,
             pdb_activity_loop(ProcRegName);
-        {update_activity, {SubTab, {out, {_Pid, TS1}, _MFA, TS}}} ->
-            case ets:lookup(SubTab, TS1) of
-                [] ->
+        {update_activity, {SubTab, {erase, Pid, TS}}} ->
+            case get({Pid, TS}) of 
+                undefined -> 
                     ok;
-                [Act] ->
-                    ets:update_element(
-                      SubTab, TS1,
-                      {#activity.in_out, [{out, TS}|Act#activity.in_out]})
-            end,
+                Val ->
+                    [Act] = ets:lookup(SubTab, TS),
+                    ets:update_element(SubTab, TS, 
+                                       {#activity.in_out, Act#activity.in_out++Val}),
+                    erase({Pid, TS})
+            end,                    
+            pdb_activity_loop(ProcRegName);
+        {update_activity, {SubTab, end_of_trace_file}} ->
+            Data = erase(),
+            [begin
+                 [Act] = ets:lookup(SubTab, TS),
+                 ets:update_element(SubTab, TS, 
+                                    {#activity.in_out, Act#activity.in_out++InOut})
+             end
+             ||{{_Pid, TS}, InOut}<-Data],
             pdb_activity_loop(ProcRegName);
         {update_activity, {SubTab,Activity}} ->
             ets:insert(SubTab, Activity),
@@ -832,11 +853,12 @@ pdb_activity_loop(ProcRegName)->
             {ok, NewRC}=do_consolidate_runnability(Tab, PreviourRC), 
             From!{self(), done, NewRC},
             pdb_activity_loop(ProcRegName);
-        {action, stop} ->
+        {action, stop, From} ->
             case ets:info(ProcRegName) of 
                 undefined -> ok;
                 _ -> ets:delete(ProcRegName)
-            end            
+            end,            
+            From ! {self(), stopped}
     end.
 
 
@@ -1093,13 +1115,14 @@ pdb_scheduler_loop(ProcRegName)->
         {update_scheduler, {SchedulerProcRegName,Activity}} ->
             ets:insert(SchedulerProcRegName, Activity),
             pdb_scheduler_loop(ProcRegName);
-        {action, stop} ->
+        {action, stop, From} ->
             case ets:info(ProcRegName) of 
                 undefined -> 
                     ok;
                 _ ->                     
                     ets:delete(ProcRegName)
-            end
+            end,
+            From ! {self(), stopped}
     end.
 
 select_query_scheduler_1(SubDBIndex, Query) ->
@@ -1190,7 +1213,8 @@ pdb_info_loop()->
         {update_information_acc_time, {Key, Value}} ->
             update_information_acc_time_1(Key, Value),
             pdb_info_loop();
-        {action,stop} ->
+        {action,stop, From} ->
+            From ! {self(), stopped},
             ok
     end.
 
@@ -1393,7 +1417,8 @@ pdb_system_loop() ->
             pdb_system_loop();
         {'update_system_nodes_num', Num} ->
             ets:insert(pdb_system, {{system, nodes}, Num});
-        {action, stop} ->
+        {action, stop, From} ->
+            From ! {self(), stopped},
             ok
     end.
     
@@ -1552,8 +1577,8 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                     %% has finished.
                     pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, [{Pid, Stack}|PrevStacks], Done})
             end;
-        {action, stop} ->
-            ok;
+        {action, stop, From} ->
+            From ! {self(), stopped};
         Unhandled ->
             io:format("function pdb_func_loop, unhandled:~p~n", [Unhandled]),
             pdb_func_loop({SubDB,SubDBIndex,ChildrenProcs, PrevStacks, Done})                
@@ -1978,14 +2003,11 @@ consolidate_db(FileNameSubDBPairs) ->
     NumOfNodes=get_num_of_nodes(),
     update_system_nodes_num(SystemProc, NumOfNodes),
 
-    %% ?dbg(0, "consolidate runnability ...\n",[]),
-    %% io:format("consolidate runnability ...\n",[]),
+    ?dbg(0, "consolidate runnability ...\n",[]),
     consolidate_runnability(LastIndex),
-    %%?dbg(0, "consolidate function callgraph ...\n",[]),
-    io:format("consolidate function callgraph ...\n",[]),
+    ?dbg(0, "consolidate function callgraph ...\n",[]),
     consolidate_calltree(),
-    %% ?dbg(0,"generate function information ...\n",[]),
-    io:format("generate function information ...\n",[]),
+    ?dbg(0,"generate function information ...\n",[]),
     process_func_info(),
     ok.
 
