@@ -63,8 +63,6 @@
 
 -include("../include/percept2.hrl").
 
--compile(export_all).
-
 -type module_name()::atom().
  
 -type filespec()::file:filename()|
@@ -196,11 +194,18 @@ loop_analyzer_par(Pids) ->
             end;
         {error, Reason} ->
             percept2_db:stop(percept2_db),
+            flush(),
             {error, Reason};
         _Other ->
             loop_analyzer_par(Pids)            
     end.
             
+flush() ->
+    receive
+        _ -> flush()
+    after 0 ->
+            ok
+    end.
 %% @spec start_webserver() -> {started, Hostname, Port} | {error, Reason}
 %%	Hostname = string()
 %%	Port = integer()
