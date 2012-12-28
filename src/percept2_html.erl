@@ -846,7 +846,8 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                                       msg2html(info_msg_received(I)),
                                       msg2html(info_msg_sent(I)),
                                       mfa2html(I#information.entry),
-                                      visual_link({I#information.id, undefined, undefined})]),
+                                      visual_link({I#information.id, undefined, undefined}, 
+                                                  I#information.children)]),
                       SubTable = sub_table(Id, Children, ProfileTime, ActiveProcsInfo),
                       [Prepare, SubTable|Out]
               end, [], ProcessTree),
@@ -1064,7 +1065,7 @@ process_info_content_1(_Env, Input) ->
                      term2html(info_msg_sent(I))],
                     [{th, "accumulated runtime <br>(in milliseconds)"},
                      term2html(I#information.accu_runtime div 1000)],
-                    [{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined})]
+                    [{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]
                    ] ++ case percept2_db:is_dummy_pid(Pid) of
                             true ->
                                 [[{th, "Compressed Processes"}, lists:flatten(
@@ -1181,7 +1182,7 @@ mk_funs_html(FunCallTree, IsChildren) ->
                                       fun_expand_or_collapse(FChildren, Id),
                                       mfa2html_with_link(Id),
                                       term2html(CNT),
-                                      visual_link(Id)])
+                                      visual_link(Id, [])])
                   end,
               SubTable = fun_sub_table(Id, FChildren, true),
               [Prepare, SubTable|Out]
@@ -1483,13 +1484,32 @@ mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_in
 mfa2html_with_link(_) ->
     "undefined".
 
-visual_link({Pid,_, _})->
+visual_link({Pid,_, _}, ChildrenPids)->
     case has_callgraph(Pid) of 
         true ->
             "<a href=\"/cgi-bin/percept2_html/callgraph_visualisation_page?pid=" ++ 
                 pid2str(Pid) ++ "\">" ++ "show call graph/time" ++ "</a>";
         false ->
-            "No callgraph/time"
+            case has_children_with_callgraph(ChildrenPids) of 
+                true ->
+                    "childern w/t call graph/time";
+                false ->
+                    "no callgraph/time"
+            end
+    end.
+
+has_children_with_callgraph(Pids) ->
+    lists:any(fun(Pid) ->
+                      has_children_with_callgraph_1(Pid)
+              end, Pids).
+
+has_children_with_callgraph_1(Pid) ->
+    case has_callgraph(Pid) of 
+        true ->
+            true;
+        false ->
+            [Info] = percept2_db:select({information, Pid}),
+            has_children_with_callgraph(Info#information.children)
     end.
 
 has_callgraph(Pid) ->
