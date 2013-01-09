@@ -1223,7 +1223,7 @@ update_information_acc_time_1(Key, Value) ->
         [] ->
             ets:insert(pdb_info, #information{id=Key, accu_runtime=Value});
         [_Info] ->
-            ets:update_counter(pdb_info, Key, {13, Value})
+            ets:update_counter(pdb_info, Key, {#information.accu_runtime, Value})
     end.
 
 update_information_1(#information{id = Id} = NewInfo) ->
@@ -1675,19 +1675,23 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
             Stack;
         [[{CP, _} | _], [{CP, _} | _] | _] ->
             trace_call_shove(Pid,Func, TS, Stack);
-        [[{CP, _} | _] | _] when Func==CP ->
+        [[{CP, TS1} | _] | _] when Func==CP ->
             ?dbg(-1, "Current function becomes new stack top.\n", []),
+            update_calltree_info(Pid, {Func, TS, undefined}, {Func, TS1}),
             Stack;
 	[[{CP, _} | _] | _] ->
             ?dbg(-1, "Current function becomes new stack top.\n", []),
             [[{Func, TS}] | Stack];
+        [[{Func, TS1} | _], [{CP, _TS1} | _] | _] ->
+            update_calltree_info(Pid, {Func, TS, undefined}, {Func, TS1}),
+             Stack;
         [_, [{CP, _} | _] | _] ->
-           ?dbg(-1, "Stack top unchanged, no push.\n", []),
-           trace_call_shove(Pid, Func, TS, Stack); 
+            ?dbg(-1, "Stack top unchanged, no push.\n", []),
+            trace_call_shove(Pid, Func, TS, Stack); 
         [[{Func0, _} | _], [{Func0, _} | _], [{CP, _} | _] | _] ->
             trace_call_shove(Pid, Func, TS,
-                             trace_return_to_2(Pid, Func0, TS,
-                                               Stack));
+                              trace_return_to_2(Pid, Func0, TS,
+                                                Stack));
         [_|_] ->
            [[{Func, TS}], [{CP, TS}, dummy]|Stack]
     end.
@@ -1696,36 +1700,48 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
 trace_call_shove(_Pid, Func, TS, []) ->
     [[{Func, TS}]];
 trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
-    [[{Func1,TS1}| NewLevel0] | NewStack1] = 
-        [trace_call_collapse([{Func, TS} | Level0]) | Stack1],
-    case Level0 -- [{Func1,TS1}| NewLevel0] of 
+    ?dbg(-1, "Before collapse:\n~p\n", [[[{Func, TS} | Level0]| Stack1]]),
+    Level01 = [{Func, TS} | Level0],
+    [NewLevel0| NewStack1] = 
+        [trace_call_collapse(Level01) | Stack1],
+    ?dbg((-1), "After collaps:\n~p\n", [[NewLevel0| NewStack1]]),
+    case Level01 -- NewLevel0 of 
         [] -> ok;
         Funs ->
-            {Caller1, Caller1StartTs}= hd(NewLevel0),
-            [update_fun_related_info(Pid, Func2, TS2, TS, Caller1, Caller1StartTs)
-             ||{Func2, TS2} <- Funs]
+            %% io:format("Funs:\n~p\n", [Funs]),
+            Funs1= lists:sublist(NewLevel0, length(Funs)+1),
+            %% io:format("Funs1:\n~p\n", [Funs1]),
+            trace_call_shove_update_call_info(Pid,Funs1)
     end,
-    [[{Func, TS1} | NewLevel0] | NewStack1].
+    [NewLevel0| NewStack1].
     
- 
+trace_call_shove_update_call_info(_, []) ->
+    ok;
+trace_call_shove_update_call_info(_, [_]) ->
+    ok;
+trace_call_shove_update_call_info(Pid, [{Func1, TS1}, {Func2, Ts2}|Tail])->
+    update_calltree_info(Pid, {Func1, TS1, undefined}, {Func2, Ts2}),
+    trace_call_shove_update_call_info(Pid, [{Func2, Ts2}|Tail]).
+    
+
 %% Collapse tail recursive call stack cycles to prevent them from
 %% growing to infinite length.
-%% trace_call_collapse([]) ->
-%%     [];
+trace_call_collapse([]) ->
+     [];
 trace_call_collapse([_] = Stack) ->
     Stack;
 trace_call_collapse([_, _] = Stack) ->
-     Stack;
+    Stack;
 trace_call_collapse([_ | Stack1] = Stack) ->
     ?dbg(-1, "collapse_trace_state(~p)~n", [Stack]),
     trace_call_collapse_1(Stack, Stack1, 1).
-
-
+    
 %% Find some other instance of the current function in the call stack
 %% and try if that instance may be used as stack top instead.
 trace_call_collapse_1(Stack, [], _) ->
     Stack;
 trace_call_collapse_1([{Func0, _} | _] = Stack, [{Func0, _} | S1] = S, N) ->
+   %% io:format("Collapse_1:\n~p\n", [{Stack, S, N}]),
     case trace_call_collapse_2(Stack, S, N) of
 	true ->
 	    S;
@@ -1805,23 +1821,32 @@ trace_return_to_2(Pid, Func, TS, [[] | Stack1]) ->
     trace_return_to_2(Pid, Func, TS, Stack1);
 trace_return_to_2(_Pid, Func, _TS, [[{Func, _}|_Level0]|_Stack1] = Stack) ->
     Stack;
-trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
+trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
     case Func0 of 
          {_, _, _} ->
-            {Caller, CallerStartTs}= case Level1 of 
-                                         [{Func1, TS2}|_] ->
-                                             {Func1, TS2};
-                                         _ -> case Stack1 of 
-                                                  [[{Func1, TS2}, dummy]|_] ->
-                                                      {Func1, TS2};
-                                                  [[{Func1, TS2}|_]|_]->
-                                                      {Func1, TS2};
-                                                  [] ->
-                                                      {Func, TS1}
-                                              end
-                                     end,
-            update_fun_related_info(Pid, Func0, TS1, TS, Caller, CallerStartTs);
-         _ -> ok  %% garbage collect or suspend.
+            case Level1 of 
+                [{Func1, TS2}|_] ->
+                    {Caller, CallerStartTs}={Func1, TS2},
+                    {Level11, _Level12} = lists:splitwith(fun({Func2, _})-> Func2 =/= Func end,
+                                                     Level1),
+                    case lists:any(fun({Func2, _}) -> Func2 ==Func0 end, Level11) of 
+                        false ->
+                            update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
+                        true ->
+                            update_calltree_info(Pid, {Func0,  Func0StartTS, TS}, {Caller, CallerStartTs})
+                    end;
+                _ -> 
+                    {Caller, CallerStartTs}=case Stack1 of 
+                                                [[{Func1, TS2}, dummy]|_] ->
+                                                    {Func1, TS2};
+                                                [[{Func1, TS2}|_]|_]->
+                                                    {Func1, TS2};
+                                                [] ->
+                                                    {Func, Func0StartTS}
+                                            end,
+                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs)
+            end;
+        _ -> ok  %% garbage collect or suspend.
     end,
     if Level1 ==[dummy] ->
             trace_return_to_2(Pid, Func, TS, Stack1);
@@ -1830,22 +1855,47 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, TS1} | Level1] | Stack1]) ->
     end.
 
 update_fun_related_info(Pid, Func0, StartTS, EndTS, Caller, CallerStartTs) ->
+    ?dbg(-1, "update fun related info:\n~p\n", [{Pid, Func0, StartTS, EndTS, Caller, CallerStartTs}]),
     ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), StartTS}, func=Func0, end_ts=EndTS}),
     update_fun_call_time({Pid, Func0}, {StartTS, EndTS}),
     update_calltree_info(Pid, {Func0, StartTS, EndTS}, {Caller, CallerStartTs}).
    
         
 -spec(update_calltree_info(pid(), {true_mfa(), timestamp(), timestamp()}, 
-                           {true_mfa(), timestamp()}) ->true).             
-update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
+                           {true_mfa(), timestamp()}) ->true).       
+update_calltree_info(Pid, {Callee, StartTS0, _}, {Caller,  CallerStartTS0}) when Caller==Callee ->
     CallerStartTS = case is_list_comp(Caller) of 
-                       true -> undefined;
+                        true -> undefined;
                        _ -> CallerStartTS0
                    end,
+    CalleeStartTS = case is_list_comp(Callee) of 
+                  true -> undefined;
+                  _ -> StartTS0
+              end,
+    Pid1 = pid2value(Pid),
+    CallerId = {Pid1, Caller, CallerStartTS},
+    CalleeId = {Pid1, Callee, CalleeStartTS},
+    case ets:lookup(fun_calltree, CallerId) of 
+        [C]->
+            ets:update_element(fun_calltree,CallerId, 
+                               {#fun_calltree.rec_cnt, C#fun_calltree.rec_cnt+1});                     
+        [] ->
+            CallerInfo = #fun_calltree{id = CallerId,
+                                       rec_cnt=1,
+                                       start_ts=CallerStartTS,
+                                               called = []}, 
+            ets:insert(fun_calltree, CallerInfo) 
+    end;
+  
+update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
+    CallerStartTS = case is_list_comp(Caller) of 
+                        true -> undefined;
+                       _ -> CallerStartTS0
+                    end,
     StartTS = case is_list_comp(Callee) of 
-                   true -> undefined;
-                   _ -> StartTS0
-               end,
+                  true -> undefined;
+                  _ -> StartTS0
+              end,
     Pid1 = pid2value(Pid),
     case ets:lookup(fun_calltree, {Pid1, Callee, StartTS}) of
         [] ->
@@ -2182,15 +2232,19 @@ process_a_call_tree_1(CallTree) ->
 
       
 update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
+  %%  io:format("update fun calltime:\n~p\n", [{{Pid, Func}, {StartTs, EndTs}}]),
     Time =timer:now_diff(EndTs, StartTs),
     PidValue = pid2value(Pid),
     case ets:lookup(fun_info, {PidValue, Func}) of 
         [] ->
             ets:insert(fun_info, #fun_info{id={PidValue, Func},
+                                           start_ts=StartTs,
+                                           end_ts = EndTs,
                                            acc_time=Time});
         [FunInfo] ->
             ets:update_element(fun_info, {PidValue, Func},
                                [{#fun_info.acc_time, FunInfo#fun_info.acc_time+Time}])
+               
     end.
 
 %% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa()|undefined, non_neg_integer()},
