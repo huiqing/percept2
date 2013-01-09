@@ -84,6 +84,7 @@
                                    {special_atom(), special_atom(), special_atom()}|
                                    special_atom(),
           cnt =1                 ::non_neg_integer()|special_atom(),
+          rec_cnt=0              ::non_neg_integer()|special_atom(),
           called =[]             ::[#fun_calltree{}]|special_atom(),
           start_ts = undefined   ::timestamp()|undefined|special_atom(),
           end_ts = undefined     ::timestamp()|undefined|special_atom()
@@ -95,7 +96,7 @@
           called = []          ::any(), %%[{true_mfa(), non_neg_integer()}]|special_atom(),
           start_ts = undefined ::any(), %%timestamp()|undefined|special_atom(),
           end_ts = undefined   ::any(), %%timestamp()|undefinedspecial_atom(),
-          call_count = 1       ::non_neg_integer()|special_atom(),
+          call_count = 0       ::non_neg_integer()|special_atom(),
           acc_time = 0         ::non_neg_integer()|special_atom()
          }).
 
@@ -111,8 +112,9 @@
 %%% -------------------	%%%
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
-%%-define(debug, 9).
-%-define(debug, 0). 
+%% -define(debug, 9).
+
+%% -define(debug, -1).
 
 -ifdef(debug). 
 dbg(Level, F, A) when Level >= ?debug ->
