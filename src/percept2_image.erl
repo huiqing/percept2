@@ -289,6 +289,11 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{width = Width}, Acts) ->
     draw_activity(Image, {Xmin, Xmax}, Area, {White, Green, Black}, Dx, Acts).
 
 draw_activity(_, _, _, _, _, []) -> ok;
+draw_activity(Image, {Xmin, Xmax}, _Area = #graph_area{ height = Height, x = X0 }, {_Cw, Cg, _Cb}, Dx, 
+              [{Xa1, active, InOutXas1}]) ->
+    Cr = egd:color(Image, {255, 165, 0}),
+    draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
+                           Dx, Xa1, Xmax, {{X0, 0}, {X0, Height-1}}, InOutXas1);
 draw_activity(_, _, _, _, _, [_])-> ok;
 draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }, {Cw, Cg, Cb}, Dx, 
               [{Xa1, State, InOutXas1}, {Xa2, Act2, InOutXas2} | Acts]) ->
