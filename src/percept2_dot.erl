@@ -50,11 +50,15 @@ fun_callgraph_to_dot(CallTree, DotFileName) ->
 gen_callgraph_edges(CallTree) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
     ChildrenCallTrees = CallTree#fun_calltree.called,
-    lists:foldl(fun(Tree, Acc) ->
-                        {_, ToFunc, _} = Tree#fun_calltree.id,
-                        NewEdge = {CurFunc, ToFunc, Tree#fun_calltree.cnt},
-                        [[NewEdge|gen_callgraph_edges(Tree)]|Acc]
-                end, [], ChildrenCallTrees).
+    Edges = lists:foldl(fun(Tree, Acc) ->
+                                {_, ToFunc, _} = Tree#fun_calltree.id,
+                                NewEdge = {CurFunc, ToFunc, Tree#fun_calltree.cnt},
+                                [[NewEdge|gen_callgraph_edges(Tree)]|Acc]
+                        end, [], ChildrenCallTrees),
+    case CallTree#fun_calltree.rec_cnt of 
+        0 ->Edges;
+        N -> [{CurFunc, CurFunc, N}|Edges]
+    end.
 
 %%depth first traveral.
 digraph_add_edges([], NodeIndex, _MG)-> 
@@ -87,7 +91,9 @@ digraph_add_edge({From, To,  CNT}, IndexTab, MG) ->
             false ->
                 digraph:add_vertex(MG, {To,0}),
                 {{To, 0}, [{To,0}|IndexTab1]};                          
-            _ -> 
+            _  when To==From ->
+                {From1, IndexTab1};
+            _ ->
                 {To, Index1} = lists:keyfind(To, 1,IndexTab1),
                 case digraph:get_path(MG, {To, Index1}, From1) of 
                     false ->
