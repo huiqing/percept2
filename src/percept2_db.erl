@@ -657,15 +657,18 @@ trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  MFA, TS}) when is_pid(Pid)-
     ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
     case erlang:get({active, Pid}) of 
         undefined ->
-            erlang:put({active, Pid}, TS),
-            update_activity(ActivityProcRegName,
-                            #activity{id = InternalPid,
-                                      state = active,
-                                      timestamp = TS,
-                                      runnable_procs=get({runnable, procs}),
-                                      runnable_ports=get({runnable, ports}),
-                                      in_out=[{in, TS}],
-                                      where = MFA});
+            ok; 
+        %% process scheduling data is not recorded somehow.
+        %% add activity data (as below) or not?
+        %% erlang:put({active, Pid}, TS),
+        %% update_activity(ActivityProcRegName,
+        %%                 #activity{id = InternalPid,
+        %%                           state = active,
+        %%                           timestamp = TS,
+        %%                           runnable_procs=get_runnable_count(procs,active),
+        %%                           runnable_ports=get({runnable, ports}),
+        %%                           in_out=[{in, TS}],
+        %%                           where = MFA});
         TS1 ->
             update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
         end;
@@ -1863,18 +1866,13 @@ update_fun_related_info(Pid, Func0, StartTS, EndTS, Caller, CallerStartTs) ->
         
 -spec(update_calltree_info(pid(), {true_mfa(), timestamp(), timestamp()}, 
                            {true_mfa(), timestamp()}) ->true).       
-update_calltree_info(Pid, {Callee, StartTS0, _}, {Caller,  CallerStartTS0}) when Caller==Callee ->
+update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) when Caller==Callee ->
     CallerStartTS = case is_list_comp(Caller) of 
                         true -> undefined;
                        _ -> CallerStartTS0
                    end,
-    CalleeStartTS = case is_list_comp(Callee) of 
-                  true -> undefined;
-                  _ -> StartTS0
-              end,
     Pid1 = pid2value(Pid),
     CallerId = {Pid1, Caller, CallerStartTS},
-    CalleeId = {Pid1, Callee, CalleeStartTS},
     case ets:lookup(fun_calltree, CallerId) of 
         [C]->
             ets:update_element(fun_calltree,CallerId, 
