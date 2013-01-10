@@ -246,28 +246,17 @@ draw_yticks0(_, _, _, _, _, _, _,_) -> ok.
 %%	Binary = binary()
 
 activities(Width, Height, {UXmin, UXmax}, Activities) ->
-    Xs = [ X || {X,_} <- Activities],
-    Xmin = case Xs of 
-               [] -> 0.0;
-               _ ->lists:min(Xs)
-           end,
-    Xmax = case Xs of 
-               [] -> 0.0;
-               _ ->lists:max(Xs)
-           end,
+    {Xmin, Xmax} = case Activities of 
+                       [] -> {0.0, 0.0};
+                       _ ->{element(1, hd(Activities)),
+                            element(1, lists:last(Activities))}
+                   end,
     activities0(Width, Height, {lists:min([Xmin, UXmin]), 
                                 lists:max([UXmax, Xmax])}, Activities).
 
 activities(Width, Height, Activities) ->
-    Xs = [ X || {X,_} <- Activities],
-    Xmin = case Xs of 
-                [] -> 0.0;
-                _ ->lists:min(Xs)
-           end,
-    Xmax = case Xs of 
-               [] -> 0.0;
-               _ ->lists:max(Xs)
-           end,
+    {Xmin, _, _} = hd(Activities),
+    {Xmax, _, _} = lists:last(Activities),
     activities0(Width, Height, {Xmin, Xmax}, Activities).
 
 activities0(Width, Height, {Xmin, Xmax}, Activities) ->
@@ -299,50 +288,56 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }
               [{Xa1, State, InOutXas1}, {Xa2, Act2, InOutXas2} | Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa2 - Xmin*Dx),
-    case State of
-	inactive ->
-            egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cw),
-            egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
-            draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
-                          Dx, [{Xa2, Act2, InOutXas2} | Acts]);
-	active ->
-            Cr = egd:color(Image, {255, 165, 0}),
-            draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
-                                   Dx, Xa1, Xa2, {{X0, 0}, {X0, Height-1}}, InOutXas1),
+    case X1 < X2 of 
+        true ->
+            case State of
+                inactive ->
+                    egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cw),
+                    egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
+                    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+                                  Dx, [{Xa2, Act2, InOutXas2} | Acts]);
+                active ->
+                    Co = egd:color(Image, {255, 165, 0}),
+                    draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co},
+                                           Dx, Xa1, Xa2, {{X0, 0}, {X0, Height-1}}, InOutXas1),
+                    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+                                  Dx, [{Xa2, Act2, InOutXas2} | Acts])
+            end;
+        false ->
             draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
                           Dx, [{Xa2, Act2, InOutXas2} | Acts])
     end.
   
-draw_in_out_activities(Image, Xmin, X0, Height, {Cg, _Cr}, Dx, Xa1, Xa2, _PrevPts, []) ->
+draw_in_out_activities(Image, Xmin, X0, Height, {Cg, _Co}, Dx, Xa1, Xa2, _PrevPts, []) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa2 - Xmin*Dx),
     if  X1 < X2 ->
             egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg);
         true -> ok
     end;
-draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa1, Xa2, PrevPts, [{in, Xa}|Acts]) ->
+draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co}, Dx, Xa1, Xa2, PrevPts, [{in, Xa}|Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa - Xmin*Dx),
     P1 = {X1, 0}, 
     P2 = {X2, Height-1},
     case {P1, P2} == PrevPts of 
         true -> 
-            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, PrevPts, Acts);
+            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co}, Dx, Xa, Xa2, PrevPts, Acts);
         false ->
-            egd:filledRectangle(Image, P1, P2, Cr),
-            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, {P1, P2},Acts)
+            egd:filledRectangle(Image, P1, P2, Co),
+            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co}, Dx, Xa, Xa2, {P1, P2}, Acts)
     end;
-draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa1, Xa2, PrevPts,[{out, Xa}|Acts]) ->
+draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co}, Dx, Xa1, Xa2, PrevPts, [{out, Xa}|Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa - Xmin*Dx),
     P1 = {X1, 0},
     P2 = {X2, Height-1},
     case {P1, P2} == PrevPts of 
         true -> 
-            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, PrevPts,Acts);
+            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co}, Dx, Xa, Xa2, PrevPts, Acts);
         false ->
             egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cg),
-            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Cr}, Dx, Xa, Xa2, {P1, P2}, Acts)
+            draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co}, Dx, Xa, Xa2, {P1, P2}, Acts)
     end.
     
     
