@@ -338,10 +338,10 @@ overview_content_1(_Env, Input) ->
 	    "Min:", 
 	    "<input name=range_min value=" ++ term2html(float(Min)) ++">",
 	    "<select name=\"graph_select\" onChange=\"select_image()\">
-	      	<option value=\"" ++ url_graph(Min,Max,[]) ++ "\">Ports & Processes </option>
+                <option value=\"" ++ url_procs_graph(Min, Max, []) ++ "\">Processes </option>
                 <option value=\"" ++ url_sched_graph(Min, Max, []) ++ "\">Schedulers </option>
                 <option value=\"" ++ url_ports_graph(Min, Max, []) ++ "\">Ports </option>
-	    	<option value=\"" ++ url_procs_graph(Min, Max, []) ++ "\">Processes </option>
+	      	<option value=\"" ++ url_graph(Min,Max,[]) ++ "\">Ports & Processes </option>
             </select>",
 	    "<input type=submit value=Update>"
 	    ]) ++
