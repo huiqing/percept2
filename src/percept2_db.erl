@@ -75,6 +75,10 @@
 
 -type inter_node_option() ::
         all |{message_acts, {node(), node(), float(), float()}}.
+
+-type inter_sched_option() ::
+        all |{message_acts, {node(), node(), float(), float()}}.
+
 -type filename()::file:filename().
 %%% ------------------------%%%
 %%% 	Interface functions %%%
@@ -169,6 +173,7 @@ stop_percept_db(FileNameSubDBPairs) ->
     ets:delete(fun_calltree),
     ets:delete(fun_info),
     ets:delete(inter_node),
+    ets:delete(inter_sched),
     case ets:info(history_html) of
         undefined -> 
             stopped;
@@ -218,6 +223,7 @@ insert(SubDB, Trace) ->
              {scheduler, scheduler_option()}|
              {activity, activity_option()} |
              {inter_node,inter_node_option()}|
+             {inter_sched, inter_sched_option()}|
              {calltime, pid_value()}|
              {code, term()} |
              {funs, term()}) ->
@@ -254,7 +260,9 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
                        ordered_set,{read_concurrency, true}]),
     ets:new(inter_node, [named_table, public, 
-                                 {keypos,#inter_node.timed_from_node}, ordered_set]), 
+                                 {keypos,#inter_node.timed_from_node}, ordered_set]),
+    ets:new(inter_sched, [named_table, public, 
+                          {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept2_db, started, FileNameSubDBPairs},
     loop_percept_db(FileNameSubDBPairs).
@@ -390,6 +398,8 @@ percept_db_select_query(FileNameSubDBPairs, Query) ->
             select_query_func(Query);
         {inter_node, _} ->
             select_query_inter_node(Query);
+        {inter_sched, _} ->
+            select_query_inter_sched(Query);
         Unhandled ->
 	    io:format("percept_db_select_query, unhandled: ~p~n", [Unhandled]),
 	    []
@@ -407,6 +417,21 @@ percept_sub_db_select_query(SubDBIndex, Query) ->
 	    []
     end.
 
+select_query_inter_sched(Query) ->
+    case Query of
+        {inter_sched, all} ->
+            Head = #inter_sched{from_sched_with_ts={'$0', '$1'},
+                                dest_sched = '$2',
+                               _='_'},
+            Constraints = [],
+            Body =  [['$1', '$2']],
+            Nodes=ets:select(inter_sched, [{Head, Constraints, Body}]),
+            sets:to_list(sets:from_list(lists:append(Nodes)));
+        Unhandled ->
+	    io:format("select_query_inter_sched, unhandled: ~p~n", 
+                      [Unhandled]),
+	    []
+    end.
 select_query_inter_node(Query) ->
     case Query of
         {inter_node, all} ->
@@ -724,7 +749,20 @@ trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, _Ts}) ->
 trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_sent(ProcRegName, Pid, byte_size(term_to_binary(Msg)), To, Ts);
+            MsgSize = byte_size(term_to_binary(Msg)),
+            update_information_sent(ProcRegName, Pid, MsgSize, To, Ts),
+            if is_pid(To) ->
+                    case erlang:get({in, Pid}) of 
+                        {FromRQ, _} -> 
+                            case erlang:get({in, To}) of 
+                                {ToRQ, _} -> 
+                                    update_inter_sched_msg_tab(FromRQ, ToRQ, MsgSize, Ts);
+                                _ -> ok
+                            end;
+                        _ -> ok
+                    end;
+               true -> ok
+            end;       
        true ->
             ok
     end.
@@ -1284,7 +1322,7 @@ update_information_rq_1(Pid, {TS,RQ}) ->
 %% send to the same run queue needs a different algorithm,
 %% and this feature is removed for now.
 update_information_sent_1(From, MsgSize, To, Ts) ->
-    update_inter_node_message_tab(From, MsgSize, To, Ts),
+    update_inter_node_msg_tab(From, MsgSize, To, Ts),
     InternalPid =pid2value(From),
     case  ets:lookup(pdb_info, InternalPid) of
         [] -> 
@@ -1298,7 +1336,7 @@ update_information_sent_1(From, MsgSize, To, Ts) ->
                                {#information.msgs_sent, {No+1, Size+MsgSize}})
     end.
 
-update_inter_node_message_tab(From, MsgSize, To, Ts) ->
+update_inter_node_msg_tab(From, MsgSize, To, Ts) ->
     case same_node_pids(From, To) of
         true ->
             ok;
@@ -1309,6 +1347,12 @@ update_inter_node_message_tab(From, MsgSize, To, Ts) ->
                          to_node=get_node_name(To),
                          msg_size = MsgSize})
     end.
+
+update_inter_sched_msg_tab(FromSched, ToSched, MsgSize, Ts) ->
+    ets:insert(inter_sched,
+               #inter_sched{from_sched_with_ts={Ts, FromSched},
+                            dest_sched=ToSched,
+                            msg_size = MsgSize}).
 
   
 update_information_received_1(Pid, MsgSize) ->
