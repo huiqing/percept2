@@ -71,6 +71,13 @@
           msg_size           ::pos_integer()|special_atom()
          }).
 
+
+-record(inter_sched, {
+          from_sched_with_ts  ::{timestamp(),node()}|{special_atom(), special_atom()},
+          dest_sched    ::node()|special_atom(),
+          msg_size    ::pos_integer()|special_atom()
+         }).
+
 -record(funcall_info, {
           id                 ::{pid_value(),timestamp()}|{special_atom(),special_atom()},       
           func               ::true_mfa() | special_atom(),
