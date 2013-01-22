@@ -752,14 +752,15 @@ trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
             MsgSize = byte_size(term_to_binary(Msg)),
             update_information_sent(ProcRegName, Pid, MsgSize, To, Ts),
             if is_pid(To) ->
-                    case erlang:get({in, Pid}) of 
-                        {FromRQ, _} -> 
-                            case erlang:get({in, To}) of 
-                                {ToRQ, _} -> 
-                                    update_inter_sched_msg_tab(FromRQ, ToRQ, MsgSize, Ts);
-                                _ -> ok
-                            end;
-                        _ -> ok
+                    case erlang:get({run_queue, Pid}) of 
+                        undefined -> ok;
+                        FromRQ -> 
+                            case erlang:get({run_queue, To}) of 
+                                undefined -> 
+                                    ok;
+                                ToRQ -> 
+                                    update_inter_sched_msg_tab(FromRQ, ToRQ, MsgSize, Ts)
+                            end                        
                     end;
                true -> ok
             end;       
