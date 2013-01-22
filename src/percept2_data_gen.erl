@@ -48,6 +48,14 @@ rq_migration_data() ->
     file:write_file("rq_migration.txt", list_to_binary(Str)).           
                                                               
 
+inter_sched_data(FileName) ->
+    StartTs = percept2_db:select({system, start_ts}),
+    Data = [{?seconds(element(1, E#inter_sched.from_sched_with_ts), StartTs), 
+             element(2, E#inter_sched.from_sched_with_ts),
+             E#inter_sched.dest_sched, 
+             E#inter_sched.msg_size}||E<-ets:tab2list(inter_sched)],
+    Str = lists:flatten([io_lib:format("~p.\n", [E])||E<-Data]),
+    file:write_file(FileName, list_to_binary(Str)).
 
 %% sample command:
 
