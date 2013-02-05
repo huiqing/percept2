@@ -30,7 +30,7 @@
        
        $ make 
        
-       % (sudo) make install
+       $ (sudo) make install
   
    By default Percept2 is installed under the directory `/usr/local`;
    to install Percept2 in a different directory, you need to explicitly
