@@ -1,4 +1,4 @@
-*Percept2 -- A Concurrent Erlang Profiling Tool*
+*Percept2 -- A Concurrency Erlang Profiling Tool*
 
 ================================
 
