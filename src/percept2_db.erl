@@ -2474,14 +2474,18 @@ compress_process_tree_3(ChildrenGroup) ->
                                           entry = EntryFun,
                                           start =lists:min([C1#information.start||{C1,_}<-Cs]),
                                           stop = lists:max([C1#information.stop||{C1, _}<-Cs]),
+                                          %% Total;
                                           msgs_received=lists:foldl(fun({P,_}, {R1Acc, R2Acc}) ->
                                                                             {R1, R2}=P#information.msgs_received,
                                                                             {R1+R1Acc, R2+R2Acc}
                                                                     end, {0,0}, Cs),
+                                          %% Total;
                                           msgs_sent = lists:foldl(fun({P, _}, {S1Acc, S2Acc}) ->
                                                                           {S1, S2} = P#information.msgs_sent,
                                                                           {S1+S1Acc, S2+S2Acc}
                                                                   end, {0,0}, Cs),
+                                          %%Total;
+                                          rq_history =lists:append([C1#information.rq_history||{C1,_}<-Cs]),
                                           hidden_pids = UnNamedProcs--[Proc#information.id]
                                          },
                     update_information_1(Info),
