@@ -93,6 +93,7 @@
           cnt =1                 ::non_neg_integer()|special_atom(),
           rec_cnt=0              ::non_neg_integer()|special_atom(),
           called =[]             ::[#fun_calltree{}]|special_atom(),
+          acc_time = 0           ::non_neg_integer()|special_atom(),
           start_ts = undefined   ::timestamp()|undefined|special_atom(),
           end_ts = undefined     ::timestamp()|undefined|special_atom()
          }).
