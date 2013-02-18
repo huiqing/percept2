@@ -26,38 +26,63 @@ gen_callgraph_img(Pid) ->
             gen_callgraph_img_1(Pid, Tree)
     end.
    
-gen_callgraph_img_1({pid, {P1, P2, P3}}, CallTree) ->
+gen_callgraph_img_1(Pid={pid, {P1, P2, P3}}, CallTree) ->
     PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
                         "."++integer_to_list(P3),
     BaseName = "callgraph"++PidStr,
     DotFileName = BaseName++".dot",
     SvgFileName =gen_svg_file_name(BaseName),
-    fun_callgraph_to_dot(CallTree,DotFileName),
+    fun_callgraph_to_dot(Pid, CallTree,DotFileName),
     dot_to_svg(DotFileName, SvgFileName).
 
 gen_svg_file_name(BaseName) ->
     SvgDir = percept2_utils:svg_file_dir(),
     filename:join([SvgDir, BaseName++".svg"]).
     
-fun_callgraph_to_dot(CallTree, DotFileName) ->
-    Edges=gen_callgraph_edges(CallTree),
+fun_callgraph_to_dot(Pid, CallTree, DotFileName) ->
+    Edges=gen_callgraph_edges(Pid, CallTree),
     MG = digraph:new(),
     digraph_add_edges(Edges, [], MG),
     to_dot(MG,DotFileName),
     digraph:delete(MG).
 
+get_proc_life_time(Pid)->
+    SystemStartTS = percept2_db:select({system, start_ts}),
+    SystemStopTS = percept2_db:select({system, stop_ts}),
+    [PidInfo] = percept2_db:select({information, Pid}),
+    ProcStartTs = case PidInfo#information.start of 
+                      undefined -> SystemStartTS;
+                      StartTs -> StartTs
+                  end,
+    ProcStopTs = case PidInfo#information.stop of 
+                     undefined -> SystemStopTS;
+                     StopTs -> StopTs
+                 end,
+    {ProcStartTs, ProcStopTs}.
 
-gen_callgraph_edges(CallTree) ->
+
+gen_callgraph_edges(Pid, CallTree) ->
+    {ProcStartTs, ProcStopTs} = get_proc_life_time(Pid),
+    gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree).
+
+gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
+    ProcTime = timer:now_diff(ProcStopTs, ProcStartTs),
+    CurFuncTime = CallTree#fun_calltree.acc_time, 
     ChildrenCallTrees = CallTree#fun_calltree.called,
-    Edges = lists:foldl(fun(Tree, Acc) ->
-                                {_, ToFunc, _} = Tree#fun_calltree.id,
-                                NewEdge = {CurFunc, ToFunc, Tree#fun_calltree.cnt},
-                                [[NewEdge|gen_callgraph_edges(Tree)]|Acc]
-                        end, [], ChildrenCallTrees),
+    Edges = lists:foldl(
+              fun(Tree, Acc) ->
+                      {_, ToFunc, _} = Tree#fun_calltree.id,
+                      ToFuncTime = Tree#fun_calltree.acc_time,
+                      NewEdge = {{CurFunc,CurFuncTime/ProcTime},
+                                 {ToFunc,ToFuncTime/ProcTime}, 
+                                 Tree#fun_calltree.cnt},
+                      [[NewEdge|gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, Tree)]|Acc]
+              end, [], ChildrenCallTrees),
     case CallTree#fun_calltree.rec_cnt of 
         0 ->Edges;
-        N -> [{CurFunc, CurFunc, N}|Edges]
+        N -> [{{CurFunc,CurFuncTime/ProcTime}, 
+               {CurFunc,CurFuncTime/ProcTime}, N}|Edges]
     end.
 
 %%depth first traveral.
@@ -75,29 +100,29 @@ digraph_add_edges(Trees=[Tree|_Ts], NodeIndex, MG) when is_list(Tree)->
                         digraph_add_edges(T, IndexAcc, MG)
                 end, NodeIndex, Trees).
         
-   
-digraph_add_edge({From, To,  CNT}, IndexTab, MG) ->
+
+digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
     {From1, IndexTab1}=
-        case digraph:vertex(MG, {From,0}) of 
+        case digraph:vertex(MG, {From,0}) of
             false ->
-                digraph:add_vertex(MG, {From,0}),
+                digraph:add_vertex(MG, {From,0},{label, FromTime}),
                 {{From, 0}, [{From, 0}|IndexTab]};
             _ ->
                 {From, Index}=lists:keyfind(From, 1, IndexTab),
                 {{From, Index}, IndexTab}
         end,
-     {To1, IndexTab2}= 
-        case digraph:vertex(MG, {To,0}) of 
+     {To1, IndexTab2}=
+        case digraph:vertex(MG, {To,0}) of
             false ->
-                digraph:add_vertex(MG, {To,0}),
-                {{To, 0}, [{To,0}|IndexTab1]};                          
-            _  when To==From ->
+                digraph:add_vertex(MG, {To,0}, {label,ToTime}),
+                {{To, 0}, [{To,0}|IndexTab1]};
+            _ when To==From ->
                 {From1, IndexTab1};
             _ ->
                 {To, Index1} = lists:keyfind(To, 1,IndexTab1),
-                case digraph:get_path(MG, {To, Index1}, From1) of 
+                case digraph:get_path(MG, {To, Index1}, From1) of
                     false ->
-                        digraph:add_vertex(MG, {To, Index1+1}),
+                        digraph:add_vertex(MG, {To, Index1+1}, {label, ToTime}),
                         {{To,Index1+1},lists:keyreplace(To,1, IndexTab1, {To, Index1+1})};
                     _ ->
                         {{To, Index1}, IndexTab1}
@@ -105,22 +130,28 @@ digraph_add_edge({From, To,  CNT}, IndexTab, MG) ->
         end,
     digraph:add_edge(MG, From1, To1, CNT),
     IndexTab2.
-   
+
+
 to_dot(MG, File) ->
     Edges = [digraph:edge(MG, X) || X <- digraph:edges(MG)],
-    EdgeList=[{{X, Y}, Label} || {_, X, Y, Label} <- Edges],
+    EdgeList=[{digraph:vertex(MG,X), digraph:vertex(MG, Y), Label} 
+              || {_, X, Y, Label} <- Edges],
     EdgeList1 = combine_edges(lists:keysort(1,EdgeList)),
     edge_list_to_dot(EdgeList1, File, "CallGraph").
-    		
+
 combine_edges(Edges) ->	
     combine_edges(Edges, []).
-combine_edges([], Acc) ->		
+combine_edges([], Acc) ->	
     Acc;
-combine_edges([{{X,Y}, Label}|Tl], [{X,Y, Label1}|Acc]) ->
-    combine_edges(Tl, [{X, Y, Label+Label1}|Acc]);
-combine_edges([{{X,Y}, Label}|Tl], Acc) ->
+combine_edges([{{X,{label,LabelX}}, {Y,{label, LabelY}}, Label}|Tl], 
+              [{{X,{label, LabelX1}}, {Y, {label, LabelY1}}, Label1}|Acc]) ->
+    combine_edges(Tl, [{{X,{label, LabelX+LabelX1}}, 
+                        {Y, {label, LabelY+LabelY1}},
+                        Label+Label1}|Acc]);
+combine_edges([{X,Y, Label}|Tl], Acc) ->
     combine_edges(Tl, [{X, Y, Label}|Acc]).
-   
+
+
 edge_list_to_dot(Edges, OutFileName, GraphName) ->
     {NodeList1, NodeList2, _} = lists:unzip3(Edges),
     NodeList = NodeList1 ++ NodeList2,
@@ -128,7 +159,7 @@ edge_list_to_dot(Edges, OutFileName, GraphName) ->
     Start = ["digraph ",GraphName ," {"],
     VertexList = [format_node(V) ||V <- NodeSet],
     End = ["graph [", GraphName, "=", GraphName, "]}"],
-    EdgeList = [format_edge(X, Y, Label) || {X,Y,Label} <- Edges],
+    EdgeList = [format_edge(X, Y, Cnt) || {X,Y,Cnt} <- Edges],
     String = [Start, VertexList, EdgeList, End],
     ok = file:write_file(OutFileName, list_to_binary(String)).
 
@@ -213,18 +244,29 @@ format_node(V, Fun) ->
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    ["\"", String, "\"", " [width=", SL, " heigth=", SH, " ", "", "];\n"].
+    Label = format_vertex_label(V),
+    ["\"", String, "\"", " [label=\"", Label, "\" width=", 
+     SL, " heigth=", SH, " ", "", "];\n"].
 
+format_vertex_label({V, {label, Label}}) ->
+    format_vertex(V) ++ 
+        io_lib:format("(~.10B%)", [round(Label*100)]);
+format_vertex_label(V) ->
+    format_vertex(V).
+ 
+format_vertex({V, {label, _Label}}) ->
+    format_vertex(V);
 format_vertex(undefined) ->
     "undefined";
-format_vertex({M,F,A}) ->
+format_vertex({M,F,A})when is_atom(M) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
-format_vertex({undefined, _}) ->
+format_vertex({undefined,_}) ->
     "undefined";
-format_vertex({{M,F,A}, 0}) ->
+format_vertex({{M,F,A},0}) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
 format_vertex({{M,F,A},C}) ->
     io_lib:format("~p:~p/~p(~p)", [M,F,A, C]).
+
 
 format_edge(V1, V2, Label) ->
     String = ["\"",format_vertex(V1),"\"", " -> ",
