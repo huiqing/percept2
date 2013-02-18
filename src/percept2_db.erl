@@ -251,16 +251,17 @@ init_percept_db(Parent, TraceFileNames) ->
     process_flag(trap_exit, true),
     register(percept2_db, self()),
     ets:new(pdb_warnings, [named_table, public, {keypos, 1}, ordered_set]),
-    ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set]),
+    ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set, 
+                       {read_concurrency,true}, {write_concurrency,true}]),
     ets:new(pdb_system, [named_table, public, {keypos, 1}, set]),
-    ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, ordered_set,
-                           {read_concurrency,true}]),
-    ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, ordered_set,
-                           {read_concurrency,true}]),
+    ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, 
+                           ordered_set,{read_concurrency,true}]),
+    ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, 
+                           set,{read_concurrency,true}, {write_concurrency, true}]),
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
-                       ordered_set,{read_concurrency, true}]),
+                       set,{read_concurrency, true},{read_concurrency,true}]),
     ets:new(inter_node, [named_table, public, 
-                                 {keypos,#inter_node.timed_from_node}, ordered_set]),
+                         {keypos,#inter_node.timed_from_node}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
@@ -1556,7 +1557,7 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                                 end,
                     Proc = spawn_link(
                              fun()-> 
-                                     pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack, 0})
+                                     pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack})
                              end),
                     Proc! CallTrace,
                     pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs], PrevStacks, Done})                        
@@ -1573,7 +1574,7 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                                 end,
                     Proc = spawn_link(
                              fun()-> 
-                                     pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack, 0})
+                                     pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack})
                              end),
                     Proc! ReturnTrace,
                     pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs],PrevStacks, Done})
@@ -1632,11 +1633,11 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
             pdb_func_loop({SubDB,SubDBIndex,ChildrenProcs, PrevStacks, Done})                
     end.
 
-pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack, WaitTimes}) ->
+pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
     receive
         {trace_call, {Pid, Func, TS, CP}} ->
             NewStack=trace_call_1(Pid, Func, TS, CP, Stack),
-            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack, WaitTimes});
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {trace_return_to, {Pid, Func, TS}} ->
             PrevSubIndex = SubDBIndex-1,
             case trace_return_to_1(Pid, Func, TS, Stack) of
@@ -1644,25 +1645,25 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack, WaitTimes}) ->
                     case SubDBIndex of 
                         1 ->
                             Stack1=[[{Func, TS}]],
-                            pdb_sub_func_loop({SubDBIndex, Pid, Stack1, PrevStack, WaitTimes+1});
+                            pdb_sub_func_loop({SubDBIndex, Pid, Stack1, PrevStack});
                         _ ->
                             case PrevStack of 
                                 false ->
                                     receive 
                                         {end_of_trace_file, {PrevSubIndex, Pid, PrevStack1}} ->
                                             NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack1),
-                                            pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false, WaitTimes+1})
-                                     after 50000 ->
-                                            io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid, WaitTimes}]),
-                                            pdb_sub_func_loop({SubDBIndex, Pid, [[{Func, TS}]], false, WaitTimes+1})
+                                            pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false})
+                                     after 1000 ->  %% what is the proper timeout value here?
+                                            io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
+                                            pdb_sub_func_loop({SubDBIndex, Pid, [[{Func, TS}]], false})
                                     end;
                                 _ ->
                                     NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack),
-                                    pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false, WaitTimes+1})
+                                    pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false})
                             end
                     end;
                 NewStack ->
-                    pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack, WaitTimes})
+                    pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack})
             end;
         {Parent, end_of_trace_file} ->
             NextFuncRegName = mk_proc_reg_name("pdb_func",SubDBIndex+1),
@@ -1756,9 +1757,7 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
     case Level01 -- NewLevel0 of 
         [] -> ok;
         Funs ->
-            %% io:format("Funs:\n~p\n", [Funs]),
             Funs1= lists:sublist(NewLevel0, length(Funs)+1),
-            %% io:format("Funs1:\n~p\n", [Funs1]),
             trace_call_shove_update_call_info(Pid,Funs1)
     end,
     [NewLevel0| NewStack1].
@@ -1789,7 +1788,6 @@ trace_call_collapse([_ | Stack1] = Stack) ->
 trace_call_collapse_1(Stack, [], _) ->
     Stack;
 trace_call_collapse_1([{Func0, _} | _] = Stack, [{Func0, _} | S1] = S, N) ->
-   %% io:format("Collapse_1:\n~p\n", [{Stack, S, N}]),
     case trace_call_collapse_2(Stack, S, N) of
 	true ->
 	    S;
@@ -1925,8 +1923,8 @@ update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) whe
         [] ->
             CallerInfo = #fun_calltree{id = CallerId,
                                        rec_cnt=1,
-                                       start_ts=CallerStartTS,
-                                               called = []}, 
+                                       start_ts=CallerStartTS0,
+                                       called = []}, 
             ets:insert(fun_calltree, CallerInfo) 
     end;
   
@@ -1942,13 +1940,15 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
     Pid1 = pid2value(Pid),
     case ets:lookup(fun_calltree, {Pid1, Callee, StartTS}) of
         [] ->
-            add_new_callee_caller(Pid1, {Callee, StartTS, EndTS},
+            add_new_callee_caller(Pid1, {Callee, StartTS, EndTS}, 
+                                  now_diff(EndTS,StartTS0),
                                   {Caller, CallerStartTS});
         [F] -> 
             NewF =F#fun_calltree{id=setelement(3, F#fun_calltree.id, Caller),
                                  cnt=1,
-                                 start_ts =StartTS,
-                                 end_ts=EndTS},           
+                                 acc_time = now_diff(EndTS,StartTS0),
+                                 start_ts =StartTS0,
+                                 end_ts=EndTS},   
             CallerId = {Pid1, Caller, CallerStartTS},
             case ets:lookup(fun_calltree, CallerId) of 
                 [C] when Caller=/=Callee->
@@ -1957,10 +1957,7 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
                     NewC1 = collapse_call_tree(NewC, Callee),
                     ets:insert(fun_calltree, NewC1);    
                 _ ->
-                    CallerInfo = #fun_calltree{id = CallerId,
-                                               cnt =0,
-                                               start_ts=CallerStartTS,
-                                               called = [NewF]}, 
+                    CallerInfo = create_caller_info(CallerId, EndTS, StartTS0, NewF),
                     ets:delete_object(fun_calltree, F),
                     NewCallerInfo = collapse_call_tree(CallerInfo, Callee),
                     case ets:lookup(fun_calltree, CallerId) of
@@ -1972,23 +1969,42 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
                     end                            
             end
     end.
-   
-add_new_callee_caller(Pid, {Callee, StartTS, EndTS},{Caller, CallerStartTS}) ->
+
+add_new_callee_caller(Pid, {Callee, StartTS, EndTS},CalleeTime, 
+                      {Caller, CallerStartTS}) ->
     CalleeInfo = #fun_calltree{id={Pid, Callee, Caller},
                                cnt =1, 
                                called = [],
+                               acc_time = CalleeTime,
                                start_ts = StartTS,
                                end_ts = EndTS},
+    CallerId = {Pid, Caller, CallerStartTS},
     case ets:lookup(fun_calltree, {Pid, Caller, CallerStartTS}) of
-         [] ->
-            CallerInfo = #fun_calltree{id = {Pid, Caller, CallerStartTS},
-                                       cnt =0,
-                                       called = [CalleeInfo],
-                                       start_ts=CallerStartTS},
+        [] ->
+            CallerInfo = create_caller_info(CallerId, EndTS, CallerStartTS,CalleeInfo),
             ets:insert(fun_calltree, CallerInfo);
         [C] ->
-            NewC = C#fun_calltree{called=add_new_callee(CalleeInfo, C#fun_calltree.called)},
+            NewC = C#fun_calltree{
+                     called=add_new_callee(CalleeInfo, 
+                                           C#fun_calltree.called)},
             ets:insert(fun_calltree, NewC)
+    end.
+
+create_caller_info(CallerId = {Pid, Caller, CallerStartTS}, 
+                   EndTS, CallerStartTS0, CalleeInfo) ->
+    if Caller == undefined orelse Caller == {percept2_profile, start, 3} ->
+            update_fun_call_time({Pid, Caller}, {CallerStartTS0, EndTS}),
+            #fun_calltree{id = CallerId,
+                          cnt =0,
+                          start_ts=CallerStartTS,
+                          end_ts = EndTS,
+                          acc_time =  now_diff(EndTS,CallerStartTS0),
+                          called = [CalleeInfo]};
+       true ->
+            #fun_calltree{id = CallerId,
+                          cnt =0,
+                          start_ts=CallerStartTS,
+                          called = [CalleeInfo]}
     end.
 
 
@@ -2045,17 +2061,24 @@ add_new_callee(CalleeInfo, CalleeList) ->
 
 combine_fun_info(FunInfo1=#fun_calltree{id=Id, called=Callees1, 
                                         start_ts=StartTS1,end_ts= _EndTS1,
-                                        cnt=CNT1}, 
+                                        acc_time = AccTime1,
+                                        cnt=CNT1,
+                                        rec_cnt = RecCnt1}, 
                  _FunInfo2=#fun_calltree{id=Id, called=Callees2, 
                                          start_ts=_StartTS2, end_ts=EndTS2,
-                                         cnt=CNT2}) ->
+                                         acc_time = AccTime2,
+                                         cnt=CNT2,
+                                         rec_cnt = RecCnt2}) ->
     NewCallees=lists:foldl(fun(C, Callees) ->
-                                  add_new_callee(C, Callees)
+                                   add_new_callee(C, Callees)
                            end, Callees1, Callees2),
     FunInfo1#fun_calltree{id=Id, called=NewCallees, 
-                      start_ts=StartTS1, end_ts=EndTS2,
-                      cnt = CNT1 + CNT2}.
-                      
+                          start_ts=StartTS1, end_ts=EndTS2,
+                          acc_time = AccTime1 + AccTime2,
+                          cnt = CNT1 + CNT2, 
+                          rec_cnt = RecCnt1+RecCnt2}.
+
+
 is_list_comp({_M, F, _A}) ->
     re:run(atom_to_list(F), ".*-lc.*", []) /=nomatch;
 is_list_comp(_) ->
@@ -2275,8 +2298,7 @@ process_a_call_tree_1(CallTree) ->
 
       
 update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
-  %%  io:format("update fun calltime:\n~p\n", [{{Pid, Func}, {StartTs, EndTs}}]),
-    Time =timer:now_diff(EndTs, StartTs),
+    Time =now_diff(EndTs, StartTs),
     PidValue = pid2value(Pid),
     case ets:lookup(fun_info, {PidValue, Func}) of 
         [] ->
@@ -2287,12 +2309,10 @@ update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
         [FunInfo] ->
             ets:update_element(fun_info, {PidValue, Func},
                                [{#fun_info.acc_time, FunInfo#fun_info.acc_time+Time}])
-               
     end.
 
 %% -spec(update_fun_info({pid(), true_mfa()}, {true_mfa()|undefined, non_neg_integer()},
 %%                       [{true_mfa(), non_neg_integer()}], timestamp(), timestamp()) ->true).
-             
 update_fun_info({Pid, MFA}, Caller={_Func, Cnt}, Called, StartTs, EndTs) ->
     case ets:lookup(fun_info, {Pid, MFA}) of
         [] ->
@@ -2556,3 +2576,9 @@ pid2value(Pid) when is_pid(Pid) ->
            list_to_integer(P2),
            list_to_integer(P3)}}.
 
+
+now_diff(EndTS,StartTS) ->
+    try timer:now_diff(EndTS, StartTS)
+    catch _E1:_E2 -> 0
+    end.
+   
