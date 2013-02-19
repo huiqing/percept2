@@ -10,11 +10,11 @@
 <hr>
 
 <h1>Module percept2</h1>
-<ul class="index"><li><a href="#description">Description</a></li><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>Percept2 - An Enhance Version of the Erlang Concurrency Profiling Tool Percept.
+<ul class="index"><li><a href="#description">Description</a></li><li><a href="#types">Data Types</a></li><li><a href="#index">Function Index</a></li><li><a href="#functions">Function Details</a></li></ul>Percept2 - An Enhanced version of the Erlang Concurrency Profiling Tool Percept.
 
 <p><b>Behaviours:</b> <a href="application.html"><tt>application</tt></a>.</p>
 
-<h2><a name="description">Description</a></h2><p>Percept2 - An Enhance Version of the Erlang Concurrency Profiling Tool Percept.</p>
+<h2><a name="description">Description</a></h2><p>Percept2 - An Enhanced version of the Erlang Concurrency Profiling Tool Percept.</p>
  
  Percept2 extends Percept in two aspects: functionality and scalability. Among the new functionalities added to Percept are:
   <ul>
@@ -48,14 +48,18 @@
 
 
 <h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td>Analyse the trace data collected.</td></tr>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td>Parallel analysis of trace files.</td></tr>
+<tr><td valign="top"><a href="#analyze-4">analyze/4</a></td><td>Parallel analysis of trace files.</td></tr>
+<tr><td valign="top"><a href="#profile-1">profile/1</a></td><td>Same as <code>profile(FileSpec, true)</code>.</td></tr>
 <tr><td valign="top"><a href="#profile-2">profile/2</a></td><td>Profile to file.</td></tr>
-<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>Profile to file.</td></tr>
+<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>Same as <code>profile(FileSpec, MFA, Modules, true)</code>.</td></tr>
+<tr><td valign="top"><a href="#profile-4">profile/4</a></td><td>Profile to file.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-0">start_webserver/0</a></td><td>Starts webserver.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-1">start_webserver/1</a></td><td>Starts webserver with a given port number.</td></tr>
 <tr><td valign="top"><a href="#stop_db-0">stop_db/0</a></td><td>Stops the percept2 database.</td></tr>
 <tr><td valign="top"><a href="#stop_profile-0">stop_profile/0</a></td><td>Stops the profiling.</td></tr>
 <tr><td valign="top"><a href="#stop_webserver-0">stop_webserver/0</a></td><td>Stops webserver.</td></tr>
+<tr><td valign="top"><a href="#stop_webserver-1">stop_webserver/1</a></td><td>Stops webserver of the given port.</td></tr>
 </table>
 
 <h2><a name="functions">Function Details</a></h2>
@@ -63,15 +67,24 @@
 <h3 class="function"><a name="analyze-1">analyze/1</a></h3>
 <div class="spec">
 <p><tt>analyze(FileNames::[<a href="file.html#type-filename">file:filename()</a>]) -&gt; ok | {error, any()}</tt><br></p>
-</div><p>Analyse the trace data collected. See the <a href="overview-summary.html">Overview</a> page for examples.</p>
+</div><p>Parallel analysis of trace files. See the <a href="overview-summary.html">Overview</a> page for examples.</p>
+
+<h3 class="function"><a name="analyze-4">analyze/4</a></h3>
+<div class="spec">
+<p><tt>analyze(Filename::<a href="file.html#type-filename">file:filename()</a>, Suffix::string(), StartIndex::pos_integer(), EndIndex::pos_integer()) -&gt; ok | {error, any()}</tt><br></p>
+</div><p>Parallel analysis of trace files. See the <a href="overview-summary.html">Overview</a> page for examples.</p>
+
+<h3 class="function"><a name="profile-1">profile/1</a></h3>
+<div class="spec">
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>) -&gt; {ok, integer()} | {already_started, port()}</tt><br></p>
+</div><p>Same as <code>profile(FileSpec, true)</code>.</p>
 
 <h3 class="function"><a name="profile-2">profile/2</a></h3>
 <div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Modules::[<a href="#type-module_name">module_name()</a>]) -&gt; {ok, Port} | {already_started, Port}</tt><br></p>
-</div><p><p>Profile to file. Process/scheduler/port activities are
-  traced; <code>Modules</code> specifies the list of module names whose
-  functions (both exported and local functions) should be traced.
-  No functions will be traced if <code>Modules</code> is an empty list.</p>
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, TraceMessages::boolean()) -&gt; {ok, integer()} | {already_started, port()}</tt><br></p>
+</div><p><p>Profile to file. Process, scheduler, and port activities are traced;
+  If <code>TraceMessages</code> is <code>true</code>, message <code>send</code>/<code>receive</code> activities are  
+also traced too.</p>
  
   The profiling starts when the function is called, and goes no until
   <code>stop_profile/0</code> is called.</p>
@@ -80,10 +93,17 @@
 <h3 class="function"><a name="profile-3">profile/3</a></h3>
 <div class="spec">
 <p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Entry::{atom(), atom(), list()}, Modules::[<a href="#type-module_name">module_name()</a>]) -&gt; ok | {already_started, port()} | {error, not_started}</tt><br></p>
-</div><p><p>Profile to file. Process/scheduler/port activities are
-  traced; <code>Modules</code> specifies the list of module names whose
+</div><p>Same as <code>profile(FileSpec, MFA, Modules, true)</code>.</p>
+
+<h3 class="function"><a name="profile-4">profile/4</a></h3>
+<div class="spec">
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Entry::{atom(), atom(), list()}, Modules::[<a href="#type-module_name">module_name()</a>], TraceMessages::boolean()) -&gt; ok | {already_started, port()} | {error, not_started}</tt><br></p>
+</div><p><p>Profile to file. Process, scheduler and port activities
+  are traced; <code>Modules</code> specifies the list of module names whose
   functions (both exported and local functions) should be traced.
-  No functions will be traced if <code>Modules</code> is an empty list.</p>
+  No functions will be traced if <code>Modules</code> is an empty list. If
+  <code>TraceMessages</code> is <code>true</code>,  message <code>send</code>/<code>receive</code> activities are  
+also traced too.</p>
  
   The profiling starts with executing the entry function given, and goes
   on for the whole duration until the entry function retures and the
@@ -117,9 +137,14 @@
 <div class="spec">
 <p><tt>stop_webserver() -&gt; ok | {error, not_started}</tt><br></p>
 </div><p>Stops webserver.</p>
+
+<h3 class="function"><a name="stop_webserver-1">stop_webserver/1</a></h3>
+<div class="spec">
+<p><tt>stop_webserver(Port::integer()) -&gt; ok | {error, not_started}</tt><br></p>
+</div><p>Stops webserver of the given port.</p>
 <hr>
 
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc, Sep 28 2012, 10:14:55.</i></p>
+<p><i>Generated by EDoc, Feb 19 2013, 22:53:52.</i></p>
 </body>
 </html>
