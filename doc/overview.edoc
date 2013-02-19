@@ -102,6 +102,11 @@ Consolidating...
     97 opened ports.
 ok'''
 
+
+The previous command can also be invoked as: `percept2:analyze("sim_code", ".dat", 0, 3).'
+
+
+
 <h4>Data Viewing </h4>
 
 To view the data, we could start the web-server using `percept2:start_webserver/1' or `percept2:start_webserver/0'. This command will return the hostname and a port where we should direct the web browser. When `percept2:start_webserver/0' is used, an available port number will be assigned by inets.
