@@ -219,7 +219,7 @@ gen_callgraph_slice_edges(CallTree, ActiveFuns) ->
                                 case CallCount of 
                                     0 -> Acc;
                                     _ ->
-                                        NewEdge = {CurFunc, ToFunc, 
+                                        NewEdge = {{CurFunc, -1}, {ToFunc,-1}, 
                                                    lists:min([Tree#fun_calltree.cnt, CallCount])},
                                         [[NewEdge|gen_callgraph_slice_edges(Tree, ActiveFuns)]|Acc]
                                 end
@@ -248,9 +248,11 @@ format_node(V, Fun) ->
     ["\"", String, "\"", " [label=\"", Label, "\" width=", 
      SL, " heigth=", SH, " ", "", "];\n"].
 
-format_vertex_label({V, {label, Label}}) ->
+format_vertex_label({V, {label, Label}}) when Label>0->
     format_vertex(V) ++ 
         io_lib:format("(~.10B%)", [round(Label*100)]);
+format_vertex_label({V, {label, _Label}}) ->
+    format_vertex(V);
 format_vertex_label(V) ->
     format_vertex(V).
  
