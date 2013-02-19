@@ -17,7 +17,7 @@
 %% %CopyrightEnd%
 %% 
 %% 
-%% @doc Percept2 - An Enhance Version of the Erlang Concurrency Profiling Tool Percept.
+%% @doc Percept2 - An Enhanced version of the Erlang Concurrency Profiling Tool Percept.
 %%
 %%Percept2 extends Percept in two aspects: functionality and scalability. Among the new functionalities added to Percept are: 
 %% <ul>
@@ -45,8 +45,10 @@
 -behaviour(application).
 
 -export([
+        profile/1,
         profile/2, 
 	profile/3,
+        profile/4,
         stop_profile/0, 
 
 	start_webserver/0, 
@@ -74,10 +76,9 @@
 %% 		Application callback functions             %%
 %%                                                         %%
 %%---------------------------------------------------------%%
+%% @spec start(Type, Args) -> {started, Hostname, Port} | {error, Reason} 
 %% @doc none
 %% @hidden
--spec start(any(), any()) -> {started, string(), pos_integer()}
-                                 |{error, already_started}.
 start(_Type, _Args) ->
     %% start web browser service
     start_webserver(0).
@@ -101,41 +102,66 @@ stop_db() ->
 %% 		Interface functions                        %%
 %%                                                         %%
 %%---------------------------------------------------------%%
-%%@doc Profile to file. Process/scheduler/port activities are 
-%% traced; `Modules' specifies the list of module names whose 
-%% functions (both exported and local functions) should be traced.
-%% No functions will be traced if `Modules' is an empty list.
+%%@doc Same as `profile(FileSpec, true)'.
+-spec profile(FileSpec::filespec())-> 
+                     {ok, integer()} | {already_started, port()}.
+profile(FileSpec) ->
+    percept2:profile(FileSpec,true).
+
+%%@doc Profile to file. Process, scheduler, and port activities are traced; 
+%% If `TraceMessages' is `true', message `send'/`receive' activities are 
+%% also traced too.
 %%
 %% The profiling starts when the function is called, and goes no until 
 %% `stop_profile/0' is called.
 %%@see stop_profile/0
--spec profile(FileSpec::filespec(), Modules::[module_name()])
-             -> {ok, integer()} | {already_started, port()}.
-profile(FileSpec, Modules) ->
-    percept2_profile:start(FileSpec, 
-                           ['concurrency',
-                            'message',
-                            'process_scheduling',
-                            {mods, Modules}]).
+-spec profile(FileSpec::filespec(), TraceMessages:: boolean())-> 
+                     {ok, integer()} | {already_started, port()}.
 
+profile(FileSpec, TraceMessages) ->
+    Opts0 = ['concurrency', 
+           'process_scheduling',
+           {mods, []}],
+    Opts = if TraceMessages -> ['message'|Opts0];
+              true -> Opts0
+           end,
+    percept2_profile:start(FileSpec,Opts).
+  
 
-%%@doc Profile to file. Process/scheduler/port activities are 
-%% traced; `Modules' specifies the list of module names whose 
+-spec profile(FileSpec :: filespec(),
+	      Entry :: {atom(), atom(), list()},
+	      Modules:: [module_name()]) ->
+              'ok' | {'already_started', port()} | {'error', 'not_started'}.
+
+%%@doc Same as `profile(FileSpec, MFA, Modules, true)'.
+profile(FileSpec, MFA, Modules) ->
+    profile(FileSpec, MFA, Modules, true).
+   
+
+%%@doc Profile to file. Process, scheduler and port activities
+%% are traced; `Modules' specifies the list of module names whose 
 %% functions (both exported and local functions) should be traced.
-%% No functions will be traced if `Modules' is an empty list.
+%% No functions will be traced if `Modules' is an empty list. If
+%% `TraceMessages' is `true',  message `send'/`receive' activities are 
+%% also traced too.
 %%
 %% The profiling starts with executing the entry function given, and goes 
 %% on for the whole duration until the entry function retures and the 
 %% the profiling has concluded.
 -spec profile(FileSpec :: filespec(),
 	      Entry :: {atom(), atom(), list()},
-	      Modules:: [module_name()]) ->
-                     'ok' | {'already_started', port()} | {'error', 'not_started'}.
-profile(FileSpec, MFA, Modules) ->
-    percept2_profile:start(FileSpec, MFA, 
-              ['concurrency', 'message',
-               'process_scheduling', {mods, Modules}]).
-
+	      Modules:: [module_name()],
+              TraceMessages:: boolean()) ->
+             'ok' | {'already_started', port()} | {'error', 'not_started'}.
+profile(FileSpec, MFA, Modules, TraceMessages) ->
+    Opts0 = ['concurrency', 
+           'process_scheduling',
+           {mods, Modules}],
+    Opts = if TraceMessages -> ['message'|Opts0];
+              true -> Opts0
+           end,
+    percept2_profile:start(FileSpec, MFA, Opts).
+  
 %%@doc Stops the profiling.
 %%@see profile/1
 %%@see profile/2.
@@ -143,7 +169,7 @@ profile(FileSpec, MFA, Modules) ->
 stop_profile() ->
     percept2_profile:stop().
 
-%%@doc Analyse the trace data collected. See the <a href="overview-summary.html">Overview</a> page for examples.
+%%@doc Parallel analysis of trace files. See the <a href="overview-summary.html">Overview</a> page for examples.
 -spec analyze(FileNames :: [file:filename()]) ->
                      'ok' | {'error', any()}.
 analyze(FileNames) ->
@@ -154,6 +180,7 @@ analyze(FileNames) ->
             analyze_par_1(FileNameSubDBPairs)
     end.
 
+%%@doc Parallel analysis of trace files. See the <a href="overview-summary.html">Overview</a> page for examples.
 -spec analyze(Filename::file:filename(), Suffix::string(), 
               StartIndex::pos_integer(), EndIndex::pos_integer()) ->
                      'ok' | {'error', any()}.
@@ -165,8 +192,6 @@ analyze(FileName, Suffix, StartIndex, EndIndex)
 analyze(_FileName, _Suffux, _, _) ->
     {error, "Start/end indexes must be integers."}.
     
-
-
 analyze_par_1(FileNameSubDBPairs) ->
     Self = self(),
     process_flag(trap_exit, true),
@@ -254,8 +279,9 @@ start_webserver(Port) when is_integer(Port) ->
 	    {error, already_started}
     end.
 
-%% @spec stop_webserver() -> ok | {error, not_started}  
+
 %% @doc Stops webserver.
+-spec stop_webserver() -> ok | {error, not_started}.
 stop_webserver() ->
     case whereis(percept_httpd) of
     	undefined -> 
@@ -289,10 +315,8 @@ do_stop(Port, Pid)->
             inets:stop(httpd, Pid2)
     end.
 
-%% @spec stop_webserver(integer()) -> ok | {error, not_started}
 %% @doc Stops webserver of the given port.
-%% @hidden
-
+-spec stop_webserver(integer()) -> ok | {error, not_started}.
 stop_webserver(Port) ->
     do_stop(Port,[]).
 %%==========================================================================
