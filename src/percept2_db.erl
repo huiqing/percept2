@@ -86,7 +86,7 @@
 
 %% @doc starts the percept database
 -spec start([file:filename()]) ->{started, [{file:filename(), pid()}]} | 
-                            {restarted, [{file:filename(), pid()}]}.
+                                 {restarted, [{file:filename(), pid()}]}.
 start(TraceFileNames) ->
     case erlang:whereis(percept2_db) of
     	undefined ->
@@ -164,6 +164,7 @@ stop_sync(Pid)->
             end
     end.
 
+-spec stop_percept_db([{filename(), pid()}]) -> stopped.
 stop_percept_db(FileNameSubDBPairs) ->
     ok = stop_percept_sub_dbs(FileNameSubDBPairs),
     ets:delete(pdb_warnings),
@@ -228,13 +229,13 @@ insert(SubDB, Trace) ->
              {code, term()} |
              {funs, term()}) ->
                     term().
-                  
+                 
 select(Query) ->
     percept2_db ! {select, self(), Query},
     receive {result, Match} ->
             Match 
     end.
-
+-spec consolidate_db() -> ok.
 consolidate_db() ->
     percept2_db ! {action, self(), consolidate_db},
     receive
@@ -254,8 +255,9 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set, 
                        {read_concurrency,true}, {write_concurrency,true}]),
     ets:new(pdb_system, [named_table, public, {keypos, 1}, set]),
+    %% Think about tis funcall_info table again!!!
     ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, 
-                           ordered_set,{read_concurrency,true}]),
+                           ordered_set]),
     ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, 
                            set,{read_concurrency,true}, {write_concurrency, true}]),
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
@@ -1429,7 +1431,12 @@ select_query_information(Query) ->
 		[{is_atom, {element, 2, '$1'}}],
 		['$_']
 		}]);
-	Unhandled ->
+        {information, num_of_nodes} ->
+            NodeIds=ets:select(pdb_info, 
+                               [{#information{id={pid, {'$1', '_','_'}}, _='_'},
+                                 [], ['$1']}]),
+            length(sets:to_list(sets:from_list(NodeIds)));
+    	Unhandled ->
 	    io:format("select_query_information, unhandled: ~p~n", [Unhandled]),
 	    []
     end.
@@ -1773,8 +1780,6 @@ trace_call_shove_update_call_info(Pid, [{Func1, TS1}, {Func2, Ts2}|Tail])->
 
 %% Collapse tail recursive call stack cycles to prevent them from
 %% growing to infinite length.
-trace_call_collapse([]) ->
-     [];
 trace_call_collapse([_] = Stack) ->
     Stack;
 trace_call_collapse([_, _] = Stack) ->
@@ -1822,7 +1827,9 @@ trace_call_collapse_2(_Stack, [], _N) ->
 %%                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 trace_return_to_1(Pid, Func, TS, Stack) ->
-    Caller = mfarity(Func),
+    Caller = if is_tuple(Func) -> mfarity(Func);
+                true -> Func
+             end,
     ?dbg((-1), "trace_return_to(~p, ~p, ~p)~n~p~n",
 	 [Pid, Caller, TS, Stack]),
     case Stack of
@@ -1907,7 +1914,7 @@ update_fun_related_info(Pid, Func0, StartTS, EndTS, Caller, CallerStartTs) ->
     update_calltree_info(Pid, {Func0, StartTS, EndTS}, {Caller, CallerStartTs}).
    
         
--spec(update_calltree_info(pid(), {true_mfa(), timestamp(), timestamp()}, 
+-spec(update_calltree_info(pid(), {true_mfa(), timestamp(), timestamp()|undefined}, 
                            {true_mfa(), timestamp()}) ->true).       
 update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) when Caller==Callee ->
     CallerStartTS = case is_list_comp(Caller) of 
@@ -2167,12 +2174,10 @@ get_stop_time_ts(LastIndex) ->
         [] -> undefined;
         _ -> lists:max(Ts)
     end.
+
 get_num_of_nodes() ->  
-    NodeIds=ets:select(pdb_info, 
-                       [{#information{id={pid, {'$1', '_','_'}}, _='_'},
-                         [], ['$1']}]),
-    length(sets:to_list(sets:from_list(NodeIds))).
-    
+    percept2_db:select({information, num_of_nodes}).
+  
 %%%------------------------------------------------------%%%
 %%%                                                      %%%
 %%%  consolidate runnability                             %%%
