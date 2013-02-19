@@ -157,7 +157,8 @@ edge_list_to_dot(Edges, OutFileName, GraphName) ->
     NodeList = NodeList1 ++ NodeList2,
     NodeSet = ordsets:from_list(NodeList),
     Start = ["digraph ",GraphName ," {"],
-    VertexList = [format_node(V) ||V <- NodeSet],
+    VertexList = [format_node(V, fun format_vertex/1, true)
+                  ||V <- NodeSet],
     End = ["graph [", GraphName, "=", GraphName, "]}"],
     EdgeList = [format_edge(X, Y, Cnt) || {X,Y,Cnt} <- Edges],
     String = [Start, VertexList, EdgeList, End],
@@ -233,20 +234,22 @@ gen_callgraph_slice_edges(CallTree, ActiveFuns) ->
            end
     end.
 
-    
-format_node(V) ->
-    format_node(V, fun format_vertex/1).
-
-format_node(V, Fun) ->
+format_node(V, Fun, WithLabel) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
     W = (Width div 7 + 1) * 0.55,
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    Label = format_vertex_label(V),
-    ["\"", String, "\"", " [label=\"", Label, "\" width=", 
-     SL, " heigth=", SH, " ", "", "];\n"].
+    case WithLabel of 
+        true ->
+            Label = format_vertex_label(V),
+            ["\"", String, "\"", " [label=\"", Label, "\" width=", 
+             SL, " heigth=", SH, " ", "", "];\n"];
+        false ->
+            ["\"", String, "\"", " [width=", SL, " heigth=", SH, " ", "", "];\n"]
+    end.
+
 
 format_vertex_label({V, {label, Label}}) when Label>0->
     format_vertex(V) ++ 
@@ -378,8 +381,8 @@ process_tree_to_dot_1(MG, OutFileName,CleanPid) ->
     ok = file:write_file(OutFileName, list_to_binary(String)).
 
 format_process_tree_node(V, CleanPid) ->
-    format_node({V, CleanPid}, fun format_process_tree_vertex/1).
-            
+    format_node({V, CleanPid}, fun format_process_tree_vertex/1, false).
+           
 format_process_tree_vertex({{Pid={pid, {_P1, P2, P3}}, Name, Entry}, CleanPid}) ->
     Pid1 = case CleanPid of 
                true -> {pid, {0, P2, P3}};
