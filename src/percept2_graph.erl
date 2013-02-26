@@ -117,14 +117,20 @@ graph_1(_Env, Input, Type) ->
     
     % Convert Pids to id option list
     IDs      = [{id, ID} || ID <- Pids],
+    TypeOpt  = case Type of 
+                   procs_ports -> [{id, all}];
+                   procs -> [{id, procs}];
+                   ports -> [{id, ports}];
+                   _ ->[]
+               end,
     case IDs/=[] of 
         true -> 
-            Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
+            Options  = TypeOpt++[{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
             Counts=percept2_analyzer:activities2count2(Acts, StartTs),
             percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts,120);
         false ->                
-            Options  = [{ts_min, TsMin},{ts_max, TsMax}],
+            Options  = TypeOpt++ [{ts_min, TsMin},{ts_max, TsMax}],
             Counts = case Type of 
                          procs_ports ->
                              [{?seconds(TS, StartTs), Procs, Ports}||
@@ -142,11 +148,16 @@ graph_1(_Env, Input, Type) ->
                                      <-percept2_db:select(
                                          {activity,{runnable_counts, Options}})];
                          schedulers ->
-                             Acts = percept2_db:select({scheduler, [{ts_min, TsMin}, {ts_max,TsMax}]}),
+                             Acts = percept2_db:select({scheduler, Options}),
                              [{?seconds(Ts, StartTs), Scheds, 0} ||
                                  #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts]
                      end,
-            percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts,20)
+            case Counts of 
+                [] -> 
+                    percept2_image:error_graph(Width,Height, "No trace data recorded.");
+                _ ->
+                    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts,20)
+            end
     end.
 
 memory_graph(Env, Input) ->
