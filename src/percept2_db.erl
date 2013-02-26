@@ -783,20 +783,22 @@ trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
             MsgSize = byte_size(term_to_binary(Msg)),
-            update_information_sent(ProcRegName, Pid, MsgSize, To, Ts),
-            if is_pid(To) ->
-                    case erlang:get({run_queue, Pid}) of 
-                        undefined -> ok;
-                        FromRQ -> 
-                            case erlang:get({run_queue, To}) of 
-                                undefined -> 
-                                    ok;
-                                ToRQ -> 
-                                    update_inter_sched_msg_tab(FromRQ, ToRQ, MsgSize, Ts)
-                            end                        
-                    end;
-               true -> ok
-            end;       
+            update_information_sent(ProcRegName, Pid, MsgSize, To, Ts);
+           %% the following was for generating data about inter-scheduler 
+           %% message passing data.
+            %% if is_pid(To) ->
+            %%         case erlang:get({run_queue, Pid}) of 
+            %%             undefined -> ok;
+            %%             FromRQ -> 
+            %%                 case erlang:get({run_queue, To}) of 
+            %%                     undefined -> 
+            %%                         ok;
+            %%                     ToRQ -> 
+            %%                         update_inter_sched_msg_tab(FromRQ, ToRQ, MsgSize, Ts)
+            %%                 end                        
+            %%         end;
+            %%    true -> ok
+            %% end;       
        true ->
             ok
     end.
@@ -1355,8 +1357,8 @@ update_information_rq_1(Pid, {TS,RQ}) ->
 %% with the parallel version, checking whether a message is 
 %% send to the same run queue needs a different algorithm,
 %% and this feature is removed for now.
-update_information_sent_1(From, MsgSize, To, Ts) ->
-    update_inter_node_msg_tab(From, MsgSize, To, Ts),
+update_information_sent_1(From, MsgSize, _To, _Ts) ->
+    update_inter_node_msg_tab(From, MsgSize, _To, _Ts),
     InternalPid =pid2value(From),
     case  ets:lookup(pdb_info, InternalPid) of
         [] -> 
@@ -1382,11 +1384,11 @@ update_inter_node_msg_tab(From, MsgSize, To, Ts) ->
                          msg_size = MsgSize})
     end.
 
-update_inter_sched_msg_tab(FromSched, ToSched, MsgSize, Ts) ->
-    ets:insert(inter_sched,
-               #inter_sched{from_sched_with_ts={Ts, FromSched},
-                            dest_sched=ToSched,
-                            msg_size = MsgSize}).
+%% update_inter_sched_msg_tab(FromSched, ToSched, MsgSize, Ts) ->
+%%     ets:insert(inter_sched,
+%%                #inter_sched{from_sched_with_ts={Ts, FromSched},
+%%                             dest_sched=ToSched,
+%%                             msg_size = MsgSize}).
 
   
 update_information_received_1(Pid, MsgSize) ->
