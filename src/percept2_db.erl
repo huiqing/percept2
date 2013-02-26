@@ -280,7 +280,7 @@ loop_percept_db(FileNameSubDBPairs) ->
             stop_percept_db(FileNameSubDBPairs),
             From ! {self(), stopped};
 	{action, From, consolidate_db} ->
-            consolidate_db(FileNameSubDBPairs),
+            ok=consolidate_db(FileNameSubDBPairs),
             From ! {percept2_db, consolidate_done},
 	    loop_percept_db(FileNameSubDBPairs);
         {operate, Pid, {Table, {Fun, Start}}} ->
@@ -2123,7 +2123,8 @@ consolidate_db(FileNameSubDBPairs) ->
         _ -> ok
     end,
     %% check no of nodes (temporary solution).
-    NumOfNodes=get_num_of_nodes(),
+    NumOfNodes=percept_db_select_query(
+                 [],{information, num_of_nodes}),
     update_system_nodes_num(SystemProc, NumOfNodes),
 
     ?dbg(0, "consolidate runnability ...\n",[]),
@@ -2175,9 +2176,6 @@ get_stop_time_ts(LastIndex) ->
         _ -> lists:max(Ts)
     end.
 
-get_num_of_nodes() ->  
-    percept2_db:select({information, num_of_nodes}).
-  
 %%%------------------------------------------------------%%%
 %%%                                                      %%%
 %%%  consolidate runnability                             %%%
