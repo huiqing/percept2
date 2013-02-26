@@ -45,20 +45,18 @@
 -behaviour(application).
 
 -export([
-        profile/1,
-        profile/2, 
-	profile/3,
-        profile/4,
-        stop_profile/0, 
-
-	start_webserver/0, 
-	start_webserver/1, 
-	stop_webserver/0, 
-	stop_webserver/1, 
-
-	analyze/1,
-        analyze/4,
-        stop_db/0]).
+         profile/2, 
+         profile/3,
+         stop_profile/0, 
+         
+         start_webserver/0, 
+         start_webserver/1, 
+         stop_webserver/0, 
+         stop_webserver/1, 
+         
+         analyze/1,
+         analyze/4,
+         stop_db/0]).
 
 %% Application callback functions.
 -export([start/2, stop/1, parse_and_insert/3]).
@@ -70,6 +68,16 @@
 -type filespec()::file:filename()|
                   {file:filename(), wrap, Suffix::string(),
                    WrapSize::pos_integer(), WrapCnt::pos_integer()}.
+
+
+-type trace_profile_option()::'proc_concurrency' |     %% profile process concurrency.
+                              'port_concurrecny' |     %% profile port concurreny.
+                              'scheduler_concurrency'| %% profile scheduler concurrency.
+                              'running'|               %% distinguish process running state from runnable state.
+                              'message'|               %% profile message passing.
+                              'migration'|             %% profile process migration.
+                           %%   'gc'|                    %% profile process garbage collection;
+                              {'callgraph', [module_name()]}.  %%trace the call/return of functins defined the modules specified.
 
 %%---------------------------------------------------------%%
 %%                                                         %%
@@ -102,66 +110,71 @@ stop_db() ->
 %% 		Interface functions                        %%
 %%                                                         %%
 %%---------------------------------------------------------%%
-%%@doc Same as `profile(FileSpec, true)'.
--spec profile(FileSpec::filespec())-> 
+-spec profile(FileSpec::filespec(), 
+              TraceProfileOptions::[trace_profile_option()])-> 
                      {ok, integer()} | {already_started, port()}.
-profile(FileSpec) ->
-    percept2:profile(FileSpec,true).
-
-%%@doc Profile to file. Process, scheduler, and port activities are traced; 
-%% If `TraceMessages' is `true', message `send'/`receive' activities are 
-%% also traced too.
-%%
-%% The profiling starts when the function is called, and goes no until 
-%% `stop_profile/0' is called.
-%%@see stop_profile/0
--spec profile(FileSpec::filespec(), TraceMessages:: boolean())-> 
-                     {ok, integer()} | {already_started, port()}.
-
-profile(FileSpec, TraceMessages) ->
-    Opts0 = ['concurrency', 
-           'process_scheduling',
-           {mods, []}],
-    Opts = if TraceMessages -> ['message'|Opts0];
-              true -> Opts0
-           end,
-    percept2_profile:start(FileSpec,Opts).
-  
-
+profile(FileSpec, TraceProfileOptions) ->
+    case process_trace_profile_opts(TraceProfileOptions,[]) of
+        {error, Reason} ->
+            {error, Reason};
+        Opts ->
+            percept2_profile:start(FileSpec, Opts)
+    end.
+ 
 -spec profile(FileSpec :: filespec(),
 	      Entry :: {atom(), atom(), list()},
-	      Modules:: [module_name()]) ->
-              'ok' | {'already_started', port()} | {'error', 'not_started'}.
+              TraceProfileOptions::[trace_profile_option()]) ->
+                     'ok' | {'already_started', port()}.
 
-%%@doc Same as `profile(FileSpec, MFA, Modules, true)'.
-profile(FileSpec, MFA, Modules) ->
-    profile(FileSpec, MFA, Modules, true).
-   
+profile(FileSpec,Entry, TraceProfileOptions) ->
+    case process_trace_profile_opts(TraceProfileOptions,[]) of
+        {error, Reason} ->
+            {error, Reason};
+        Opts ->
+            percept2_profile:start(FileSpec, Entry, Opts)
+    end.
 
-%%@doc Profile to file. Process, scheduler and port activities
-%% are traced; `Modules' specifies the list of module names whose 
-%% functions (both exported and local functions) should be traced.
-%% No functions will be traced if `Modules' is an empty list. If
-%% `TraceMessages' is `true',  message `send'/`receive' activities are 
-%% also traced too.
-%%
-%% The profiling starts with executing the entry function given, and goes 
-%% on for the whole duration until the entry function retures and the 
-%% the profiling has concluded.
--spec profile(FileSpec :: filespec(),
-	      Entry :: {atom(), atom(), list()},
-	      Modules:: [module_name()],
-              TraceMessages:: boolean()) ->
-             'ok' | {'already_started', port()} | {'error', 'not_started'}.
-profile(FileSpec, MFA, Modules, TraceMessages) ->
-    Opts0 = ['concurrency', 
-           'process_scheduling',
-           {mods, Modules}],
-    Opts = if TraceMessages -> ['message'|Opts0];
-              true -> Opts0
-           end,
-    percept2_profile:start(FileSpec, MFA, Opts).
-  
+process_trace_profile_opts([], Res) ->
+    lists:usort(Res);
+process_trace_profile_opts([Opt|Opts], Acc) ->
+    case Opt of 
+        port_concurrency ->
+            process_trace_profile_opts(
+              Opts,[runnable_ports, ports|Acc]);
+        proc_concurrency ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs, procs, exclusive|Acc]);
+        scheduler_concurrency ->
+            process_trace_profile_opts(
+              Opts,[scheduler|Acc]);
+        running ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs,procs,exclusive, 
+                    running,exiting|Acc]);
+        message ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs,exclusive,
+                    procs, 'send','receive'|Acc]);
+        migration ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs, procs, exclusive,
+                    running, scheduler_id|Acc]);
+        gc ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs, garbage_collection|Acc]);
+        {callgraph, Mods} ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs, procs,exclusive, call, 
+                    return_to, arity, {callgraph, Mods}|Acc]);
+        Other ->
+            Msg = lists:flatten(
+                    io_lib:format(
+                      "Invalid profile option:~p.", 
+                      [Other])),
+            {error, Msg}
+    end.
+
+
 %%@doc Stops the profiling.
 %%@see profile/1
 %%@see profile/2.
@@ -209,7 +222,7 @@ loop_analyzer_par(Pids) ->
         {Pid, done} ->
             case Pids -- [Pid] of 
                 [] ->
-                    percept2_db:consolidate_db(),
+                    ok=percept2_db:consolidate_db(),
                     io:format("    ~p created processes.~n",
                               [percept2_db:select({information, procs_count})]),
                     io:format("    ~p opened ports.~n", 
