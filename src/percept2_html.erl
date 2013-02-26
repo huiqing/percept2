@@ -1750,7 +1750,6 @@ menu_1(Min, Max) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
      	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
-        <li><a href=/cgi-bin/percept2_html/summary_report_page>summary report</a></li>
         <li><a href=/cgi-bin/percept2_html/inter_node_message_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">inter-node messaging</a></li>
         <li><a href=/cgi-bin/percept2_html/active_funcs_page?range_min=" ++
