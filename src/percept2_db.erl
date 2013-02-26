@@ -700,12 +700,42 @@ trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  MFA, TS}) when is_pid(Pid)-
         TS1 ->
             update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
         end;
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, MFA, TS}) when is_pid(Pid)->
+    erlang:put({in, Pid}, TS),
+    InternalPid = pid2value(Pid),
+    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case erlang:get({active, Pid}) of 
+        undefined ->
+            ok; 
+        TS1 ->
+            update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
+    end;
 trace_in(_SubDBIndex, _Trace) ->
     ok.
 
 trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  MFA, TS}) when is_pid(Pid) ->    
     case erlang:get({in, Pid}) of 
         {Rq, InTime} ->
+            Elapsed = elapsed(InTime, TS),
+            erlang:erase({in,Pid}),
+            InternalPid = pid2value(Pid),
+            ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+            update_information_acc_time(ProcRegName, {InternalPid, Elapsed}),
+            case erlang:get({active, Pid}) of
+                undefined ->
+                    ok;
+                TS1 ->
+                    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+                    update_activity(ActivityProcRegName, {out, {InternalPid, TS1}, MFA, TS})
+            end;
+        undefined ->
+            ok;
+        _ ->
+            erlang:erase({in, Pid})    
+    end;
+trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, MFA, TS}) when is_pid(Pid) ->    
+    case erlang:get({in, Pid}) of 
+        InTime when InTime/=undefined->
             Elapsed = elapsed(InTime, TS),
             erlang:erase({in,Pid}),
             InternalPid = pid2value(Pid),
