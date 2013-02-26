@@ -643,7 +643,7 @@ check_activity_consistency(SubDBIndex, Id, State) ->
 
 trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_pid(Pid) ->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-    InformativeMfa = mfa2informative(Mfa),
+    InformativeMfa = mfarity(mfa2informative(Mfa)),
     update_information(ProcRegName,
                        #information{id = pid2value(Pid), start = TS,
                                     parent = pid2value(Parent), entry = InformativeMfa}),
