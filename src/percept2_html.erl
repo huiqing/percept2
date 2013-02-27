@@ -1055,24 +1055,36 @@ process_info_content_1(_Env, Input) ->
                     [{th, "Parent"},     pid2html(I#information.parent, CleanPid)],
                     [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> 
                                                                          pid2html(Child, CleanPid) ++ " " end,
-                                                                 I#information.children))],
-                    [{th, "RQ_history"}, term2html(
-                                           element(2,lists:unzip(
-                                                     lists:keysort(1, I#information.rq_history))))],
-                    [{th, "{#msg_received, <br>avg_msg_size}"},
+                                                                 I#information.children))]]
+                   ++ case percept2_db:is_dummy_pid(Pid) of 
+                          true ->
+                              [];
+                          false ->
+                              [[{th, "RQ_history"}, term2html(
+                                                      element(2,lists:unzip(
+                                                                  lists:keysort(1, I#information.rq_history))))]]
+                      end
+                   ++
+                    [[{th, "{#msg_received, <br>avg_msg_size}"},
                      term2html(info_msg_received(I))],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
-                     term2html(info_msg_sent(I))],
-                    [{th, "accumulated runtime <br>(in milliseconds)"},
-                     term2html(I#information.accu_runtime div 1000)],
-                    [{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]
-                   ] ++ case percept2_db:is_dummy_pid(Pid) of
-                            true ->
-                                [[{th, "Compressed Processes"}, lists:flatten(
-                                                                 lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
-                                                                           I#information.hidden_pids))]];
-                            false -> []
-                        end),
+                     term2html(info_msg_sent(I))]] 
+                   ++
+                       case percept2_db:is_dummy_pid(Pid) of 
+                           true -> [];
+                           false->
+                             [[{th, "accumulated runtime <br>(in milliseconds)"},
+                               term2html(I#information.accu_runtime div 1000)]]
+                       end 
+                   ++
+                    [[{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]]
+                   ++ case percept2_db:is_dummy_pid(Pid) of
+                          true ->
+                              [[{th, "Compressed Processes"}, lists:flatten(
+                                                                lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
+                                                                          I#information.hidden_pids))]];
+                          false -> []
+                      end),
     PidActivities = percept2_db:select({activity, [{id, Pid}]}),
     WaitingMfas   = percept2_analyzer:waiting_activities(PidActivities),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
@@ -1761,6 +1773,7 @@ menu_1(Min, Max) ->
       	<li><a href=/cgi-bin/percept2_html/overview_page>overview</a></li>
      </ul></div>\n".
    
+
 %%% -------------------------------------%%%
 %%%  check cached istory htmls; reuse or %%%
 %%%  regenerate.                         %%%
