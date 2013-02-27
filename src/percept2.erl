@@ -77,6 +77,7 @@
                               'running'|               %% distinguish process running state from runnable state.
                               'message'|               %% profile message passing.
                               'migration'|             %% profile process migration.
+                              'all'      |             %% profile all the activities above.
                               {'callgraph', [module_name()]}.  %%trace the call/return of functins defined the modules specified.
 
 %%---------------------------------------------------------%%
@@ -111,10 +112,11 @@ stop_db() ->
 %%                                                         %%
 %%---------------------------------------------------------%%
 
-%%@doc Starts the profiling while an application is already running. 
+%%@doc Starts the profiling while an application of interest 
+%%     is already running. 
 %%     The profiling can be stopped by `percept2:stop_profile/0'.
 %%     The valid `TraceProfileOptions' values are: `procs', `ports',
-%%     `schedulers', `running', `message' and `migration'.See 
+%%     `schedulers', `running', `message', `migration' and `all'. See 
 %%     <a href="percept2.html#profile-3">profile/3</a> for the 
 %%     descriptions of the options.
 %%@see stop_profile/0.
@@ -152,6 +154,8 @@ profile(FileSpec, TraceProfileOptions) ->
 %%    -- `migration'          : this enables the profiling of process migration between 
 %%                              schedulers; If the `procs' option is not given, this 
 %%                              option enables the process concurrency automatically.
+%%
+%%    -- `all'                : this enable all the previous options.
 %%
 %%    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
 %%                              (`call' and `return_to') of functions defined in `Mods'.
@@ -205,6 +209,12 @@ process_trace_profile_opts([Opt|Opts], Acc) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive,
                     running, scheduler_id|Acc]);
+        all ->
+            process_trace_profile_opts(
+              Opts, [runnable_ports, ports,
+                     runnable_procs, procs, exclusive,
+                     scheduler,running,exiting,
+                     'send','receive',scheduler_id|Acc]);
         {callgraph, Mods} when is_list(Mods) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs,exclusive, call, 
