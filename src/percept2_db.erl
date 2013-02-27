@@ -1108,7 +1108,6 @@ activity_ms(Opts) ->
 	end, [], IDs).
 
 activity_count_ms(Opts) ->
-    % {activity, Timestamp, State, Mfa}
     Head = #activity{
       timestamp = '$1',
       id = '$2',
@@ -1122,19 +1121,19 @@ activity_count_ms(Opts) ->
       fun (Option, MS) ->
               case Option of
                   {id, ports} ->
-                      [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
+                      [{Head, [{is_port, Head#activity.id}, {'=/=', 0, '$4'} | Conditions], Body} | MS];
                   {id, procs} ->
-                      [{Head,[{'==', pid, {element, 1, '$2'}} | Conditions], Body} | MS];
+                      [{Head,[{'==', pid, {element, 1, '$2'}}, {'=/=', 0, '$3'}| Conditions], Body} | MS];
                   {id, all} ->
-                      [{Head, Conditions,Body} | MS];
+                      [{Head, [{'not', {'andalso', {'==', 0, '$3'}, {'==', 0, '$4'}}}|Conditions],Body} | MS];
                   _ ->
                       io:format("activity_ms id dropped ~p~n", [Option]),
                       MS
               end
       end, [], IDs).
 
-activity_ms_and(_, [], Constraints, []) ->
-    {Constraints, [{id, all}]};
+%% activity_ms_and(_, [], Constraints, []) ->
+%%     {Constraints, [{id, all}]};
 activity_ms_and(_, [], Constraints, IDs) -> 
     {Constraints, IDs};
 activity_ms_and(Head, [Opt|Opts], Constraints, IDs) ->
