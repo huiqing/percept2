@@ -64,6 +64,8 @@
 -include("../include/percept2.hrl").
 
 -type module_name()::atom().
+
+-type function_name()::atom().
  
 -type filespec()::file:filename()|
                   {file:filename(), wrap, Suffix::string(),
@@ -108,29 +110,75 @@ stop_db() ->
 %% 		Interface functions                        %%
 %%                                                         %%
 %%---------------------------------------------------------%%
+
+%%@doc Starts the profiling while an application is already running. 
+%%     The profiling can be stopped by `percept2:stop_profile/0'.
+%%     The valid `TraceProfileOptions' values are: `procs', `ports',
+%%     `schedulers', `running', `message' and `migration'.See 
+%%     <a href="percept2.html#profile-3">profile/3</a> for the 
+%%     descriptions of the options.
+%%@see stop_profile/0.
 -spec profile(FileSpec::filespec(), 
               TraceProfileOptions::[trace_profile_option()])-> 
                      {ok, integer()} | {already_started, port()}.
 profile(FileSpec, TraceProfileOptions) ->
-    case process_trace_profile_opts(TraceProfileOptions,[]) of
+    case process_trace_profile_opts(TraceProfileOptions) of
         {error, Reason} ->
             {error, Reason};
         Opts ->
             percept2_profile:start(FileSpec, Opts)
     end.
  
+%%@doc The profiling starts with executing the entry function given, and goes on for 
+%%     the whole duration until the entry function returns and the profiling 
+%%     has concluded. The events to be traced/profiled depends on the options 
+%%     specified by `TraceProfileOptions'. The following options are available:
+%%   
+%%     -- `procs'             : enables the profiling of process concurrency. 
+%%
+%%     -- `ports'             : enables the profiling of port concurrecny.
+%%
+%%     -- `schedulers'        : enables the profiling of scheduler concurrency.
+%%
+%%     -- `running'           : enables the feature to distinguish running from 
+%%                              runnable process states. If the `procs' option is 
+%%                              not given, this option enables the process concurrency
+%%                              automatically.
+%%
+%%     -- `message'           : this enables the profiling of message passing between 
+%%                              processes; If the `procs' option is not given, this 
+%%                              option enables the process concurrency automatically.
+%%         
+%%    -- `migration'          : this enables the profiling of process migration between 
+%%                              schedulers; If the `procs' option is not given, this 
+%%                              option enables the process concurrency automatically.
+%%
+%%    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
+%%                              (`call' and `return_to') of functions defined in `Mods'.
+%%                              If the `procs' option is not given, this option enables 
+%%                              the process concurrency automatically. Given the huge 
+%%                              amount of data that could possibly be produced when this 
+%%                              feature is on, we do not recommend profiling many modules 
+%%                              in one go at this stage.
+%%
+%% See the <a href="overview-summary.html">Overview</a> page for examples.
 -spec profile(FileSpec :: filespec(),
-	      Entry :: {atom(), atom(), list()},
+	      Entry :: {module_name(), function_name(), [term()]},
               TraceProfileOptions::[trace_profile_option()]) ->
                      'ok' | {'already_started', port()}.
 
 profile(FileSpec,Entry, TraceProfileOptions) ->
-    case process_trace_profile_opts(TraceProfileOptions,[]) of
+    case process_trace_profile_opts(TraceProfileOptions) of
         {error, Reason} ->
             {error, Reason};
         Opts ->
             percept2_profile:start(FileSpec, Entry, Opts)
     end.
+
+process_trace_profile_opts([]) ->
+    process_trace_profile_opts([procs]);
+process_trace_profile_opts(Opts) ->
+    process_trace_profile_opts(Opts, []).
 
 process_trace_profile_opts([], Res) ->
     lists:usort(Res);
