@@ -48,19 +48,53 @@ The following techniques have been used to improve the scalability of Percept.
 
 <h4> Profiling </h4>
 
-There are a few ways to start the profiling of a specific code. The function <a href="percept2:profile-3">percept2:profile/3</a>
-is the prefered way. 
+There are two functions for start the profiling: <a href="percept2.html#profile-3">percept2:profile/2</a> and  
+<a href="percept2.html#profile-3">"percept2.html#percept2:profile/3</a>.  The former can be used to start the profiling while 
+the application of interest is already running; and the latter can be used to profile an application run 
+from the start to the end. We take the latter case as an 
+example to explain how Percept2 works.
 
-The function <a href="percept2:profile-3">percept2:profile/3</a> takes 3 parameters. A file specification for the data destination as the first argument. The file specification can be a filename (which is the case for Percept) or a wrap file specification as what is used by the `dbg' library. If a single filename is specified, all the trace messages are saved in this file; if a wrap file specification is used, then the trace is written 
+```-spec profile(FileSpec :: filespec(),
+	      Entry :: {module_name(), function_name(), [term()]},
+              TraceProfileOptions::[trace_profile_option()]) ->
+                     'ok' | {'already_started', port()}.'''
+
+The function <a href="percept2.html#profile-3">percept2:profile/3</a> takes 3 parameters. A file specification for the data destination as the first argument. The file specification can be a filename (which is the case for Percept) or a wrap file specification as what is used by the `dbg' library. If a single filename is specified, all the trace messages are saved in this file; if a wrap file specification is used, then the trace is written 
 to a limited number of files each with a limited size. The actual filenames are Filename ++ SeqCnt ++ Suffix, where SeqCnt counts as a decimal string from 0 to WrapCnt. 
 
 With the current version of Percept2, if the number of files in this wrap trace is as many as WrapCnt, the oldest file is deleted then a new file is opened to become the current (as what is described in `dbg'). For off-line profiling, this means some profiling data may get lost. We are in the process of addressing this problem, and at this stage, we assume the WrapCnt and  WrapSize are big enough to accommodate all the trace data.
 
-The second argument is a callback entry-point, from where the profiling starts. The third argument is a list of module names whose functions (both exported 
-functions and local functions) will be traced. No functions will be traced if `Modules' is an empty list.
+The second argument is a callback entry-point, from where the profiling starts.
 
-The profiling starts with executing the entry function given, and goes on for the whole duration until the entry function retures and the 
-the profiling has concluded.
+The third argument is a list of options that decide what kind of events to be profiled.
+
+The following options are available:
+   
+     -- `procs'             : enables the profiling of process concurrency. 
+
+     -- `ports'             : enables the profiling of port concurrecny.
+
+     -- `schedulers'        : enables the profiling of scheduler concurrency.
+
+     -- `running'           : enables the feature to distinguish running from 
+                              runnable process states.
+
+     -- `message'           : this enables the profiling of message passing between 
+                              processes; 
+
+    -- `migration'          : this enables the profiling of process migration between 
+                              schedulers; 
+
+    -- `all'                : this enables all the previous options.
+
+    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
+                              (`call' and `return_to') of functions defined in `Mods'.
+                              Given the huge amount of data that could possibly be produced when this 
+                              feature is on, we do not recommend profiling many modules 
+                              in one go at this stage.
+
+The options `running', `message', `migraion' and `{callgraph, Mods}' will enable the `procs' option 
+automatically if the option is not enabled.
 
 To illustrate how the tool works, let's take a <em>similar code detection </em>algorithm for Erlang programs as an example. The similar code detection program takes a list of directories/files and some threshold values as parameters, and returns the similar code fragments found in those Erlang files.
 
@@ -68,16 +102,16 @@ Assume there is a directory named `test' which contains some Erlang files, we co
 of the similar code detection being applied to the `test' directory.
 
 ``` percept2:profile("sim_code.dat", 
-         {sim_code,sim_code_detection, [["./test"], 3, 40, 2, 4, 0.8, [], 8]}, [sim_code])'''
+         {sim_code,sim_code_detection, [["./test"], 3, 40, 2, 4, 0.8, [], 8]}, 
+                   [all,{callgraph, sim_code])'''
          
-In this example, we choose to profile the message passing between processes, the scheduling and states of processes/ports, and also the call/return_to activities of those functions exported by module `sim_code' (as a matter of fact, all the functions defined in this module are exported).
-
-Percept2 sets up the trace and profiling facilities to listen for the traced event. It then stores these events to the file: sim_code.dat. 
+In this example, we choose to all the event supported by Percept2, also the call/return_to activities of all those functions defined 
+in module `sim_code'. 
 
 Alternatively, we could use the following command to have multiple data files to store the trace data:
 
 ``` percept2:profile({"sim_code", wrap, ".dat", 20000000, 10}, 
-         {sim_code,sim_code_detection, [["./test"], 3, 40, 2, 4, 0.8, [], 8]}, [sim_code])'''
+         {sim_code,sim_code_detection, [["./test"], 3, 40, 2, 4, 0.8, [], 8]}, [all,{callgraph, sim_code])'''
         
 In the latter case, Percept2 stores trace events to files: sim_code0.dat, sim_code1.dat, etc. The actual run of this profiling command generated 
 4 data files: i.e. `sim_code0.dat', `sim_code1.dat', `sim_code2.dat' and `sim_code3.dat'.
