@@ -29,6 +29,7 @@
                          multi_node_trace,
                          percept2,
                          percept2_analyzer,
+                         percept2_data_gen,
                          percept2_db,
                          percept2_dot,
                          percept2_graph,
