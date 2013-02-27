@@ -65,7 +65,7 @@
 -spec start(FileSpec::file:filename()|
                       {file:filename(), wrap, Suffix::string(),
                        WrapSize::pos_integer(), WrapCnt::pos_integer()}, 
-            Options::[percept_option()]) ->
+            Options::[trace_flags()|profile_flags()]) ->
                    {'ok', port()} | {'already_started', port()}.
 start(FileSpec, Options) ->
     profile_to_file(FileSpec,Options). 
@@ -78,7 +78,7 @@ start(FileSpec, Options) ->
                                 {file:filename(), wrap, Suffix::string(),
                                  WrapSize::pos_integer(), WrapCnt::pos_integer()},
 	    Entry :: {atom(), atom(), list()},
-            Options :: [percept_option()]) ->
+            Options :: [trace_flags()|profile_flags()|{callgraph, [module_name()]}]) ->
                    'ok' | {'already_started', port()} |
                    {'error', 'not_started'}.
 start(FileSpec, _Entry={Mod, Fun, Args}, Options) ->
