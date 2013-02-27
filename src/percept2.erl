@@ -69,14 +69,12 @@
                   {file:filename(), wrap, Suffix::string(),
                    WrapSize::pos_integer(), WrapCnt::pos_integer()}.
 
-
--type trace_profile_option()::'proc_concurrency' |     %% profile process concurrency.
-                              'port_concurrecny' |     %% profile port concurreny.
-                              'scheduler_concurrency'| %% profile scheduler concurrency.
+-type trace_profile_option()::'procs' |                %% profile process concurrency.
+                              'ports' |                %% profile port concurreny.
+                              'schedulers'|            %% profile scheduler concurrency.
                               'running'|               %% distinguish process running state from runnable state.
                               'message'|               %% profile message passing.
                               'migration'|             %% profile process migration.
-                           %%   'gc'|                    %% profile process garbage collection;
                               {'callgraph', [module_name()]}.  %%trace the call/return of functins defined the modules specified.
 
 %%---------------------------------------------------------%%
@@ -138,13 +136,13 @@ process_trace_profile_opts([], Res) ->
     lists:usort(Res);
 process_trace_profile_opts([Opt|Opts], Acc) ->
     case Opt of 
-        port_concurrency ->
+        port ->
             process_trace_profile_opts(
               Opts,[runnable_ports, ports|Acc]);
-        proc_concurrency ->
+        procs ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive|Acc]);
-        scheduler_concurrency ->
+        schedulers ->
             process_trace_profile_opts(
               Opts,[scheduler|Acc]);
         running ->
@@ -159,10 +157,7 @@ process_trace_profile_opts([Opt|Opts], Acc) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive,
                     running, scheduler_id|Acc]);
-        gc ->
-            process_trace_profile_opts(
-              Opts,[runnable_procs, garbage_collection|Acc]);
-        {callgraph, Mods} ->
+        {callgraph, Mods} when is_list(Mods) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs,exclusive, call, 
                     return_to, arity, {callgraph, Mods}|Acc]);
