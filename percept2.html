@@ -43,17 +43,26 @@
 <p><tt>filespec() = <a href="file.html#type-filename">file:filename()</a> | {<a href="file.html#type-filename">file:filename()</a>, wrap, Suffix::string(), WrapSize::pos_integer(), WrapCnt::pos_integer()}</tt></p>
 
 
+<h3 class="typedecl"><a name="type-function_name">function_name()</a></h3>
+<p><tt>function_name() = atom()</tt></p>
+
+
 <h3 class="typedecl"><a name="type-module_name">module_name()</a></h3>
 <p><tt>module_name() = atom()</tt></p>
+
+
+<h3 class="typedecl"><a name="type-trace_profile_option">trace_profile_option()</a></h3>
+<p><tt>trace_profile_option() = procs | ports | schedulers | running | message | migration | all | {callgraph, [<a href="#type-module_name">module_name()</a>]}</tt></p>
 
 
 <h2><a name="index">Function Index</a></h2>
 <table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#analyze-1">analyze/1</a></td><td>Parallel analysis of trace files.</td></tr>
 <tr><td valign="top"><a href="#analyze-4">analyze/4</a></td><td>Parallel analysis of trace files.</td></tr>
-<tr><td valign="top"><a href="#profile-1">profile/1</a></td><td>Same as <code>profile(FileSpec, true)</code>.</td></tr>
-<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td>Profile to file.</td></tr>
-<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>Same as <code>profile(FileSpec, MFA, Modules, true)</code>.</td></tr>
-<tr><td valign="top"><a href="#profile-4">profile/4</a></td><td>Profile to file.</td></tr>
+<tr><td valign="top"><a href="#profile-2">profile/2</a></td><td>Starts the profiling while an application of interest
+      is already running.</td></tr>
+<tr><td valign="top"><a href="#profile-3">profile/3</a></td><td>The profiling starts with executing the entry function given, and goes on for
+      the whole duration until the entry function returns and the profiling
+      has concluded.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-0">start_webserver/0</a></td><td>Starts webserver.</td></tr>
 <tr><td valign="top"><a href="#start_webserver-1">start_webserver/1</a></td><td>Starts webserver with a given port number.</td></tr>
 <tr><td valign="top"><a href="#stop_db-0">stop_db/0</a></td><td>Stops the percept2 database.</td></tr>
@@ -74,40 +83,56 @@
 <p><tt>analyze(Filename::<a href="file.html#type-filename">file:filename()</a>, Suffix::string(), StartIndex::pos_integer(), EndIndex::pos_integer()) -&gt; ok | {error, any()}</tt><br></p>
 </div><p>Parallel analysis of trace files. See the <a href="overview-summary.html">Overview</a> page for examples.</p>
 
-<h3 class="function"><a name="profile-1">profile/1</a></h3>
-<div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>) -&gt; {ok, integer()} | {already_started, port()}</tt><br></p>
-</div><p>Same as <code>profile(FileSpec, true)</code>.</p>
-
 <h3 class="function"><a name="profile-2">profile/2</a></h3>
 <div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, TraceMessages::boolean()) -&gt; {ok, integer()} | {already_started, port()}</tt><br></p>
-</div><p><p>Profile to file. Process, scheduler, and port activities are traced;
-  If <code>TraceMessages</code> is <code>true</code>, message <code>send</code>/<code>receive</code> activities are  
-also traced too.</p>
- 
-  The profiling starts when the function is called, and goes no until
-  <code>stop_profile/0</code> is called.</p>
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, TraceProfileOptions::[<a href="#type-trace_profile_option">trace_profile_option()</a>]) -&gt; {ok, integer()} | {already_started, port()}</tt><br></p>
+</div><p>Starts the profiling while an application of interest
+      is already running.
+      The profiling can be stopped by <code>percept2:stop_profile/0</code>.
+      The valid <code>TraceProfileOptions</code> values are: <code>procs</code>, <code>ports</code>,
+      <code>schedulers</code>, <code>running</code>, <code>message</code> and <code>migration</code>.See
+      <a href="percept2.html#profile-3">profile/3</a> for the
+      descriptions of the options.</p>
 <p><b>See also:</b> <a href="#stop_profile-0">stop_profile/0</a>.</p>
 
 <h3 class="function"><a name="profile-3">profile/3</a></h3>
 <div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Entry::{atom(), atom(), list()}, Modules::[<a href="#type-module_name">module_name()</a>]) -&gt; ok | {already_started, port()} | {error, not_started}</tt><br></p>
-</div><p>Same as <code>profile(FileSpec, MFA, Modules, true)</code>.</p>
-
-<h3 class="function"><a name="profile-4">profile/4</a></h3>
-<div class="spec">
-<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Entry::{atom(), atom(), list()}, Modules::[<a href="#type-module_name">module_name()</a>], TraceMessages::boolean()) -&gt; ok | {already_started, port()} | {error, not_started}</tt><br></p>
-</div><p><p>Profile to file. Process, scheduler and port activities
-  are traced; <code>Modules</code> specifies the list of module names whose
-  functions (both exported and local functions) should be traced.
-  No functions will be traced if <code>Modules</code> is an empty list. If
-  <code>TraceMessages</code> is <code>true</code>,  message <code>send</code>/<code>receive</code> activities are  
-also traced too.</p>
+<p><tt>profile(FileSpec::<a href="#type-filespec">filespec()</a>, Entry::{<a href="#type-module_name">module_name()</a>, <a href="#type-function_name">function_name()</a>, [term()]}, TraceProfileOptions::[<a href="#type-trace_profile_option">trace_profile_option()</a>]) -&gt; ok | {already_started, port()}</tt><br></p>
+</div><p><p>The profiling starts with executing the entry function given, and goes on for
+      the whole duration until the entry function returns and the profiling
+      has concluded. The events to be traced/profiled depends on the options
+      specified by <code>TraceProfileOptions</code>. The following options are available:</p>
  
-  The profiling starts with executing the entry function given, and goes
-  on for the whole duration until the entry function retures and the
-  the profiling has concluded.</p>
+      <p>-- <code>procs</code>             : enables the profiling of process concurrency.</p>
+ 
+      <p>-- <code>ports</code>             : enables the profiling of port concurrecny.</p>
+ 
+      <p>-- <code>schedulers</code>        : enables the profiling of scheduler concurrency.</p>
+ 
+      <p>-- <code>running</code>           : enables the feature to distinguish running from
+                               runnable process states. If the <code>procs</code> option is                               
+not given, this option enables the process concurrency                               
+automatically.</p>
+ 
+      <p>-- <code>message</code>           : this enables the profiling of message passing between
+                               processes; If the <code>procs</code> option is not given, this                               
+option enables the process concurrency automatically.</p>
+ 
+     <p>-- <code>migration</code>          : this enables the profiling of process migration between
+                               schedulers; If the <code>procs</code> option is not given, this                               
+option enables the process concurrency automatically.</p>
+ 
+     <p>-- <code>all</code>                : this enable all the previous options.</p>
+ 
+     <p>-- <code>{callgraph, Mods}</code>  : This enables the profiling of function activities
+                               (<code>call</code> and <code>return_to</code>) of functions defined in <code>Mods</code>.
+                               If the <code>procs</code> option is not given, this option enables                               
+the process concurrency automatically. Given the huge                               
+amount of data that could possibly be produced when this                               
+feature is on, we do not recommend profiling many modules                               
+in one go at this stage.</p>
+ 
+  See the <a href="overview-summary.html">Overview</a> page for examples.</p>
 
 <h3 class="function"><a name="start_webserver-0">start_webserver/0</a></h3>
 <div class="spec">
@@ -145,6 +170,6 @@ also traced too.</p>
 <hr>
 
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc, Feb 19 2013, 22:53:52.</i></p>
+<p><i>Generated by EDoc, Feb 27 2013, 11:36:33.</i></p>
 </body>
 </html>
