@@ -1112,10 +1112,9 @@ process_info_content_1(_Env, Input) ->
 
 %%% process tree content.
 process_tree_content(_Env, _Input) ->
+    SvgDir = percept2:get_svg_alias_dir(),
     ImgFileName="processtree"++".svg",
-    ImgFullFilePath = filename:join(
-                        [code:priv_dir(percept2), "server_root",
-                         "svgs", ImgFileName]),
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     Content = "<div style=\"text-align:center; align:center\">" ++
         "<h3 style=\"text-align:center;\">Process Tree</h3>"++ 
         "<object data=\"/svgs/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
@@ -1127,7 +1126,7 @@ process_tree_content(_Env, _Input) ->
             %% file already generated, so reuse.
             Content;  
         false -> 
-            GenImgRes=percept2_dot:gen_process_tree_img(),
+            GenImgRes=percept2_dot:gen_process_tree_img(SvgDir),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
  
@@ -1289,9 +1288,8 @@ callgraph_time_content(Env, Input) ->
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     ImgFileName="callgraph" ++ pid2str(Pid) ++".svg",
-    ImgFullFilePath = filename:join(
-                    [code:priv_dir(percept2), "server_root",
-                     "svgs", ImgFileName]),
+    SvgDir = percept2:get_svg_alias_dir(),
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     Table = calltime_content(Env,Pid),
     Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
         "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++ 
@@ -1305,7 +1303,7 @@ callgraph_time_content(Env, Input) ->
     case filelib:is_regular(ImgFullFilePath) of 
         true -> Content;  %% file already generated.
         false -> 
-            GenImgRes=percept2_dot:gen_callgraph_img(Pid),
+            GenImgRes=percept2_dot:gen_callgraph_img(Pid, SvgDir),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 
@@ -1317,9 +1315,8 @@ callgraph_slice_content(_Env, Input) ->
     Max = get_option_value("range_max", Query),
     ImgFileName="callgraph" ++ pid2str(Pid) ++
         term2html(Min)++"_"++term2html(Max)++ ".svg",
-    ImgFullFilePath = filename:join(
-                    [code:priv_dir(percept2), "server_root",
-                     "svgs", ImgFileName]),
+    SvgDir = percept2:get_svg_alias_dir(),
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
         "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
         " overflow=\"visible\"  scrolling=\"yes\" "++
@@ -1328,7 +1325,7 @@ callgraph_slice_content(_Env, Input) ->
     case filelib:is_regular(ImgFullFilePath) of 
         true -> Content;  
         false -> 
-            GenImgRes=percept2_dot:gen_callgraph_slice_img(Pid,Min,Max),
+            GenImgRes=percept2_dot:gen_callgraph_slice_img(Pid,Min,Max,SvgDir),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 
@@ -1343,14 +1340,15 @@ process_gen_graph_img_result(Content, GenImgRes) ->
         dot_not_found ->
             Msg = "Percept2 cound not find the 'dot' executable from Graphviz; please make sure Graphviz is installed.",
             graph_img_error_page(Msg);
-        gen_svg_failed ->
-            Msg = "Percept2 failed to use the 'dot' command (from Graphviz) to generate a .svg file.",
+        {gen_svg_failed, Cmd} ->
+            Msg = "Percept2 failed to use the 'dot' command (from Graphviz) to generate a .svg file. <br> The command "
+                "Percept2 tried to run was: <br>" ++ Cmd,
             graph_img_error_page(Msg)
     end.
 
 graph_img_error_page(Msg) ->
     "<div style=\"text-align:center;\">" ++
-        "<blink><center><h3><p>" ++ Msg ++ "</p></h3></center><blink>" ++
+        "<center><h3><p>" ++ Msg ++ "</p></h3></center>" ++
     "</div>".
 
         
@@ -1852,3 +1850,4 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 			end,
 			TupleList),
     group_by(N,TupleList2,Acc ++ [TupleList1]).
+
