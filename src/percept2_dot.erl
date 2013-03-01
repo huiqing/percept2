@@ -9,6 +9,8 @@
 -compile(export_all).
 
 -include("../include/percept2.hrl").
+-include_lib("kernel/include/file.hrl").
+
 
 %%% --------------------------------%%%
 %%% 	Callgraph Image generation  %%%
@@ -312,15 +314,27 @@ dot_to_svg(DotFileName, SvgFileName) ->
         _ ->
             Cmd ="dot -Tsvg " ++ filename:absname(DotFileName) ++ " > " ++ SvgFileName,
             _Res=os:cmd(Cmd),
-            case filelib:is_file(SvgFileName) of 
+             case filelib:is_regular(SvgFileName) of
                 true ->
-                    file:delete(DotFileName),
-                    ok;
-                false ->
-                    {gen_svg_failed, Cmd}
+                     case file:read_file_info(SvgFileName) of 
+                         {ok, FileInfo} ->
+                             case FileInfo#file_info.size>0 of
+                                 true -> 
+                                     file:delete(DotFileName),
+                                     ok;
+                                 false ->
+                                     file:delete(SvgFileName),
+                                     {gen_svg_failed, Cmd}
+                             end;
+                         _ -> 
+                             file:delete(SvgFileName),
+                             {gen_svg_failed, Cmd}
+                     end;
+                 false ->
+                     {gen_svg_failed, Cmd}
             end
     end.
-  
+
             
 process_tree_to_dot(ProcessTrees, DotFileName, CleanPid) ->
     {Nodes, Edges} = gen_process_tree_nodes_edges(ProcessTrees),
