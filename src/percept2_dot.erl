@@ -1,10 +1,10 @@
 -module(percept2_dot).
 
--export([gen_callgraph_img/1,
-         gen_process_tree_img/0,
-         gen_callgraph_slice_img/3]).
+-export([gen_callgraph_img/2,
+         gen_process_tree_img/1,
+         gen_callgraph_slice_img/4]).
 
--export([gen_process_tree_img_1/1]).
+-export([gen_process_tree_img_1/2]).
 
 -compile(export_all).
 
@@ -13,8 +13,9 @@
 %%% --------------------------------%%%
 %%% 	Callgraph Image generation  %%%
 %%% --------------------------------%%%
--spec(gen_callgraph_img(Pid::pid_value()) -> ok|no_image|dot_not_found|gen_svg_failed).
-gen_callgraph_img(Pid) ->
+-spec(gen_callgraph_img(Pid::pid_value(), DestDir::file:filename()) 
+      -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
+gen_callgraph_img(Pid, DestDir) ->
     Res=ets:select(fun_calltree, 
                       [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
                         [],
@@ -23,21 +24,20 @@ gen_callgraph_img(Pid) ->
     case Res of 
         [] -> no_image;
         [Tree] -> 
-            gen_callgraph_img_1(Pid, Tree)
+            gen_callgraph_img_1(Pid, Tree, DestDir)
     end.
    
-gen_callgraph_img_1(Pid={pid, {P1, P2, P3}}, CallTree) ->
+gen_callgraph_img_1(Pid={pid, {P1, P2, P3}}, CallTree, DestDir) ->
     PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
                         "."++integer_to_list(P3),
     BaseName = "callgraph"++PidStr,
     DotFileName = BaseName++".dot",
-    SvgFileName =gen_svg_file_name(BaseName),
+    SvgFileName =gen_svg_file_name(BaseName, DestDir),
     fun_callgraph_to_dot(Pid, CallTree,DotFileName),
     dot_to_svg(DotFileName, SvgFileName).
 
-gen_svg_file_name(BaseName) ->
-    SvgDir = percept2_utils:svg_file_dir(),
-    filename:join([SvgDir, BaseName++".svg"]).
+gen_svg_file_name(BaseName, DestDir) ->
+    filename:join([DestDir, BaseName++".svg"]).
     
 fun_callgraph_to_dot(Pid, CallTree, DotFileName) ->
     Edges=gen_callgraph_edges(Pid, CallTree),
@@ -165,7 +165,7 @@ edge_list_to_dot(Edges, OutFileName, GraphName) ->
     ok = file:write_file(OutFileName, list_to_binary(String)).
 
 
-gen_callgraph_slice_img(Pid, Min, Max) ->
+gen_callgraph_slice_img(Pid, Min, Max, DestDir) ->
     Res=ets:select(fun_calltree, 
                    [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
                      [],
@@ -174,17 +174,17 @@ gen_callgraph_slice_img(Pid, Min, Max) ->
     case Res of 
         [] -> no_image;
         [Tree] -> 
-            gen_callgraph_slice_img_1(Pid, Tree, Min, Max)
+            gen_callgraph_slice_img_1(Pid, Tree, Min, Max, DestDir)
     end.
 
-gen_callgraph_slice_img_1(Pid={pid, {P1, P2, P3}}, CallTree, Min, Max) ->
+gen_callgraph_slice_img_1(Pid={pid, {P1, P2, P3}}, CallTree, Min, Max, DestDir) ->
     PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
         "."++integer_to_list(P3),
     MinTsStr=lists:flatten(io_lib:format("~.4f", [Min])),
     MaxTsStr=lists:flatten(io_lib:format("~.4f", [Max])),
     BaseName = "callgraph"++PidStr++MinTsStr++"_"++MaxTsStr,
     DotFileName = BaseName++".dot",
-    SvgFileName = gen_svg_file_name(BaseName),
+    SvgFileName = gen_svg_file_name(BaseName, DestDir),
     fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName),
     dot_to_svg(DotFileName, SvgFileName).
 
@@ -283,25 +283,25 @@ format_edge(V1, V2, Label) ->
 %%% ------------------------------------%%%
 %%% 	Process tree image generation   %%%
 %%% ------------------------------------%%%
-gen_process_tree_img() ->
-    Pid=spawn_link(?MODULE, gen_process_tree_img_1, [self()]),
+gen_process_tree_img(DestDir) ->
+    Pid=spawn_link(?MODULE, gen_process_tree_img_1, [self(), DestDir]),
     receive
         {Pid, done, Result} ->
             Result
     end.
     
-gen_process_tree_img_1(Parent)->
+gen_process_tree_img_1(Parent, DestDir)->
     CompressedTrees=percept2_db:gen_compressed_process_tree(),
     CleanPid =  percept2_db:select({system, nodes})==1,
-    Res=gen_process_tree_img(CompressedTrees, CleanPid),
+    Res=gen_process_tree_img(CompressedTrees, CleanPid, DestDir),
     Parent ! {self(), done, Res}.
 
-gen_process_tree_img([], _) ->
+gen_process_tree_img([], _, _) ->
     no_image;
-gen_process_tree_img(ProcessTrees, CleanPid) ->
+gen_process_tree_img(ProcessTrees, CleanPid, DestDir) ->
     BaseName = "processtree",
     DotFileName = BaseName++".dot",
-    SvgFileName = gen_svg_file_name(BaseName),
+    SvgFileName = gen_svg_file_name(BaseName, DestDir),
     ok=process_tree_to_dot(ProcessTrees,DotFileName, CleanPid),
     dot_to_svg(DotFileName, SvgFileName).
 
@@ -310,13 +310,14 @@ dot_to_svg(DotFileName, SvgFileName) ->
         false ->
             dot_not_found;
         _ ->
-            os:cmd("dot -Tsvg " ++ DotFileName ++ " > " ++ SvgFileName),
+            Cmd ="dot -Tsvg " ++ filename:absname(DotFileName) ++ " > " ++ SvgFileName,
+            _Res=os:cmd(Cmd),
             case filelib:is_file(SvgFileName) of 
                 true ->
                     file:delete(DotFileName),
                     ok;
                 false ->
-                    gen_svg_failed
+                    {gen_svg_failed, Cmd}
             end
     end.
   
