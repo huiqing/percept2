@@ -35,8 +35,6 @@
 
 -include("../include/percept2.hrl").
 
--include_lib("kernel/include/file.hrl").
-
 pmap(Fun, List) ->
     Parent = self(),
     Pid = spawn_link(?MODULE, pmap_0, [Parent, Fun, List]),
@@ -82,25 +80,4 @@ pforeach_wait(S,N) ->
     end.
 
 
-writeable(F) ->
-    case file:read_file_info(F) of
-        {ok, FileInfo} ->
-            case FileInfo#file_info.access of 
-                read_write -> true;
-                write -> true;
-                _ -> false
-            end;
-        _ -> false
-    end.
-
-
-svg_file_dir() ->
-    ServerRoot = filename:join([code:priv_dir(percept2), "server_root"]),
-    case percept2_utils:writeable(ServerRoot) of 
-        true ->
-            filename:join([ServerRoot, "svgs"]) ++"/";
-        false ->
-            Dir="/tmp/percept2/",
-            ok=filelib:ensure_dir(Dir),
-            Dir
-    end.
+   
