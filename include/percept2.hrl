@@ -50,7 +50,7 @@
           }).
 
 -record(information, {
-          id			 :: pid_value() | port()|special_atom(), 
+          id			 :: pid_value() | port()|special_atom()|{pid, special_atom()},
           name = undefined	 :: atom()| string()|'undefined'|special_atom(), 
           entry = undefined	 :: true_mfa()|'undefined'|special_atom(), 
           start = undefined 	 :: timestamp()|'undefined'|special_atom(),
