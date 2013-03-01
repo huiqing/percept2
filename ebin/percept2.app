@@ -26,7 +26,7 @@
                          egd_primitives,
                          egd_render,
                          gen_plt_script,
-                         multi_node_trace,
+                         percept2_multi_node_trace,
                          percept2,
                          percept2_analyzer,
                          percept2_data_gen,
