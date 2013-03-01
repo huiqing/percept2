@@ -50,6 +50,8 @@
 
 -define(STOP_TIMEOUT, 1000).
 
+-compile(export_all).
+
 %%% ------------------------%%%
 %%% 	Type definitions    %%%
 %%% ------------------------%%%
@@ -2393,8 +2395,10 @@ add_to_1({Fun, CNT}, Acc) ->
 %% process_tree_size_1({_Parent, Children}) ->
 %%     1 + process_tree_size(Children).
 
-
+  
 -type process_tree()::{#information{},[process_tree()]}.
+
+-spec gen_compressed_process_tree/0::()->[process_tree()].
 gen_compressed_process_tree()->
     Trees = gen_process_tree(),
     put(last_index, 0),
@@ -2404,35 +2408,41 @@ gen_compressed_process_tree()->
 
 -spec gen_process_tree/0::()->[process_tree()].
 gen_process_tree() ->
-    Res = select({information,procs}),
-    List = lists:keysort(#information.start,Res),  
+    Res =ets:select(pdb_info, [{#information{id = {pid,'$1'},  
+                                             start='$2', children='$3', _='_'},
+                                [],[{{{{pid, '$1'}}, '$2','$3'}}]}]),
+    List = lists:keysort(2,Res),
     gen_process_tree(List, []).
 
--spec gen_process_tree/2::([#information{}], [process_tree()]) 
+-spec gen_process_tree/2::([{pid_value(),any(), any()}],[process_tree()]) 
                           -> [process_tree()].
 gen_process_tree([], Out) ->
     add_ancestors(Out);
-gen_process_tree([Elem|Tail], Out) ->
-    Children = Elem#information.children,
+gen_process_tree([_Elem={Pid, _Start, Children}|Tail], Out) ->
     {ChildrenElems, Tail1} = lists:partition(
-                               fun(E) -> 
-                                       lists:member(E#information.id, Children) 
+                               fun({Pid1, _, _}) -> 
+                                       lists:member(Pid1, Children) 
                                end, Tail),
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
-    gen_process_tree(NewTail, [{Elem, NewChildren}|Out]).
+    [Parent] = ets:lookup(pdb_info, Pid),
+    gen_process_tree(NewTail, [{Parent, NewChildren}|Out]).
 
--spec gen_process_tree_1/3::([#information{}], [#information{}],[process_tree()]) 
-                          -> {[process_tree()], [#information{}]}.
+-spec gen_process_tree_1/3::([{pid_value(),any(), any()}],
+                             [{pid_value(),any(), any()}],
+                             [process_tree()])
+                            -> {[process_tree()],[{pid_value(),any(), any()}]}.
 gen_process_tree_1([], Tail, NewChildren) ->
     {NewChildren, Tail};
-gen_process_tree_1([C|Cs], Tail, Out) ->
-    Children = C#information.children,
+gen_process_tree_1([_C={Pid, _Start, Children}|Cs], Tail, Out) ->
     {ChildrenElems, Tail1} = lists:partition(
-                               fun(E) -> 
-                                       lists:member(E#information.id, Children)
-                               end, Tail),                           
+                               fun({Pid1, _, _}) -> 
+                                       lists:member(Pid1, Children) 
+                               end, Tail),
+    [Parent] = ets:lookup(pdb_info, Pid),
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
-    gen_process_tree_1(Cs, NewTail, [{C, NewChildren}|Out]).
+    gen_process_tree_1(Cs, NewTail, [{Parent, NewChildren}|Out]).
+
+
 
 -spec add_ancestors/1::([process_tree()])->[process_tree()].
 add_ancestors(ProcessTree) ->
