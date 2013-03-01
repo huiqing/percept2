@@ -61,7 +61,10 @@
 %% Application callback functions.
 -export([start/2, stop/1, parse_and_insert/3]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
+-include_lib("kernel/include/file.hrl").
 
 -type module_name()::atom().
 
@@ -324,10 +327,11 @@ start_webserver(Port) when is_integer(Port) ->
 		{ok, Pid} ->
 		    AssignedPort = find_service_port_from_pid(inets:services_info(), Pid),
 		    {ok, Host} = inet:gethostname(),
+                    TmpDir= get_svg_alias_dir(Config),
 		    %% workaround until inets can get me a service from a name.
-		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host}) end),
+		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host, TmpDir}) end),
 		    register(percept_httpd, Mem),
-                    rm_tmp_files(),
+                    rm_tmp_files(TmpDir),
                     case ets:info(history_html) of 
                         undefined ->
                             ets:new(history_html, [named_table, public, {keypos, #history_html.id},
@@ -372,8 +376,9 @@ do_stop(Port, Pid)->
         undefined ->
             {error, not_started};
         Pid2 ->
+            TmpDir = get_svg_alias_dir(),
+            rm_tmp_files(TmpDir),
             Pid ! quit,
-            rm_tmp_files(),
             case ets:info(egd_font_table) of 
                 undefined -> ok;
                 _  ->ets:delete(egd_font_table)
@@ -467,19 +472,22 @@ find_service_port_from_pid([{_, _, _} | Services], Pid) ->
     find_service_port_from_pid(Services, Pid).
     
 %% service memory
-service_memory({Pid, Port, Host}) ->
+service_memory({Pid, Port, Host, TmpDir}) ->
     receive
 	quit -> 
 	    ok;
 	{Reply, get_port} ->
 	    Reply ! Port,
-	    service_memory({Pid, Port, Host});
+	    service_memory({Pid, Port, Host, TmpDir});
 	{Reply, get_host} -> 
 	    Reply ! Host,
-	    service_memory({Pid, Port, Host});
+	    service_memory({Pid, Port, Host, TmpDir});
 	{Reply, get_pid} -> 
 	    Reply ! Pid,
-	    service_memory({Pid, Port, Host})
+	    service_memory({Pid, Port, Host, TmpDir});
+        {Reply, get_dir} ->
+            Reply ! TmpDir,
+            service_memory({Pid, Port, Host, TmpDir})
     end.
 
 % Create config data for the webserver 
@@ -490,6 +498,7 @@ get_webserver_config(Servername, Port)
     Root = filename:join([Path, "server_root"]),
     MimeTypesFile = filename:join([Root,"conf","mime.types"]),
     {ok, MimeTypes} = httpd_conf:load_mime_types(MimeTypesFile),
+    TmpDir = get_tmp_dir(),
     Config = [
 	% Roots
 	{server_root, Root},
@@ -501,7 +510,7 @@ get_webserver_config(Servername, Port)
 	{script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
 	{alias,{"/javascript/",filename:join([Root, "scripts"]) ++ "/"}},
 	{alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
-        {alias,{"/svgs/", percept2_utils:svg_file_dir()}},
+        {alias,{"/svgs/", TmpDir}},
 	{alias,{"/css/", filename:join([Root, "css"]) ++ "/"}},
 	
 	% Logs
@@ -530,8 +539,7 @@ get_webserver_config(Servername, Port)
     {ok, Config}.
 
 
-rm_tmp_files() ->
-    Dir =percept2_utils:svg_file_dir(),
+rm_tmp_files(Dir) ->
     case file:list_dir(Dir) of 
         {error, Error} ->
             {error, Error};
@@ -540,4 +548,70 @@ rm_tmp_files() ->
              ||F<-FileNames,
                lists:prefix("callgraph", F) orelse
                    lists:prefix("processtree", F)]
+    end.
+
+get_svg_alias_dir() ->
+    percept_httpd!{self(), get_dir},
+    receive 
+        Dir ->
+            Dir
+    end.
+get_svg_alias_dir(Config) ->
+    [Dir]=[Dir||{alias,{"/svgs/", Dir}}<-Config],
+    Dir.
+
+get_tmp_dir()->
+    ServerRoot = filename:join([code:priv_dir(percept2), "server_root"]),
+    case writeable(ServerRoot) of 
+         true ->
+             filename:join([ServerRoot, "svgs"]) ++"/";
+         false ->
+             Dir="/tmp/percept2/",
+             case filelib:ensure_dir(Dir) of
+                 ok -> {ok, Dir};
+                 {error, _Reason} ->
+                     get_user_input_dir()
+             end
+     end.
+
+get_user_input_dir() ->
+    Msg ="I could not find a directory with write permission to store "
+        "temporary files, please specify a directory.\n",
+    get_user_input_dir(Msg).
+get_user_input_dir(Msg) ->
+    io:format("~s\n", [Msg]),
+    Input=io:get_line("Dir: "),
+    [$\n|Str] = lists:reverse(Input),
+    Str1 = filename:join(lists:reverse(Str), "."),
+    [_|Str2] = lists:reverse(Str1),
+    Dir = lists:reverse(Str2),             
+    case filelib:is_dir(Dir) of 
+        true ->
+            case writeable(Dir) of 
+                true ->
+                    Dir;
+                false ->
+                    Msg1="I don't have write permission to the directory given, "
+                        "please specify another directory.\n", 
+                    get_user_input_dir(Msg1)
+            end;
+        false ->
+            case filelib:ensure_dir(Dir) of 
+                ok ->
+                    Dir;
+                {error,_Reason} ->
+                    Msg2="The directory given does not exist, or could not be created, "
+                        "please specify another directory.\n",
+                    get_user_input_dir(Msg2)
+            end
+    end.
+writeable(F) ->
+    case file:read_file_info(F) of
+        {ok, FileInfo} ->
+            case FileInfo#file_info.access of 
+                read_write -> true;
+                write -> true;
+                _ -> false
+            end;
+        _ -> false
     end.
