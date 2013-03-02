@@ -564,15 +564,22 @@ get_tmp_dir()->
     ServerRoot = filename:join([code:priv_dir(percept2), "server_root"]),
     case writeable(ServerRoot) of 
          true ->
-             filename:join([ServerRoot, "svgs"]) ++"/";
-         false ->
-             Dir="/tmp/percept2/",
-             case filelib:ensure_dir(Dir) of
-                 ok -> {ok, Dir};
-                 {error, _Reason} ->
-                     get_user_input_dir()
-             end
-     end.
+            SvgDir=filename:join([ServerRoot, "svgs"]) ++"/",
+            case filelib:ensure_dir(SvgDir) of 
+                ok -> SvgDir;
+                false ->
+                    get_tmp_dir_1()
+            end;
+        false ->
+            get_tmp_dir_1()
+    end.
+get_tmp_dir_1()->
+    Dir="/tmp/percept2/",
+    case filelib:ensure_dir(Dir) of
+        ok -> Dir;
+        {error, _Reason} ->
+            get_user_input_dir()
+    end.
 
 get_user_input_dir() ->
     Msg ="I could not find a directory with write permission to store "
