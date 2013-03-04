@@ -37,10 +37,10 @@
          func_callgraph_content/3
         ]).
 
-
 -export([get_option_value/2,
          seconds2ts/2]).
 
+%% experimental.
 -compile(export_all).
 
 -include("../include/percept2.hrl").
@@ -232,6 +232,7 @@ callgraph_visualisation_page(SessionID, Env, Input) ->
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
+
 
 -spec(callgraph_slice_visualisation_page(pid(), list(), string()) -> 
              ok | {error, term()}).
@@ -1664,6 +1665,8 @@ get_option_value(Option, Options) ->
             Value;
         {value, {Option, Value}} when Option =="node2" -> 
             Value;
+        {value, {Option, Value}} when Option =="mod" ->
+            Value;
         {value, {Option, Value}} -> get_number_value(Value);
         _ -> {error, undefined}
     end.
@@ -1850,4 +1853,34 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 			end,
 			TupleList),
     group_by(N,TupleList2,Acc ++ [TupleList1]).
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+-spec(callgraph(pid(), list(), string()) -> 
+             ok | {error, term()}).
+callgraph(SessionID, _Env, Input) ->
+    Query = httpd:parse_query(Input),
+    Pid = get_option_value("pid", Query),
+    Str=percept2_callgraph:gen_callgraph_txt_data(Pid),
+    mod_esi:deliver(SessionID, Str).
+   
+-spec(module_content(pid(), list(), string()) -> 
+             ok | {error, term()}).
+module_content(SessionID, _Env, Input) ->
+    Query = httpd:parse_query(Input),
+    ModName = get_option_value("mod", Query),
+    Str =case percept2_callgraph:get_file(list_to_atom(ModName)) of 
+             file_non_existing -> 
+                 "";
+             FileName ->
+                 case file:read_file(FileName) of 
+                     {ok, Binary} -> binary_to_list(Binary);
+                     _ -> ""
+                 end
+         end,
+    mod_esi:deliver(SessionID, Str).
+   
 
