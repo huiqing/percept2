@@ -567,7 +567,7 @@ get_tmp_dir()->
             SvgDir=filename:join([ServerRoot, "svgs"]) ++"/",
             case filelib:ensure_dir(SvgDir) of 
                 ok -> SvgDir;
-                false ->
+                {error, _} ->
                     get_tmp_dir_1()
             end;
         false ->
