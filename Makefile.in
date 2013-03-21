@@ -51,7 +51,9 @@ install: default
 	install -m 775 src/*.erl $(LIB_DIR)/src
 	install -m 775 -d $(LIB_DIR)/include
 	install -m 775 include/*.hrl $(LIB_DIR)/include
-	install -m 775 -d $(LIB_DIR)/priv
+	install -m 775 -d $(LIB_DIR)/gplt	
+	install -m 775 gplt/*.plt $(LIB_DIR)/gplt	
+	install -m 775 -d $(LIB_DIR)/priv	
 	install -m 775 -d $(LIB_DIR)/priv/fonts	
 	install -m 775 -d $(LIB_DIR)/priv/logs	
 	install -m 775 -d $(LIB_DIR)/priv/server_root/conf	
