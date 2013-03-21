@@ -34,7 +34,8 @@
          process_tree_visualisation_page/3,
          callgraph_visualisation_page/3,
          callgraph_slice_visualisation_page/3,
-         func_callgraph_content/3
+         func_callgraph_content/3,
+         visualise_sampling_data_page/3
         ]).
 
 -export([get_option_value/2,
@@ -465,7 +466,7 @@ concurrency_content(Env, Input) ->
     end.
 -spec(concurrency_content_1(list(), string()) -> string()).
 concurrency_content_1(_Env, Input) ->
-    IDs = get_pids_to_compare(Input),
+    IDs = lists:sort(get_pids_to_compare(Input)),
     StartTs = percept2_db:select({system, start_ts}),
     {MinTs, MaxTs} = percept2_db:select({activity, {min_max_ts, IDs}}),
     case {MinTs, MaxTs} of 
@@ -1344,6 +1345,10 @@ process_gen_graph_img_result(Content, GenImgRes) ->
         {gen_svg_failed, Cmd} ->
             Msg = "Percept2 failed to use the 'dot' command (from Graphviz) to generate a .svg file. <br> The command "
                 "Percept2 tried to run was: <br>" ++ Cmd,
+            graph_img_error_page(Msg);
+        {gnuplot_failed, Cmd} ->
+            Msg = "Percept2 failed to use the 'gnuplot' command to generate a .png file. <br> The command "
+                "Percept2 tried to run was: <br>" ++ Cmd,
             graph_img_error_page(Msg)
     end.
 
@@ -1763,6 +1768,7 @@ menu_1(Min, Max) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
      	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
+        <li><a href=/cgi-bin/percept2_html/visualise_sampling_data_page>visualise sampling data</a></li>
         <li><a href=/cgi-bin/percept2_html/inter_node_message_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">inter-node messaging</a></li>
         <li><a href=/cgi-bin/percept2_html/active_funcs_page?range_min=" ++
@@ -1857,6 +1863,9 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                            %%
+%%       For callgraph visualisaton.          %%
+%%                                            %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -spec(callgraph(pid(), list(), string()) -> 
@@ -1883,4 +1892,159 @@ module_content(SessionID, _Env, Input) ->
          end,
     mod_esi:deliver(SessionID, Str).
    
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                       %%
+%% For sample based profiling.                           %%
+%%                                                       %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec(visualise_sampling_data_page(pid(), list(), string()) -> 
+             ok | {error, term()}).
+visualise_sampling_data_page(SessionID, Env, Input) ->
+    try 
+        Menu = menu_1(0,0),
+        deliver_page(SessionID, Menu, sample_page_content())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
 
+sample_page_content() ->
+    "<div id=\"content\">
+	<form name=load_sample_data_file method=post action=/cgi-bin/percept2_html/load_sample_data_page>
+	<center>
+        <br></br>
+	<table>
+           <tr> <td  align=left> Select sampling data type:</td> 
+                <td  align=left> <select name=\"type\">
+                     <option value=\"mem_info\">Memory Usage</option>
+                     <option value=\"message_queue_len\">Message Queue Length</option>
+                     <option value=\"run_queues\">Run-queue Lengths</option>
+                      <option value=\"run_queue\">Sum Run-queue Length</option>
+                     <option value=\"process_count\">Process Count</option>
+                     <option value=\"scheduler_utilisation\">Scheduler Utilisation</option>
+                     <option value=\"schedulers_online\">Schedulers Online</option>
+                     </select></td> 
+               </tr>
+        </table>
+        <br></br>
+        <table>
+           <tr><td align=left>Enter file to analyse:</td>
+               <td><input type=file name=file size=60 /> </tr>
+           <tr><td align=left>Copy and paste path to file here:</td> 
+               <td align=left><input type=text name=path size=75/> </td></tr>
+           <tr><td><input type=submit value=\"Generate Graph\" /> </td></tr>
+        </table>
+  	</center>
+	</form>
+	</div>". 
+
+-spec(load_sample_data_page(pid(), list(), string()) -> ok | {error, term()}).
+load_sample_data_page(SessionID, Env, Input) ->
+    try
+        mod_esi:deliver(SessionID, header()),
+        mod_esi:deliver(SessionID, sample_page_content(SessionID, Env, Input)),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
+sample_page_content(_SessionId, _Env, Input) ->
+    Query = httpd:parse_query(Input),
+    {_,{_,Type}} = lists:keysearch("type", 1, Query),
+    {_,{_,Path}} = lists:keysearch("path", 1, Query),
+    {_,{_,File}} = lists:keysearch("file", 1, Query),
+    Filename = filename:join(Path, File),
+    case file:read_file_info(Filename) of
+	{ok, _} ->
+            case check_file_content(Filename, Type) of 
+                {ok, Cols} -> 
+                    analyze_sample_data(Filename, Type, Cols);
+                {error, Error} ->
+                    error_msg(Error)
+            end;
+        {error, Reason} ->
+	    error_msg("Data file error:" ++ term2html(Reason))
+    end.
+
+
+check_file_content(Filename, Type) ->
+    case  file:open(Filename, [raw, read]) of 
+        {error, _} ->
+            {error, "Percept2 failed to open the data file."};
+        {ok, FileDev} ->
+            case file:read_line(FileDev) of 
+                {ok, Line} ->
+                    case lists:prefix("#"++Type, Line)  of 
+                        true ->
+                            case file:read_line(FileDev) of 
+                                {ok, Line1} ->
+                                    Cols=string:tokens(Line1, " "),
+                                    {ok, Cols-1};
+                                {error, _} ->
+                                    {error, "Percept2 failed to read from data file."}
+                            end;
+                        false ->
+                          {error, "The type of data selected, "++ Type ++ 
+                               ",does not match the data file content."}
+                    end;
+                {error, _} ->
+                    {error, "Percept2 failed to read from data file."}
+            end
+    end.
+
+analyze_sample_data(DataFileName, Type, Cols) ->
+    SvgDir = percept2:get_svg_alias_dir(),
+    ImgFileName=Type++".png",
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
+    ScriptFileName=filename:join(
+                     [code:lib_dir(percept2), "gplt", 
+                      Type++".plt"]),
+    Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
+        "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
+        "</div>",
+    GenImgRes=gnuplot_gen_png(DataFileName, ScriptFileName, 
+                              Type, Cols,ImgFullFilePath),
+    process_gen_graph_img_result(Content, GenImgRes).
+   
+
+gnuplot_gen_png(DataFileName, ScriptFileName, Type, Cols, OutputFileName) ->
+    case os:find_executable("gnuplot") of
+        false ->
+            gnuplot_not_found;
+        _ ->
+            Cmd = compose_gnuplot_cmd(DataFileName, Type, Cols, 
+                                      ScriptFileName,OutputFileName),
+            _Res=os:cmd(Cmd),
+            case filelib:is_regular(OutputFileName) of
+                true ->
+                    case file:read_file_info(OutputFileName) of
+                        {ok, FileInfo} ->
+                            case FileInfo#file_info.size > 0 of
+                                true ->
+                                    ok;
+                                false ->
+                                    {gnuplot_failed, Cmd}
+                            end;
+                        _ ->
+                            {gnuplot_failed, Cmd}
+                    end;
+               false ->
+                   {gnuplot_failed, Cmd}
+            end
+    end.
+
+compose_gnuplot_cmd(DataFile, run_queues, Cols, ScriptFile, OutputFile) ->
+    compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile);
+compose_gnuplot_cmd(DataFile, scheduler_utilisation, Cols, ScriptFile, OutputFile) ->
+    compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile);
+compose_gnuplot_cmd(DataFile, _Type, _Cols, ScriptFile, OutputFile) ->
+    "gnuplot -e \"filename='"++DataFile++"'\" " ++ 
+        ScriptFile ++ " > " ++ OutputFile.
+
+compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile) ->
+    "gnuplot -e \"n=\"" ++ integer_to_list(Cols) ++ "; " ++
+          "filename='" ++ DataFile ++ "'\" " ++
+              ScriptFile ++ " > " ++ OutputFile.
