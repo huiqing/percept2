@@ -1980,7 +1980,7 @@ check_file_content(Filename, Type) ->
                             case file:read_line(FileDev) of 
                                 {ok, Line1} ->
                                     Cols=string:tokens(Line1, " "),
-                                    {ok, Cols-1};
+                                    {ok, length(Cols)-1};
                                 {error, _} ->
                                     {error, "Percept2 failed to read from data file."}
                             end;
