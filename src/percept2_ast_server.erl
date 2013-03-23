@@ -31,7 +31,7 @@
 -compile(export_all).
 
 %% API
--export([parse_file/1]).
+%%-export([parse_file/1]).
          
 parse_file(FName) ->
     case percept2_epp_dodger:parse_file(FName,[]) of 
@@ -75,7 +75,7 @@ do_add_token_and_ranges(Toks, _Forms=[F| Fs], NewFs) ->
     {FormToks0, RemToks} = get_form_tokens(Toks, F, Fs), 
     FormToks = lists:reverse(FormToks0),
     F1 = update_ann(F, {toks, FormToks}),
-    F2 = add_category(add_range(F1, FormToks)),
+    F2 = add_range(F1, FormToks),
     do_add_token_and_ranges(RemToks, Fs, [F2| NewFs]).
 
 get_form_tokens(Toks, F, Fs) ->
@@ -138,7 +138,7 @@ start_pos(F) ->
 add_range(AST, Toks) ->
     QAtomPs= [Pos||{qatom, Pos, _Atom}<-Toks],
     Toks1 =[Tok||Tok<-Toks, not (is_whitespace_or_comment(Tok))],
-    api_ast_traverse:full_buTP(fun do_add_range/2, AST, {Toks1, QAtomPs}).
+    full_buTP(fun do_add_range/2, AST, {Toks1, QAtomPs}).
 
 do_add_range(Node, {Toks, QAtomPs}) ->
     {L, C} = case percept2_syntax:get_pos(Node) of
@@ -591,118 +591,6 @@ is_string({string, _, _}) ->
 is_string(_) -> false.
 
 
-%% =====================================================================
-% @doc Attach syntax category information to AST nodes.
-%% =====================================================================
-%% -type (category():: pattern|expression|guard_expression|record_type|generator
-%%                    record_field| {macro_name, none|int(), pattern|expression}
-%%                    |operator
-%%-spec(add_category(Node::syntaxTree()) -> syntaxTree()).
-add_category(Node) ->
-    add_category(Node, none).
-
-add_category(Node, C) ->
-    {Node1, _} =api_ast_traverse:stop_tdTP(fun do_add_category/2, Node, C),
-    Node1.
-
-do_add_category(Node, C) when is_list(Node) ->
-    {[add_category(E, C)||E<-Node], true};
-do_add_category(Node, C) ->
-    case percept2_syntax:type(Node) of
-	clause ->
-	    Body = percept2_syntax:clause_body(Node),
-	    Ps = percept2_syntax:clause_patterns(Node),
-	    G = percept2_syntax:clause_guard(Node),
-	    Body1 = [add_category(B, expression)||B<-Body],
-	    Ps1 = [add_category(P, pattern)||P<-Ps]
-,	    G1 = case G of
-		     none -> none;
-		     _ -> add_category(G, guard_expression)
-		 end,
-	    Node1 =rewrite(Node, percept2_syntax:clause(Ps1, G1, Body1)),
-	    {Node1, true};
-	match_expr ->
-	    P = percept2_syntax:match_expr_pattern(Node),
-	    B = percept2_syntax:match_expr_body(Node),
-	    P1 = add_category(P, pattern),
-	    B1 = add_category(B, C),
-	    Node1=rewrite(Node, percept2_syntax:match_expr(P1, B1)),
-            {update_ann(Node1, {category, C}), true};
-        generator ->
-	    P = percept2_syntax:generator_pattern(Node),
-	    B = percept2_syntax:generator_body(Node),
-	    P1 = add_category(P, pattern),
-	    B1 = add_category(B, expression),
-	    Node1=rewrite(Node, percept2_syntax:generator(P1, B1)),
-	    {update_ann(Node1, {category, generator}), true};
-	binary_generator ->
-	    P = percept2_syntax:binary_generator_pattern(Node),
-	    B = percept2_syntax:binary_generator_body(Node),
-	    P1 = add_category(P, pattern),
-	    B1 = add_category(B, expression),
-	    Node1=rewrite(Node, percept2_syntax:binary_generator(P1, B1)),
-	    {update_ann(Node1, {category, generator}), true};
-	macro ->
-	    Name = percept2_syntax:macro_name(Node),
-	    Args = percept2_syntax:macro_arguments(Node),
-            Name1 = case Args of 
-                        none -> add_category(Name, C);  %% macro with no args are not annoated as macro_name.
-                        _ ->add_category(Name, macro_name)
-                    end,
-	    Args1 = case Args of
-			none -> none;
-			_ -> add_category(Args, C) 
-		    end,
-	    Node1 = rewrite(Node, percept2_syntax:macro(Name1, Args1)),
-	    {update_ann(Node1, {category, C}), true};
-	record_access ->
-            Argument = percept2_syntax:record_access_argument(Node),
-            Type = percept2_syntax:record_access_type(Node),
-            Field = percept2_syntax:record_access_field(Node),
-            Argument1 = add_category(Argument, C),
-            Type1 = case Type of
-                        none -> none;
-                        _ -> add_category(Type, record_type)
-		   end,
-            Field1 = add_category(Field, record_field),
-            Node1 = rewrite(Node, percept2_syntax:record_access(Argument1, Type1, Field1)),
-            {update_ann(Node1, {category, C}), true};
-	record_expr ->
-	    Argument = percept2_syntax:record_expr_argument(Node),
-	    Type = percept2_syntax:record_expr_type(Node),
-	    Fields = percept2_syntax:record_expr_fields(Node),
-	    Argument1 = case Argument of
-			    none -> none;
-			    _ -> add_category(Argument, C)
-			end,
-	    Type1 = add_category(Type, record_type),
-	    Fields1 =[percept2_syntax:add_ann({category, record_field},
-                                              rewrite(F, percept2_syntax:record_field(
-                                                              add_category(percept2_syntax:record_field_name(F), record_field),
-                                                              case percept2_syntax:record_field_value(F) of
-                                                                  none ->
-                                                                      none;
-                                                                  V ->
-                                                                      add_category(V, C)
-                                                              end))) || F <- Fields],
-	    Node1 = rewrite(Node, percept2_syntax:record_expr(Argument1, Type1, Fields1)),
-	    {update_ann(Node1, {category, C}), true};
-	record_index_expr ->
-	    Type = percept2_syntax:record_index_expr_type(Node),
-	    Field = percept2_syntax:record_index_expr_field(Node),
-	    Type1 = add_category(Type, record_type),
-	    Field1 = add_category(Field, record_field),
-	    Node1 = rewrite(Node, percept2_syntax:record_index_expr(Type1, Field1)),
-	    {update_ann(Node1, {category, C}), true};
-	operator ->
-	    {update_ann(Node, {category, operator}), true};
-	_ -> case C of
-		 none ->
-		     {Node, false};
-		 _ -> 
-		     {update_ann(Node, {category, C}),false}
-	     end
-    end.
 
 rewrite(Tree, Tree1) ->
     percept2_syntax:copy_attrs(Tree, Tree1).
@@ -770,4 +658,42 @@ split_lines_1(Cs, Cs1, Ls, Prefix) ->
 push(N, C, Cs) when N > 0 -> push(N - 1, C, [C | Cs]);
 push(0, _, Cs) -> Cs.
 
-              
+
+full_tdTP(Function, Node, Others) ->
+    case Function(Node, Others) of
+      {Node1, Changed} ->
+	  case percept2_syntax:subtrees(Node1) of
+	    [] -> {Node1, Changed};
+	    Gs ->
+		Gs1 = [[full_tdTP(Function, T, Others) || T <- G] || G <- Gs],
+		Gs2 = [[N || {N, _B} <- G] || G <- Gs1],
+		G = [[B || {_N, B} <- G] || G <- Gs1],
+		Node2 = percept2_syntax:make_tree(percept2_syntax:type(Node1), Gs2),
+		{rewrite(Node1, Node2), Changed or lists:member(true, lists:flatten(G))}
+	  end
+    end.
+
+stop_tdTP(Function, Node, Others) ->
+     case Function(Node, Others) of
+       {Node1, true} -> {Node1, true};
+       {Node1, false} ->
+           case percept2_syntax:subtrees(Node1) of
+             [] -> {Node1, false};
+             Gs ->
+                 Gs1 = [[stop_tdTP(Function, T, Others) || T <- G] || G <- Gs],
+                 Gs2 = [[N || {N, _B} <- G] || G <- Gs1],
+                 G = [[B || {_N, B} <- G] || G <- Gs1],
+                 Node2 = percept2_syntax:make_tree(percept2_syntax:type(Node1), Gs2),
+                 {rewrite(Node1, Node2), lists:member(true, lists:flatten(G))}
+           end
+     end.
+
+
+full_buTP(Fun, Tree, Others) ->
+    case percept2_syntax:subtrees(Tree) of
+      [] -> Fun(Tree, Others); 
+      Gs ->
+	  Gs1 = [[full_buTP(Fun, T, Others) || T <- G] || G <- Gs],
+	  Tree1 = percept2_syntax:make_tree(percept2_syntax:type(Tree), Gs1),
+	  Fun(rewrite(Tree, Tree1), Others)
+    end.
