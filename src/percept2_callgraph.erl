@@ -117,10 +117,11 @@ file_server_loop(State) ->
     end.
 
 get_fun_locations(FName) ->
-    {ok, Forms} =  epp_dodger:parse_file(FName),
-    [{{erl_syntax:atom_value(erl_syntax:function_name(Form)), 
-       erl_syntax:function_arity(Form)},
-      {erl_syntax:get_pos(Form),1}}
+    {ok, AST} =  percept2_ast_server:parse_file(FName),
+    Forms = wrangler_syntax:form_list_elements(AST),
+    [{{wrangler_syntax:atom_value(wrangler_syntax:function_name(Form)), 
+       wrangler_syntax:function_arity(Form)},
+      percept2_ast_server:get_range(Form)}
       ||Form<-Forms, 
        erl_syntax:type(Form)==function].
 
