@@ -1979,7 +1979,7 @@ check_file_content(Filename, Type) ->
                         true ->
                             case file:read_line(FileDev) of 
                                 {ok, Line1} ->
-                                    Cols=string:tokens(Line1, " "),
+                                    Cols=string:tokens(Line1, "\ "),
                                     {ok, length(Cols)-1};
                                 {error, _} ->
                                     {error, "Percept2 failed to read from data file."}
@@ -2036,15 +2036,15 @@ gnuplot_gen_png(DataFileName, ScriptFileName, Type, Cols, OutputFileName) ->
             end
     end.
 
-compose_gnuplot_cmd(DataFile, run_queues, Cols, ScriptFile, OutputFile) ->
+compose_gnuplot_cmd(DataFile, "run_queues", Cols, ScriptFile, OutputFile) ->
     compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile);
-compose_gnuplot_cmd(DataFile, scheduler_utilisation, Cols, ScriptFile, OutputFile) ->
+compose_gnuplot_cmd(DataFile, "scheduler_utilisation", Cols, ScriptFile, OutputFile) ->
     compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile);
 compose_gnuplot_cmd(DataFile, _Type, _Cols, ScriptFile, OutputFile) ->
     "gnuplot -e \"filename='"++DataFile++"'\" " ++ 
         ScriptFile ++ " > " ++ OutputFile.
 
 compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile) ->
-    "gnuplot -e \"n=\"" ++ integer_to_list(Cols) ++ "; " ++
+    "gnuplot -e \"n=" ++ integer_to_list(Cols) ++ "; " ++
           "filename='" ++ DataFile ++ "'\" " ++
               ScriptFile ++ " > " ++ OutputFile.
