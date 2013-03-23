@@ -49,8 +49,6 @@
 
 -export([string/1,string/2,string/3, string/4]).
 
--import(wrangler_scan, [reserved_word/1, escape_char/1]).
-
 -import(lists, [member/2, reverse/1]).
 
 -define(DEFAULT_TABWIDTH, 8).
@@ -658,3 +656,69 @@ done(Cs, Errors, _Toks, {Line, Col}, eof, _TabWidth,_FileFormat) ->
     {Error, ErrorPos} = lists:last(Errors),
     {done, {error, {ErrorPos, ?MODULE, Error}, {Line, Col}},
      Cs}.
+
+reserved_word('after') -> true;
+reserved_word('begin') -> true;
+reserved_word('case') -> true;
+reserved_word('try') ->
+    Opts = get_compiler_options(),
+    not member(disable_try, Opts);
+reserved_word('cond') ->
+    Opts = get_compiler_options(),
+    not member(disable_cond, Opts);
+reserved_word('catch') -> true;
+reserved_word('andalso') -> true;
+reserved_word('orelse') -> true;
+reserved_word('end') -> true;
+reserved_word('fun') -> true;
+reserved_word('if') -> true;
+reserved_word('let') -> true;
+reserved_word('of') -> true;
+reserved_word('query') -> true;
+reserved_word('receive') -> true;
+reserved_word('when') -> true;
+reserved_word('bnot') -> true;
+reserved_word('not') -> true;
+reserved_word('div') -> true;
+reserved_word('rem') -> true;
+reserved_word('band') -> true;
+reserved_word('and') -> true;
+reserved_word('bor') -> true;
+reserved_word('bxor') -> true;
+reserved_word('bsl') -> true;
+reserved_word('bsr') -> true;
+reserved_word('or') -> true;
+reserved_word('xor') -> true;
+reserved_word(_) -> false.
+
+
+escape_char($n) -> $\n;                         %\n = LF
+escape_char($r) -> $\r;                         %\r = CR
+escape_char($t) ->
+    $\t;                         %\t = TAB
+escape_char($v) -> $\v;                         %\v = VT
+escape_char($b) -> $\b;                         %\b = BS
+escape_char($f) -> $\f;                         %\f = FF
+escape_char($e) ->
+    $\e;                         %\e = ESC
+escape_char($s) ->
+    $\s;                         %\s = SPC
+escape_char($d) ->
+    $\d;                         %\d = DEL
+escape_char(C) -> C.
+
+
+get_compiler_options() ->
+    %% Who said that Erlang has no global variables?
+    case get(compiler_options) of
+      undefined ->
+	  Opts = case catch ets:lookup(compiler__tab,
+				       compiler_options)
+		     of
+		   [{compiler_options, O}] -> O;
+		   _ -> []
+		 end,
+	  put(compiler_options, Opts),
+	  Opts;
+      Opts -> Opts
+    end.
