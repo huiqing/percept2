@@ -34,7 +34,7 @@
 -export([parse_file/1]).
          
 parse_file(FName) ->
-    case wrangler_epp_dodger:parse_file(FName,[]) of 
+    case percept2_epp_dodger:parse_file(FName,[]) of 
         {ok, Forms} ->
             SyntaxTree = erl_recomment:recomment_forms(Forms, []),
             AnnAST = annotate_bindings(FName, SyntaxTree),
@@ -62,9 +62,9 @@ tokenize(File) ->
 %% range information to each node in the AST.
 %%-spec add_tokens(syntaxTree(), [token()]) -> syntaxTree(). 		 
 add_token_and_ranges(SyntaxTree, Toks) ->
-    Fs = wrangler_syntax:form_list_elements(SyntaxTree),
+    Fs = percept2_syntax:form_list_elements(SyntaxTree),
     NewFs = do_add_token_and_ranges(Toks, Fs),
-    rewrite(SyntaxTree, wrangler_syntax:form_list(NewFs)).
+    rewrite(SyntaxTree, percept2_syntax:form_list(NewFs)).
  
 do_add_token_and_ranges(Toks, Fs) ->
     do_add_token_and_ranges(lists:reverse(Toks), lists:reverse(Fs), []).
@@ -79,7 +79,7 @@ do_add_token_and_ranges(Toks, _Forms=[F| Fs], NewFs) ->
     do_add_token_and_ranges(RemToks, Fs, [F2| NewFs]).
 
 get_form_tokens(Toks, F, Fs) ->
-    case wrangler_syntax:type(F) of
+    case percept2_syntax:type(F) of
 	comment ->
 	    get_comment_form_toks(Toks, F, Fs);
 	_ ->
@@ -117,20 +117,20 @@ get_non_comment_form_toks(Toks, F, _Fs) ->
     {Ts1++Ts21, Ts22}.
 
 start_pos(F) ->
-    case wrangler_syntax:type(F) of
+    case percept2_syntax:type(F) of
 	error_marker ->
-	    case wrangler_syntax:revert(F) of
+	    case percept2_syntax:revert(F) of
 		{error, {_, {{Line, Col}, {_Line1, _Col1}}}} ->
 		    {Line, Col};
 		_ ->
-		    wrangler_syntax:get_pos(F)
+		    percept2_syntax:get_pos(F)
 	    end;
 	_ ->
-	    case wrangler_syntax:get_precomments(F) of
+	    case percept2_syntax:get_precomments(F) of
 		[] ->
-		    wrangler_syntax:get_pos(F);
+		    percept2_syntax:get_pos(F);
 		[Com| _Tl] ->
-		    wrangler_syntax:get_pos(Com)
+		    percept2_syntax:get_pos(Com)
 	    end
     end.
 
@@ -141,31 +141,31 @@ add_range(AST, Toks) ->
     api_ast_traverse:full_buTP(fun do_add_range/2, AST, {Toks1, QAtomPs}).
 
 do_add_range(Node, {Toks, QAtomPs}) ->
-    {L, C} = case wrangler_syntax:get_pos(Node) of
+    {L, C} = case percept2_syntax:get_pos(Node) of
 		 {Line, Col} -> {Line, Col};
 		 Line -> {Line, 0}
 	     end,
-    case wrangler_syntax:type(Node) of
+    case percept2_syntax:type(Node) of
 	variable ->
-	    Len = length(wrangler_syntax:variable_literal(Node)),
+	    Len = length(percept2_syntax:variable_literal(Node)),
 	    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}});
 	atom ->
             case lists:member({L,C}, QAtomPs) orelse 
                 lists:member({L,C+1}, QAtomPs) of  
                 true ->
-                    Len = length(atom_to_list(wrangler_syntax:atom_value(Node))),
+                    Len = length(atom_to_list(percept2_syntax:atom_value(Node))),
                     Node1 = update_ann(Node, {qatom, true}),
                     update_ann(Node1, {range, {{L, C}, {L, C + Len + 1}}});
                 false ->
-                    Len = length(atom_to_list(wrangler_syntax:atom_value(Node))),
+                    Len = length(atom_to_list(percept2_syntax:atom_value(Node))),
                     update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}})
 	    end;
         operator ->
-	    Len = length(atom_to_list(wrangler_syntax:atom_value(Node))),
+	    Len = length(atom_to_list(percept2_syntax:atom_value(Node))),
 	    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}});
 	char -> update_ann(Node, {range, {{L, C}, {L, C}}});
 	integer ->
-            Len = length(wrangler_syntax:integer_literal(Node)),
+            Len = length(percept2_syntax:integer_literal(Node)),
 	    update_ann(Node, {range, {{L, C}, {L, C + Len - 1}}});
 	string ->
             Toks1 = lists:dropwhile(fun (T) -> 
@@ -177,7 +177,7 @@ do_add_range(Node, {Toks, QAtomPs}) ->
                                                end, Toks1),
 	    Toks3 = lists:filter(fun (T) -> is_string(T) end, Toks21),
             Str = case Toks3 of 
-                      [] -> wrangler_syntax:string_value(Node);
+                      [] -> percept2_syntax:string_value(Node);
                       _ -> element(3, lists:last(Toks3))
                   end,
             Lines =split_lines(Str),
@@ -212,11 +212,11 @@ do_add_range(Node, {Toks, QAtomPs}) ->
                                  {range, {{L, C}, {L, C}}});
         nil -> update_ann(Node, {range, {{L, C}, {L, C + 1}}});
 	module_qualifier ->
-            Arg = wrangler_syntax:module_qualifier_argument(Node),
-            Field = wrangler_syntax:module_qualifier_body(Node),
+            Arg = percept2_syntax:module_qualifier_argument(Node),
+            Field = percept2_syntax:module_qualifier_body(Node),
             {S1,_E1} = get_range(Arg),
             {_S2,E2} = get_range(Field),
-            Node1 = wrangler_syntax:set_pos(Node, S1),
+            Node1 = percept2_syntax:set_pos(Node, S1),
             update_ann(Node1, {range, {S1, E2}});
 	list ->  
             Es = list_elements(Node),
@@ -230,8 +230,8 @@ do_add_range(Node, {Toks, QAtomPs}) ->
                     Node
             end;
         application ->
-	    O = wrangler_syntax:application_operator(Node),
-	    Args = wrangler_syntax:application_arguments(Node),
+	    O = percept2_syntax:application_operator(Node),
+	    Args = percept2_syntax:application_arguments(Node),
 	    {S1, E1} = get_range(O),
 	    {S3, E3} = case Args of
 			   [] -> {S1, E1};
@@ -242,31 +242,31 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	    E31 = extend_backwards(Toks, E3, ')'),
 	    update_ann(Node, {range, {S3, E31}});
 	case_expr ->
-            A = wrangler_syntax:case_expr_argument(Node),
-	    Lc = glast("do_add_range,case_expr", wrangler_syntax:case_expr_clauses(Node)),
+            A = percept2_syntax:case_expr_argument(Node),
+	    Lc = glast("do_add_range,case_expr", percept2_syntax:case_expr_clauses(Node)),
 	    calc_and_add_range_to_node_1(Node, Toks, A, Lc, 'case', 'end');
 	clause ->
-            {S1,_} = case wrangler_syntax:clause_patterns(Node) of
-                          [] -> case wrangler_syntax:clause_guard(Node) of
+            {S1,_} = case percept2_syntax:clause_patterns(Node) of
+                          [] -> case percept2_syntax:clause_guard(Node) of
                                     none ->{{L,C}, {0,0}};
-                                    _ -> get_range(wrangler_syntax:clause_guard(Node))
+                                    _ -> get_range(percept2_syntax:clause_guard(Node))
                                 end;
                           Ps -> get_range(hd(Ps))
                       end,         
-            Body = glast("do_add_range, clause", wrangler_syntax:clause_body(Node)),
+            Body = glast("do_add_range, clause", percept2_syntax:clause_body(Node)),
 	    {_S2, E2} = get_range(Body),
 	    update_ann(Node, {range, {lists:min([S1, {L, C}]), E2}});
 	catch_expr ->
-	    B = wrangler_syntax:catch_expr_body(Node),
+	    B = percept2_syntax:catch_expr_body(Node),
 	    {S, E} = get_range(B),
 	    S1 = extend_forwards(Toks, S, 'catch'),
 	    update_ann(Node, {range, {S1, E}});
 	if_expr ->
-	    Cs = wrangler_syntax:if_expr_clauses(Node),
+	    Cs = percept2_syntax:if_expr_clauses(Node),
 	    add_range_to_list_node(Node, Toks, Cs, "refac_util:do_add_range, if_expr",
 				   "refac_util:do_add_range, if_expr", 'if', 'end');
 	cond_expr ->
-	    Cs = wrangler_syntax:cond_expr_clauses(Node),
+	    Cs = percept2_syntax:cond_expr_clauses(Node),
 	    add_range_to_list_node(Node, Toks, Cs, "refac_util:do_add_range, cond_expr",
 				   "refac_util:do_add_range, cond_expr", 'cond', 'end');
 	infix_expr ->
@@ -274,23 +274,23 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	prefix_expr ->
 	    calc_and_add_range_to_node(Node, prefix_expr_operator, prefix_expr_argument);
 	conjunction ->
-	    B = wrangler_syntax:conjunction_body(Node),
+	    B = percept2_syntax:conjunction_body(Node),
 	    add_range_to_body(Node, B, "refac_util:do_add_range,conjunction",
 			      "refac_util:do_add_range,conjunction");
 	disjunction ->
-	    B = wrangler_syntax:disjunction_body(Node),
+	    B = percept2_syntax:disjunction_body(Node),
 	    add_range_to_body(Node, B, "refac_util:do_add_range, disjunction",
 			      "refac_util:do_add_range,disjunction");
 	function ->
-	    F = wrangler_syntax:function_name(Node),
-	    Cs = wrangler_syntax:function_clauses(Node),
+	    F = percept2_syntax:function_name(Node),
+	    Cs = percept2_syntax:function_clauses(Node),
 	    Lc = glast("do_add_range,function", Cs),
 	    {S1, _E1} = get_range(F),
 	    {_S2, E2} = get_range(Lc),
 	    update_ann(Node, {range, {S1, E2}});
 	fun_expr ->
-	    Cs = wrangler_syntax:fun_expr_clauses(Node),
-	    S = wrangler_syntax:get_pos(Node),
+	    Cs = percept2_syntax:fun_expr_clauses(Node),
+	    S = percept2_syntax:get_pos(Node),
 	    Lc = glast("do_add_range, fun_expr", Cs),
 	    {_S1, E1} = get_range(Lc),
 	    E11 = extend_backwards(Toks, E1,
@@ -299,8 +299,8 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	arity_qualifier ->
                 calc_and_add_range_to_node(Node, arity_qualifier_body, arity_qualifier_argument);
         attribute ->
-	    Name = wrangler_syntax:attribute_name(Node),
-	    Args = wrangler_syntax:attribute_arguments(Node),
+	    Name = percept2_syntax:attribute_name(Node),
+	    Args = percept2_syntax:attribute_arguments(Node),
 	    case Args of
 		none -> {S1, E1} = get_range(Name),
 			S11 = extend_forwards(Toks, S1, '-'),
@@ -322,7 +322,7 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	binary_generator ->
 	    calc_and_add_range_to_node(Node, binary_generator_pattern, binary_generator_body);
 	tuple ->
-	    Es = wrangler_syntax:tuple_elements(Node),
+	    Es = percept2_syntax:tuple_elements(Node),
 	    case length(Es) of
 		0 -> update_ann(Node, {range, {{L, C}, {L, C + 1}}});
 		_ ->
@@ -332,41 +332,41 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	    end;
 	list_comp ->
 	    %%T = refac_syntax:list_comp_template(Node),
-	    B = glast("do_add_range,list_comp", wrangler_syntax:list_comp_body(Node)),
+	    B = glast("do_add_range,list_comp", percept2_syntax:list_comp_body(Node)),
 	    {_S2, E2} = get_range(B),
 	    E21 = extend_backwards(Toks, E2, ']'),
 	    update_ann(Node, {range, {{L, C}, E21}});
 	binary_comp ->
 	    %%T = refac_syntax:binary_comp_template(Node),
 	    B = glast("do_add_range,binary_comp",
-				    wrangler_syntax:binary_comp_body(Node)),
+				    percept2_syntax:binary_comp_body(Node)),
 	    {_S2, E2} = get_range(B),
 	    E21 = extend_backwards(Toks, E2, '>>'),
 	    update_ann(Node, {range, {{L, C}, E21}});
 	block_expr ->
-	    Es = wrangler_syntax:block_expr_body(Node),
+	    Es = percept2_syntax:block_expr_body(Node),
 	    add_range_to_list_node(Node, Toks, Es, "refac_util:do_add_range, block_expr",
 				   "refac_util:do_add_range, block_expr", 'begin', 'end');
 	receive_expr ->
-	    case wrangler_syntax:receive_expr_timeout(Node) of
+	    case percept2_syntax:receive_expr_timeout(Node) of
 		none ->
                     %% Cs cannot be empty here.
-		    Cs = wrangler_syntax:receive_expr_clauses(Node),
+		    Cs = percept2_syntax:receive_expr_clauses(Node),
                     add_range_to_list_node(Node, Toks, Cs, "refac_util:do_add_range, receive_expr1",
                                            "refac_util:do_add_range, receive_expr1", 'receive', 'end');
                 _E ->
-                    A = wrangler_syntax:receive_expr_action(Node),
+                    A = percept2_syntax:receive_expr_action(Node),
                     {_S2, E2} = get_range(glast("do_add_range, receive_expr2", A)),
                     E21 = extend_backwards(Toks, E2, 'end'),
                     update_ann(Node, {range, {{L, C}, E21}})
             end;
 	try_expr ->
-	    B = wrangler_syntax:try_expr_body(Node),
-	    After = wrangler_syntax:try_expr_after(Node),
+	    B = percept2_syntax:try_expr_body(Node),
+	    After = percept2_syntax:try_expr_after(Node),
 	    {S1, _E1} = get_range(ghead("do_add_range, try_expr", B)),
 	    {_S2, E2} = case After of
 			    [] ->
-				Handlers = wrangler_syntax:try_expr_handlers(Node),
+				Handlers = percept2_syntax:try_expr_handlers(Node),
 				get_range(glast("do_add_range, try_expr", Handlers));
 			    _ ->
 				get_range(glast("do_add_range, try_expr", After))
@@ -375,7 +375,7 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	    E21 = extend_backwards(Toks, E2, 'end'),
 	    update_ann(Node, {range, {S11, E21}});
 	binary ->
-	    Fs = wrangler_syntax:binary_fields(Node),
+	    Fs = percept2_syntax:binary_fields(Node),
 	    case Fs == [] of
 		true -> update_ann(Node, {range, {{L, C}, {L, C + 3}}});
 		_ ->
@@ -384,8 +384,8 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 		    calc_and_add_range_to_node_1(Node, Toks, Hd, Last, '<<', '>>')
 	    end;
 	binary_field ->
-	    Body = wrangler_syntax:binary_field_body(Node),
-	    Types = wrangler_syntax:binary_field_types(Node),
+	    Body = percept2_syntax:binary_field_body(Node),
+	    Types = percept2_syntax:binary_field_types(Node),
 	    {S1, E1} = get_range(Body),
 	    {_S2, E2} = if Types == [] -> {S1, E1};
 			   true -> get_range(glast("do_add_range,binary_field", Types))
@@ -400,12 +400,12 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	match_expr ->
 	    calc_and_add_range_to_node(Node, match_expr_pattern, match_expr_body);
 	form_list ->
-	    Es = wrangler_syntax:form_list_elements(Node),
+	    Es = percept2_syntax:form_list_elements(Node),
 	    
 	    add_range_to_body(Node, Es, "refac_util:do_add_range, form_list",
 			      "refac_util:do_add_range, form_list");
 	parentheses ->
-	    B = wrangler_syntax:parentheses_body(Node),
+	    B = percept2_syntax:parentheses_body(Node),
 	    {S, E} = get_range(B),
 	    S1 = extend_forwards(Toks, S, '('),
 	    E1 = extend_backwards(Toks, E, ')'),
@@ -413,18 +413,18 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	class_qualifier ->
 	    calc_and_add_range_to_node(Node, class_qualifier_argument, class_qualifier_body);
 	qualified_name ->
-	    Es = wrangler_syntax:qualified_name_segments(Node),
+	    Es = percept2_syntax:qualified_name_segments(Node),
 	    
 	    add_range_to_body(Node, Es, "refac_util:do_add_range, qualified_name",
 			      "refac_util:do_add_range, qualified_name");
 	query_expr ->
-	    B = wrangler_syntax:query_expr_body(Node),
+	    B = percept2_syntax:query_expr_body(Node),
 	    {S, E} = get_range(B),
 	    update_ann(Node, {range, {S, E}});
 	record_field ->
-	    Name = wrangler_syntax:record_field_name(Node),
+	    Name = percept2_syntax:record_field_name(Node),
 	    {S1, E1} = get_range(Name),
-	    Value = wrangler_syntax:record_field_value(Node),
+	    Value = percept2_syntax:record_field_value(Node),
 	    case Value of
 		none -> update_ann(Node, {range, {S1, E1}});
 		_ -> {_S2, E2} = get_range(Value), update_ann(Node,
@@ -432,33 +432,33 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	    end;
 	typed_record_field   %% This is not correct; need to be fixed later!
                            ->
-                Field = wrangler_syntax:typed_record_field(Node),
+                Field = percept2_syntax:typed_record_field(Node),
                 {S1, _E1} = get_range(Field),
-                Type = wrangler_syntax:typed_record_type(Node),
+                Type = percept2_syntax:typed_record_type(Node),
                 {_S2, E2} = get_range(Type),
                 update_ann(Node, {range, {S1, E2}});
 	record_expr ->
-                Arg = wrangler_syntax:record_expr_argument(Node),
-                Type = wrangler_syntax:record_expr_type(Node),
+                Arg = percept2_syntax:record_expr_argument(Node),
+                Type = percept2_syntax:record_expr_type(Node),
                 Toks2 = lists:dropwhile(fun(B)->
                                                element(2, B)/= {L,C}
                                        end, Toks),
                 [{'#', _}, T|_] = Toks2,
                 Pos1 = token_loc(T),
-                Type1 = add_range(wrangler_syntax:set_pos(Type, Pos1), Toks),
-                Fields = wrangler_syntax:record_expr_fields(Node),
+                Type1 = add_range(percept2_syntax:set_pos(Type, Pos1), Toks),
+                Fields = percept2_syntax:record_expr_fields(Node),
                 {S1, E1} = case Arg of
                                none -> get_range(Type);
                                _ -> get_range(Arg)
                            end,
                 case Fields of
                     [] -> E11 = extend_backwards(Toks, E1, '}'),
-                          Node1 =rewrite(Node, wrangler_syntax:record_expr(Arg, Type1, Fields)),
+                          Node1 =rewrite(Node, percept2_syntax:record_expr(Arg, Type1, Fields)),
                           update_ann(Node1, {range, {S1, E11}});
                     _ ->
                         {_S2, E2} = get_range(glast("do_add_range,record_expr", Fields)),
                         E21 = extend_backwards(Toks, E2, '}'),
-                        Node1 =rewrite(Node, wrangler_syntax:record_expr(Arg, Type1, Fields)),
+                        Node1 =rewrite(Node, percept2_syntax:record_expr(Arg, Type1, Fields)),
                         update_ann(Node1, {range, {S1, E21}})
                 end;
 	record_access ->
@@ -466,7 +466,7 @@ do_add_range(Node, {Toks, QAtomPs}) ->
 	record_index_expr ->
 	    calc_and_add_range_to_node(Node, record_index_expr_type, record_index_expr_field);
 	comment ->
-	    T = wrangler_syntax:comment_text(Node),
+	    T = percept2_syntax:comment_text(Node),
 	    Lines = length(T),
 	    update_ann(Node,
 		       {range,
@@ -475,8 +475,8 @@ do_add_range(Node, {Toks, QAtomPs}) ->
                           length(glast("do_add_range,comment",
                                                      T))}}});
 	macro ->
-                Name = wrangler_syntax:macro_name(Node),
-                Args = wrangler_syntax:macro_arguments(Node),
+                Name = percept2_syntax:macro_name(Node),
+                Args = percept2_syntax:macro_arguments(Node),
                 {_S1, {L1, C1}} = get_range(Name),
                 E1={L1, C1+1},
                 case Args of
@@ -495,7 +495,7 @@ do_add_range(Node, {Toks, QAtomPs}) ->
              size_qualifier ->
 	    calc_and_add_range_to_node(Node, size_qualifier_body, size_qualifier_argument);
 	error_marker ->
-                case wrangler_syntax:revert(Node) of
+                case percept2_syntax:revert(Node) of
                     {error, {_, {Start, End}}} ->
                         update_ann(Node, {range, {Start, End}});
                     _ ->
@@ -509,8 +509,8 @@ do_add_range(Node, {Toks, QAtomPs}) ->
     end.
 
 calc_and_add_range_to_node(Node, Fun1, Fun2) ->
-    Arg = wrangler_syntax:Fun1(Node),
-    Field = wrangler_syntax:Fun2(Node),
+    Arg = percept2_syntax:Fun1(Node),
+    Field = percept2_syntax:Fun2(Node),
     {S1,_E1} = get_range(Arg),
     {_S2,E2} = get_range(Field),
     update_ann(Node, {range, {S1, E2}}).
@@ -524,7 +524,7 @@ calc_and_add_range_to_node_1(Node, Toks, StartNode, EndNode, StartWord, EndWord)
 
 
 get_range(Node) ->
-     As = wrangler_syntax:get_ann(Node),
+     As = percept2_syntax:get_ann(Node),
      case lists:keysearch(range, 1, As) of
        {value, {range, {S, E}}} -> {S, E};
        _ -> {{0,0},{0,0}} 
@@ -608,43 +608,43 @@ add_category(Node, C) ->
 do_add_category(Node, C) when is_list(Node) ->
     {[add_category(E, C)||E<-Node], true};
 do_add_category(Node, C) ->
-    case wrangler_syntax:type(Node) of
+    case percept2_syntax:type(Node) of
 	clause ->
-	    Body = wrangler_syntax:clause_body(Node),
-	    Ps = wrangler_syntax:clause_patterns(Node),
-	    G = wrangler_syntax:clause_guard(Node),
+	    Body = percept2_syntax:clause_body(Node),
+	    Ps = percept2_syntax:clause_patterns(Node),
+	    G = percept2_syntax:clause_guard(Node),
 	    Body1 = [add_category(B, expression)||B<-Body],
 	    Ps1 = [add_category(P, pattern)||P<-Ps]
 ,	    G1 = case G of
 		     none -> none;
 		     _ -> add_category(G, guard_expression)
 		 end,
-	    Node1 =rewrite(Node, wrangler_syntax:clause(Ps1, G1, Body1)),
+	    Node1 =rewrite(Node, percept2_syntax:clause(Ps1, G1, Body1)),
 	    {Node1, true};
 	match_expr ->
-	    P = wrangler_syntax:match_expr_pattern(Node),
-	    B = wrangler_syntax:match_expr_body(Node),
+	    P = percept2_syntax:match_expr_pattern(Node),
+	    B = percept2_syntax:match_expr_body(Node),
 	    P1 = add_category(P, pattern),
 	    B1 = add_category(B, C),
-	    Node1=rewrite(Node, wrangler_syntax:match_expr(P1, B1)),
+	    Node1=rewrite(Node, percept2_syntax:match_expr(P1, B1)),
             {update_ann(Node1, {category, C}), true};
         generator ->
-	    P = wrangler_syntax:generator_pattern(Node),
-	    B = wrangler_syntax:generator_body(Node),
+	    P = percept2_syntax:generator_pattern(Node),
+	    B = percept2_syntax:generator_body(Node),
 	    P1 = add_category(P, pattern),
 	    B1 = add_category(B, expression),
-	    Node1=rewrite(Node, wrangler_syntax:generator(P1, B1)),
+	    Node1=rewrite(Node, percept2_syntax:generator(P1, B1)),
 	    {update_ann(Node1, {category, generator}), true};
 	binary_generator ->
-	    P = wrangler_syntax:binary_generator_pattern(Node),
-	    B = wrangler_syntax:binary_generator_body(Node),
+	    P = percept2_syntax:binary_generator_pattern(Node),
+	    B = percept2_syntax:binary_generator_body(Node),
 	    P1 = add_category(P, pattern),
 	    B1 = add_category(B, expression),
-	    Node1=rewrite(Node, wrangler_syntax:binary_generator(P1, B1)),
+	    Node1=rewrite(Node, percept2_syntax:binary_generator(P1, B1)),
 	    {update_ann(Node1, {category, generator}), true};
 	macro ->
-	    Name = wrangler_syntax:macro_name(Node),
-	    Args = wrangler_syntax:macro_arguments(Node),
+	    Name = percept2_syntax:macro_name(Node),
+	    Args = percept2_syntax:macro_arguments(Node),
             Name1 = case Args of 
                         none -> add_category(Name, C);  %% macro with no args are not annoated as macro_name.
                         _ ->add_category(Name, macro_name)
@@ -653,46 +653,46 @@ do_add_category(Node, C) ->
 			none -> none;
 			_ -> add_category(Args, C) 
 		    end,
-	    Node1 = rewrite(Node, wrangler_syntax:macro(Name1, Args1)),
+	    Node1 = rewrite(Node, percept2_syntax:macro(Name1, Args1)),
 	    {update_ann(Node1, {category, C}), true};
 	record_access ->
-            Argument = wrangler_syntax:record_access_argument(Node),
-            Type = wrangler_syntax:record_access_type(Node),
-            Field = wrangler_syntax:record_access_field(Node),
+            Argument = percept2_syntax:record_access_argument(Node),
+            Type = percept2_syntax:record_access_type(Node),
+            Field = percept2_syntax:record_access_field(Node),
             Argument1 = add_category(Argument, C),
             Type1 = case Type of
                         none -> none;
                         _ -> add_category(Type, record_type)
 		   end,
             Field1 = add_category(Field, record_field),
-            Node1 = rewrite(Node, wrangler_syntax:record_access(Argument1, Type1, Field1)),
+            Node1 = rewrite(Node, percept2_syntax:record_access(Argument1, Type1, Field1)),
             {update_ann(Node1, {category, C}), true};
 	record_expr ->
-	    Argument = wrangler_syntax:record_expr_argument(Node),
-	    Type = wrangler_syntax:record_expr_type(Node),
-	    Fields = wrangler_syntax:record_expr_fields(Node),
+	    Argument = percept2_syntax:record_expr_argument(Node),
+	    Type = percept2_syntax:record_expr_type(Node),
+	    Fields = percept2_syntax:record_expr_fields(Node),
 	    Argument1 = case Argument of
 			    none -> none;
 			    _ -> add_category(Argument, C)
 			end,
 	    Type1 = add_category(Type, record_type),
-	    Fields1 =[wrangler_syntax:add_ann({category, record_field},
-                                              rewrite(F, wrangler_syntax:record_field(
-                                                              add_category(wrangler_syntax:record_field_name(F), record_field),
-                                                              case wrangler_syntax:record_field_value(F) of
+	    Fields1 =[percept2_syntax:add_ann({category, record_field},
+                                              rewrite(F, percept2_syntax:record_field(
+                                                              add_category(percept2_syntax:record_field_name(F), record_field),
+                                                              case percept2_syntax:record_field_value(F) of
                                                                   none ->
                                                                       none;
                                                                   V ->
                                                                       add_category(V, C)
                                                               end))) || F <- Fields],
-	    Node1 = rewrite(Node, wrangler_syntax:record_expr(Argument1, Type1, Fields1)),
+	    Node1 = rewrite(Node, percept2_syntax:record_expr(Argument1, Type1, Fields1)),
 	    {update_ann(Node1, {category, C}), true};
 	record_index_expr ->
-	    Type = wrangler_syntax:record_index_expr_type(Node),
-	    Field = wrangler_syntax:record_index_expr_field(Node),
+	    Type = percept2_syntax:record_index_expr_type(Node),
+	    Field = percept2_syntax:record_index_expr_field(Node),
 	    Type1 = add_category(Type, record_type),
 	    Field1 = add_category(Field, record_field),
-	    Node1 = rewrite(Node, wrangler_syntax:record_index_expr(Type1, Field1)),
+	    Node1 = rewrite(Node, percept2_syntax:record_index_expr(Type1, Field1)),
 	    {update_ann(Node1, {category, C}), true};
 	operator ->
 	    {update_ann(Node, {category, operator}), true};
@@ -705,17 +705,17 @@ do_add_category(Node, C) ->
     end.
 
 rewrite(Tree, Tree1) ->
-    wrangler_syntax:copy_attrs(Tree, Tree1).
+    percept2_syntax:copy_attrs(Tree, Tree1).
 
 
 list_elements(Node) ->
     lists:reverse(list_elements(Node, [])).
 
 list_elements(Node, As) ->
-    case wrangler_syntax:type(Node) of
+    case percept2_syntax:type(Node) of
       list ->
-	    As1 = lists:reverse(wrangler_syntax:list_prefix(Node)) ++ As,
-	    case wrangler_syntax:list_suffix(Node) of
+	    As1 = lists:reverse(percept2_syntax:list_prefix(Node)) ++ As,
+	    case percept2_syntax:list_suffix(Node) of
                 none -> As1;
                 Tail ->
                     list_elements(Tail, As1)
@@ -726,12 +726,12 @@ list_elements(Node, As) ->
            
 
 update_ann(Tree, {Key, Val}) ->
-    As0 = wrangler_syntax:get_ann(Tree),
+    As0 = percept2_syntax:get_ann(Tree),
     As1 = case lists:keysearch(Key, 1, As0) of
 	    {value, _} -> lists:keyreplace(Key, 1, As0, {Key, Val});
 	    _ -> As0 ++ [{Key, Val}]
 	  end,
-    wrangler_syntax:set_ann(Tree, As1).
+    percept2_syntax:set_ann(Tree, As1).
 
 glast(Info, []) -> erlang:error(Info);
 glast(_Info, List) -> lists:last(List).
