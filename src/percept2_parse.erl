@@ -612,11 +612,11 @@ get_attribute(L, Name) ->
 get_attributes(L) ->
     erl_scan:attributes_info(L).
 
--file("c:/ERL510~1.1/lib/parsetools-2.0.9/include/yeccpre.hrl", 0).
+-file("c:/ERL59~1.3/lib/parsetools-2.0.7/include/yeccpre.hrl", 0).
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2013. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -781,7 +781,7 @@ yecctoken2string({integer,_,N}) -> io_lib:write(N);
 yecctoken2string({float,_,F}) -> io_lib:write(F);
 yecctoken2string({char,_,C}) -> io_lib:write_char(C);
 yecctoken2string({var,_,V}) -> io_lib:format("~s", [V]);
-yecctoken2string({string,_,S}) -> io_lib:write_string(S);
+yecctoken2string({string,_,S}) -> io_lib:write_unicode_string(S);
 yecctoken2string({reserved_symbol, _, A}) -> io_lib:write(A);
 yecctoken2string({_Cat, _, Val}) -> io_lib:format("~p",[Val]);
 yecctoken2string({dot, _}) -> "'.'";
@@ -1845,7 +1845,7 @@ yeccpars2_cont_13(S, 'if', Ss, Stack, T, Ts, Tzr) ->
  yeccpars1(S, 60, Ss, Stack, T, Ts, Tzr);
 yeccpars2_cont_13(S, integer, Ss, Stack, T, Ts, Tzr) ->
  yeccpars1(S, 61, Ss, Stack, T, Ts, Tzr);
-yeccpars2_cont_13(S, query, Ss, Stack, T, Ts, Tzr) ->
+yeccpars2_cont_13(S, 'query', Ss, Stack, T, Ts, Tzr) ->
  yeccpars1(S, 63, Ss, Stack, T, Ts, Tzr);
 yeccpars2_cont_13(S, 'receive', Ss, Stack, T, Ts, Tzr) ->
  yeccpars1(S, 64, Ss, Stack, T, Ts, Tzr);
@@ -8537,7 +8537,7 @@ yeccpars2_140_(__Stack0) ->
 yeccpars2_141_(__Stack0) ->
  [__3,__2,__1 | __Stack] = __Stack0,
  [begin
-   { query , ? line ( __1 ) , __2 }
+   { 'query' , ? line ( __1 ) , __2 }
   end | __Stack].
 
 -compile({inline,yeccpars2_143_/1}).
