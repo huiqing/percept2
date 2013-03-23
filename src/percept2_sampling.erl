@@ -51,7 +51,8 @@
 -type sample_items():: 
         'run_queue'|'run_queues'|'scheduler_utilisation'|
         'process_count'| 'schedulers_online'|'mem_info'|
-        {'message_queue_len', pid()|regname()}.
+        {'message_queue_len', pid()|regname()}|'all'.
+%% the 'all' options covers all the the options apart from 'message_queue_len'.
 
 -type entry_mfa() :: {atom(), atom(),list()}.
 -type regname() :: atom().
@@ -94,6 +95,7 @@
           timestamp ::float(),
           message_queue_len ::non_neg_integer()}).
 
+-compile(export_all).
 
 -define(INTERVAL, 1). % in milliseconds
 
@@ -121,22 +123,26 @@ sample_items()->
      'scheduler_utilisation',
      'process_count',
      'schedulers_online',
-     'mem_info',
-     'message_queue_len'].
+     'mem_info'
+    ].
 
 %%@hidden
--spec(check_sample_items([sample_items()]) -> ok).
-check_sample_items([{'message_queue_len', _}|Items])->
-    check_sample_items(Items);
-check_sample_items([Item|Items]) ->
+-spec(check_sample_items([sample_items()]) -> [sample_items()]).
+check_sample_items(Items) ->
+    check_sample_items_1(Items, []).
+check_sample_items_1([{'message_queue_len', Proc}|Items], Acc)->
+    check_sample_items_1(Items, [{'message_queue_len', Proc}|Acc]);
+check_sample_items_1(['all'|Items], Acc) ->
+    check_sample_items_1(Items, sample_items()++Acc);
+check_sample_items_1([Item|Items], Acc) ->
     case lists:member(Item, sample_items()) of
         true ->
-            check_sample_items(Items);
+            check_sample_items_1(Items, [Item|Acc]);
         false ->
             error(lists:flatten(io_lib:format("Invalid option:~p", [Item])))
     end;
-check_sample_items([]) ->
-    ok.
+check_sample_items_1([], Acc) ->
+    lists:usort(Acc).
 
 
 check_out_dir(Dir) ->
@@ -177,6 +183,7 @@ check_out_dir(Dir) ->
 %% for the whole duration until the entry function returns; otherwise it profiles 
 %% the system for the time period specified. The system is probed at the default 
 %% time intervals, which is 100 milliseconds.
+%% `all':  this option covers all the above options apart from `message_queue_len'.
 %%
 %% `OutDir' tells the profiler where to put the data files generated. A data file is generated 
 %% for each type of information in `Items'. For an item `A', the name of the data file could be 
@@ -233,16 +240,16 @@ sample(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
                 OutDir::file:filename()) -> ok).
 sample(Items, _Entry={Mod, Fun, Args}, TimeInterval, FilterFun, OutDir) ->
     ok=check_out_dir(OutDir),
-    ok=check_sample_items(Items),
-    Pid = start_sampling(Items, TimeInterval, FilterFun, OutDir),
+    Items1=check_sample_items(Items),
+    Pid = start_sampling(Items1, TimeInterval, FilterFun, OutDir),
     erlang:apply(Mod, Fun, Args),
     stop_sampling(Pid);
 sample(Items, Time, TimeInterval, FilterFun, OutDir) 
   when is_integer(Time)->
     ok=check_out_dir(OutDir),
-    ok=check_sample_items(Items),
+    Items1=check_sample_items(Items),
     try 
-        Pid=start_sampling(Items, TimeInterval, FilterFun, OutDir),
+        Pid=start_sampling(Items1, TimeInterval, FilterFun, OutDir),
         erlang:start_timer(Time, Pid, stop)
     catch
         throw:Term -> Term;
@@ -377,19 +384,19 @@ do_write_sample_info(Item, OutDir) ->
 
 read_data_from_tab(mem_info) ->
     Tab = mk_ets_tab_name(mem_info),
-    lists:flatten(ets:foldr(fun(_Data={_, Secs, Total, Procs, ETS, Atom, Code, Binary}, Acc) ->
-                      [io_lib:format("~p  ~p  ~p   ~p  ~p  ~p ~p \n",
-                                     [Secs, Total, Procs, ETS, Atom, Code, Binary])|Acc]
-              end,[],Tab));
+    lists:flatten(["#mem_info\n"|ets:foldr(fun(_Data={_, Secs, Total, Procs, ETS, Atom, Code, Binary}, Acc) ->
+                                                   [io_lib:format("~p  ~p  ~p   ~p  ~p  ~p ~p \n",
+                                                                  [Secs, Total, Procs, ETS, Atom, Code, Binary])|Acc]
+                                           end,[],Tab)]);
 read_data_from_tab(run_queue) ->
     Tab = mk_ets_tab_name(run_queue),
-    lists:flatten(ets:foldr(fun(_Data={_, Secs, RunQueue}, Acc) ->
+    lists:flatten(["#run_queue\n"|ets:foldr(fun(_Data={_, Secs, RunQueue}, Acc) ->
                              [io_lib:format("~p  ~p \n",
                                             [Secs,RunQueue])|Acc]
-                     end, [], Tab));
+                                            end, [], Tab)]);
 read_data_from_tab(run_queues) ->
     Tab = mk_ets_tab_name(run_queues),
-    lists:flatten(ets:foldr(fun(_Data={_, Secs, RunQueues}, Acc) ->
+    lists:flatten(["#run_queues\n"|ets:foldr(fun(_Data={_, Secs, RunQueues}, Acc) ->
                                     {_, RunQueues1} = lists:foldl(
                                                    fun(Len, {Sum, RQAcc}) ->
                                                            {Len+Sum,[Len+Sum|RQAcc]}
@@ -398,7 +405,7 @@ read_data_from_tab(run_queues) ->
                                                        ||Len<-RunQueues1]),
                                     [io_lib:format("~p  ~s \n",
                                                    [Secs,Str])|Acc]
-                            end,[], Tab));
+                            end,[], Tab)]);
 read_data_from_tab(scheduler_utilisation) ->
     Tab = mk_ets_tab_name(scheduler_utilisation),
     {_, Acc1}=ets:foldr(
@@ -411,33 +418,33 @@ read_data_from_tab(scheduler_utilisation) ->
                                                      {{I, A0, T0}, {I, A1, T1}}<-lists:zip(SchedulerWallTime0,
                                                                                            SchedulerWallTime1)],
                                 {_, SchedUtilisation1} = lists:foldl(
-                                                           fun(Util, {Sum, UtilAcc}) ->
-                                                                   {Util+Sum,[Util+Sum|UtilAcc]}
-                                                           end, {0, []}, SchedUtilisation),
+                                                          fun(Util, {Sum, UtilAcc}) ->
+                                                                    {Util+Sum,[Util+Sum|UtilAcc]}
+                                                            end, {0, []}, SchedUtilisation),
                                 Str=[io_lib:format(" ~p", [Val])
                                      ||Val<-SchedUtilisation1],
-                                {SchedulerWallTime1,[io_lib:format("~p ",[Secs]), Str++"\n"|Acc]}
+                                {SchedulerWallTime1,[io_lib:format("~p ",[Secs]), Str++" \n"|Acc]}
                         end
-                end,{none, []}, Tab),
-    lists:flatten(Acc1);
+                end,{none, ["#scheduler_utilisation\n"]}, Tab),
+    lists:flatten(["#scheduler_utilisation\n"|Acc1]);
 read_data_from_tab(process_count) ->
     Tab = mk_ets_tab_name(process_count),
-    lists:flatten(ets:foldr(fun(_Data={_, Secs, ProcsCount}, Acc) ->
-                             [io_lib:format("~p  ~p \n",
-                                            [Secs,ProcsCount])|Acc]
-                     end,[], Tab));
+    lists:flatten(["#process_count\n"|ets:foldr(fun(_Data={_, Secs, ProcsCount}, Acc) ->
+                                                        [io_lib:format("~p  ~p \n",
+                                                                       [Secs,ProcsCount])|Acc]
+                                                end,[], Tab)]);
 read_data_from_tab(schedulers_online) ->
     Tab = mk_ets_tab_name(schedulers_online),
-    lists:flatten(ets:foldr(fun(_Data={_, Secs, ProcsCount}, Acc) ->
-                      [io_lib:format("~p  ~p \n",
-                                     [Secs,ProcsCount])|Acc]
-              end,[], Tab));
+    lists:flatten(["#schedulers_online\n"|ets:foldr(fun(_Data={_, Secs, ProcsCount}, Acc) ->
+                                                            [io_lib:format("~p  ~p \n",
+                                                                           [Secs,ProcsCount])|Acc]
+                                                    end,[], Tab)]);
 read_data_from_tab(message_queue_len) ->
     Tab = mk_ets_tab_name(message_queue_len),
-    lists:flatten(ets:foldr(fun(_Data={_, Secs, MsgQueueLen}, Acc) ->
-                                    [io_lib:format("~p  ~p \n",
-                                                   [Secs, MsgQueueLen])|Acc]
-                            end,[], Tab)).
+    lists:flatten(["#message_queue_len\n"|ets:foldr(fun(_Data={_, Secs, MsgQueueLen}, Acc) ->
+                                                            [io_lib:format("~p  ~p \n",
+                                                                           [Secs, MsgQueueLen])|Acc]
+                                                    end,[], Tab)]).
 
 write_data([{Item, _Args}|Items], OutDir) ->
     do_write_sample_info(Item, OutDir),
@@ -452,9 +459,6 @@ to_megabytes(Bytes) ->
     Bytes/1000000.
 
 %% Example commands
-%% percept2_sampling:sample( ['run_queue','run_queues','scheduler_utilisation',
-%%                            'process_count', 'schedulers_online','mem_info'],
-%%                          {refac_sim_code_par_v3,sim_code_detection, [["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, 
+%% percept2_sampling:sample( ['all'[["c:/cygwin/home/hl/test"], 5, 40, 2, 4, 0.8, 
 %%                                                                      ["c:/cygwin/home/hl/test"],8]},"../profile_data").
-%% percept2_sampling:sample(['run_queue','run_queues','scheduler_utilisation',
-%%                            'process_count', 'schedulers_online','mem_info', {'message_queue_len', 'percept_db'}], {percept2, analyze, [["sim_code.dat"]]}, ".").
+%%percept2_sampling:sample([all, {'message_queue_len', 'percept2_db'}], {percept2, analyze, [["sim_code.dat"]]}, ".").
