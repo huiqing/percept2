@@ -118,9 +118,9 @@ file_server_loop(State) ->
 
 get_fun_locations(FName) ->
     {ok, AST} =  percept2_ast_server:parse_file(FName),
-    Forms = wrangler_syntax:form_list_elements(AST),
-    [{{wrangler_syntax:atom_value(wrangler_syntax:function_name(Form)), 
-       wrangler_syntax:function_arity(Form)},
+    Forms = percept2_syntax:form_list_elements(AST),
+    [{{percept2_syntax:atom_value(percept2_syntax:function_name(Form)), 
+       percept2_syntax:function_arity(Form)},
       percept2_ast_server:get_range(Form)}
       ||Form<-Forms, 
        erl_syntax:type(Form)==function].
