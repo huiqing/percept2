@@ -27,10 +27,10 @@ gen_callgraph_edges(CallTree, ProcTime) ->
     {_Pid, FromFunc, _} = CallTree#fun_calltree.id,
     ChildrenCallTrees = CallTree#fun_calltree.called,
     CurFuncTime = CallTree#fun_calltree.acc_time, 
-    lists:foldl(
+    FromFunc1=normalise_fun_name(FromFunc),
+    FromFunLoc=get_func_location(FromFunc1),
+    Edges=lists:foldl(
       fun(Tree, Acc) ->
-              FromFunc1=normalise_fun_name(FromFunc),
-              FromFunLoc=get_func_location(FromFunc1),
               {_, ToFunc, _} = Tree#fun_calltree.id,
               ToFunc1 = normalise_fun_name(ToFunc),
               ToFuncLoc =get_func_location(ToFunc1),
@@ -39,8 +39,15 @@ gen_callgraph_edges(CallTree, ProcTime) ->
                          {ToFunc,ToFuncLoc, ToFuncTime/ProcTime}, 
                          Tree#fun_calltree.cnt},
               [{NewEdge,gen_callgraph_edges(Tree,ProcTime)}|Acc]
-      end, [], ChildrenCallTrees).
-
+      end, [], ChildrenCallTrees),
+    %% case CallTree#fun_calltree.rec_cnt of 
+    %%     0 ->
+    %%         Edges;
+    %%     N ->
+    %%         [{{FromFunc,FromFunLoc, CurFuncTime/ProcTime}, 
+    %%           {FromFunc,FromFunLoc, CurFuncTime/ProcTime}, N}|Edges]
+    %% end.
+    Edges.
   
 normalise_fun_name({M,F,A}) ->
     case atom_to_list(F) of 
@@ -49,7 +56,10 @@ normalise_fun_name({M,F,A}) ->
             {A1, _} = lists:splitwith(fun(C)->C/=$- end, F3),
             {M, list_to_atom(F2),list_to_integer(A1)};
         _ -> {M, F, A}
-    end.
+    end;
+normalise_fun_name(Other) ->
+     Other.
+
 
 
 
@@ -102,6 +112,9 @@ file_server_loop(State) ->
                             file_server_loop([{M, File, FunLocs}|State])
                     end
             end;
+        {get_func_location, _, From} ->
+            From ! {self(),{file_non_existing, {0,0}}},
+            file_server_loop(State);
         {add_file, File} ->
             ModName = list_to_atom(filename:basename(File, ".erl")),
             FunLocs=get_fun_locations(File),
@@ -143,5 +156,4 @@ get_proc_life_time(Pid)->
 init() ->
     start_percept2_file_server(),
     add_file("sim_code.erl").
-    
     
