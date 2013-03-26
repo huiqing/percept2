@@ -512,7 +512,7 @@ get_webserver_config(Servername, Port)
 	{alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
         {alias,{"/svgs/", TmpDir}},
 	{alias,{"/css/", filename:join([Root, "css"]) ++ "/"}},
-	
+	{alias,{"/tree/", filename:join([Root, "tree"]) ++ "/"}},
 	% Logs
 	%{transfer_log, filename:join([Path, "logs", "transfer.log"])},
 	%{error_log, filename:join([Path, "logs", "error.log"])},

@@ -1915,6 +1915,46 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 %%                                            %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+-spec(procs_ports_count(pid(), list(), string()) -> 
+             ok | {error, term()}).
+procs_ports_count(SessionID, _Env, Input) ->
+    Type     = procs_ports,
+    Query    = httpd:parse_query(Input),
+    RangeMin = percept2_html:get_option_value("range_min", Query),
+    RangeMax = percept2_html:get_option_value("range_max", Query),
+    Pids     = percept2_html:get_option_value("pids", Query),
+    %% Width    = percept2_html:get_option_value("width", Query),
+    %% Height   = percept2_html:get_option_value("height", Query),
+    
+     % seconds2ts
+    StartTs  = percept2_db:select({system, start_ts}),
+    TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
+    TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
+    
+    % Convert Pids to id option list
+    IDs      = [{id, ID} || ID <- Pids],
+    TypeOpt  = case Type of 
+                   procs_ports -> [{id, all}];
+                   procs -> [{id, procs}];
+                   ports -> [{id, ports}];
+                   _ ->[]
+               end,
+    Counts=case IDs/=[] of 
+               true -> 
+                   Options  = TypeOpt++[{ts_min, TsMin},{ts_max, TsMax} | IDs],
+                   Acts     = percept2_db:select({activity, Options}),
+                   percept2_analyzer:activities2count2(Acts, StartTs);
+               false ->                
+                   Options  = TypeOpt++ [{ts_min, TsMin},{ts_max, TsMax}],
+                   [{?seconds(TS, StartTs), Procs, Ports}||
+                       {TS, {Procs, Ports}}
+                           <-percept2_db:select(
+                               {activity,{runnable_counts, Options}})]
+               
+           end,
+    Str= io_lib:format("~p", [Counts]),
+    mod_esi:deliver(SessionID, Str).
+   
 -spec(callgraph(pid(), list(), string()) -> 
              ok | {error, term()}).
 callgraph(SessionID, _Env, Input) ->
@@ -1938,6 +1978,8 @@ module_content(SessionID, _Env, Input) ->
                  end
          end,
     mod_esi:deliver(SessionID, Str).
+
+
    
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                       %%

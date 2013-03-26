@@ -102,7 +102,25 @@ ports_graph(_Env, Input) ->
 scheduler_graph(_Env, Input) ->
     graph_1(_Env, Input, schedulers).
 
-graph_1(_Env, Input, Type) ->
+graph_1(Env, Input, Type) -> 
+    CacheKey = atom_to_list(Type)++integer_to_list(erlang:crc32(Input)),
+    case ets:info(history_html) of 
+        undefined ->
+            graph_2(Env, Input, Type);
+        _ ->
+            case ets:lookup(history_html, CacheKey) of 
+                [{history_html, CacheKey, Content}] ->
+                    Content;
+                [] ->
+                    Content= graph_2(Env, Input, Type),
+                    ets:insert(history_html, 
+                               #history_html{id=CacheKey,
+                                             content=Content}),
+                    Content
+            end
+    end.                
+
+graph_2(_Env, Input, Type) ->
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
     RangeMax = percept2_html:get_option_value("range_max", Query),
