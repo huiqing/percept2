@@ -225,16 +225,63 @@ function_info_page(SessionID, Env, Input) ->
              ok | {error, term()}).
 callgraph_visualisation_page(SessionID, Env, Input) ->
     try
-        mod_esi:deliver(SessionID, header()),
+        mod_esi:deliver(SessionID, header(new_callgraph_html_header())),
         mod_esi:deliver(SessionID, menu(Input)), 
-        mod_esi:deliver(SessionID, callgraph_time_content(Env, Input)),
+        mod_esi:deliver(SessionID, new_callgraph_html_page()),
+	%mod_esi:deliver(SessionID, callgraph_time_content(Env, Input)),
         mod_esi:deliver(SessionID, footer())
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
 
+-spec(new_callgraph_html_header() -> string()).
+new_callgraph_html_header() ->
+    "<script src=\"/javascript/modernizr-2.6.1-respond-1.1.0.min.js\"></script>
+    <style type=\"text/css\">
+        .node circle { cursor: pointer; fill: #fff; stroke: #f77128; stroke-width: .5px; } .node text { font-size: 11px; } path.link { fill: none; stroke: #cecece; stroke-width: 1px; }
+    </style>".
 
+-spec(new_callgraph_html_page() -> string()).
+new_callgraph_html_page() ->
+	"<div id=\"main\" class=\"container\">
+        <div id=\"graph\"></div>
+        <!--[if lt IE 9]>
+            <p class=\"chromeframe\">You are using an outdated browser. <a href=\"http://browsehappy.com/\">Upgrade your browser today</a> or <a href=\"http://www.google.com/chromeframe/?redirect=true\">install Google Chrome Frame</a> to better experience this site.</p>
+        <![endif]-->
+    </div>
+
+
+    <div id=\"myModal\" class=\"modal hide fade\" tabindex=\"-1\" role=\"dialog\" aria-labelledby=\"myModalLabel\" aria-hidden=\"true\">
+        <div class=\"modal-header\">
+            <button type=\"button\" class=\"close\" data-dismiss=\"modal\" aria-hidden=\"true\">x</button>
+            <h3 id=\"myModalLabel\"></h3>
+        </div>
+        <div class=\"modal-body\">
+            <pre class=\"prettyprint linenums\"></pre>
+        </div>
+        <div class=\"modal-footer\">
+            <button class=\"btn\" data-dismiss=\"modal\" aria-hidden=\"true\">Close</button>
+        </div>
+    </div>
+
+    <script src=\"//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js\"></script>
+    <script>window.jQuery || document.write('<script src=\"/javascript/jquery-1.8.2.min.js\"><\\/script>')</script>
+
+    <script src=\"/javascript/bootstrap.min.js\"></script>
+    <script type=\"text/javascript\" src=\"/javascript/d3.js\"></script>
+    <script type=\"text/javascript\" src=\"/javascript/d3.layout.js\"></script>
+    <script type=\"text/javascript\" src=\"/javascript/jquery.autoellipsis-1.0.10.min.js\"></script>
+
+    <script src=\"/javascript/tree.js\"></script>
+
+    <script>
+        var _gaq=[['_setAccount','UA-XXXXX-X'],['_trackPageview']];
+        (function(d,t){var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+            g.src=('https:'==location.protocol?'//ssl':'//www')+'.google-analytics.com/ga.js';
+            s.parentNode.insertBefore(g,s)}(document,'script'));
+    </script>".  
+	
 -spec(callgraph_slice_visualisation_page(pid(), list(), string()) -> 
              ok | {error, term()}).
 callgraph_slice_visualisation_page(SessionID, Env, Input) ->
@@ -799,7 +846,7 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
     ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, []), 
-    Selector = "<table cellspacing=10>" ++
+    Selector = "<table class=\"processes\" cellspacing=10>" ++
         "<tr> <td>" ++ "<input onClick='selectall()' type=checkbox name=select_all>Select all" ++ "</td>"
         ++"<td><input type=checkbox name=include_children_procs>Include children procs"++"</td>" 
         ++"<td><input type=checkbox name=include_unshown_procs>Include omitted procs"++"</td></tr>" ++
@@ -856,7 +903,7 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
     if 
 	length(ProcsHtml) > 0 ->
             " <tr><td>
- 	   <table align=center width=1000 cellspacing=10 border=0>
+ 	   <table class=\"processes\" align=center width=1000 cellspacing=10 border=0>
 		<tr>
 		<td align=middle width=40><b>Select</b></td>
                 <td align=middle width=40> <b>[+/-]</b></td>
@@ -917,7 +964,7 @@ mk_ports_html(Ports, ProfileTime) ->
                 end, [], Ports),        
     if length(PortsHtml) > 0 ->
     	   " <tr><td><b>Ports</b></td></tr>
-            <table width=900  border=1 cellspacing=10 cellpadding=2>
+            <table  width=900  border=1 cellspacing=10 cellpadding=2>
 		<tr>
 	        <td align=middle width=80><b>Port Id</b></td>
 		<td align=middle width=80><b>Lifetime</b></td>
@@ -975,7 +1022,7 @@ sub_table(_Id, [], _ProfileTime, _) ->
     "";
 sub_table(Id, Children, ProfileTime, ActivePids) ->
     SubHtml=mk_procs_html(Children, ProfileTime, ActivePids),
-    "<tr><td colspan=\"10\"> <table width=950 cellspacing=10  cellpadding=2 border=1 "
+    "<tr><td colspan=\"10\"> <table class=\"processes\" width=950 cellspacing=10  cellpadding=2 border=1 "
         "id=\""++mk_table_id(Id)++"\", style=\"margin-left:60px;\">" ++
         SubHtml ++ "</table></td></tr>".
 
@@ -1284,7 +1331,6 @@ function_info_content_1(_Env, Input) ->
      InfoTable ++ "<br>" ++
          "</div>".
 
-
 callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     Query = httpd:parse_query(Input),
@@ -1294,19 +1340,18 @@ callgraph_time_content(Env, Input) ->
     ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     Table = calltime_content(Env,Pid),
     Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
-        "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++ 
-        "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
-        " overflow=\"visible\"  scrolling=\"yes\" "++
-        "></object>"++
-        "<h3 style=\"text-align:center;\">" ++ "Accumulated Calltime"++"</h3>"++
-        Table++
-        "<br></br><br></br>"++
-        "</div>",
-    case filelib:is_regular(ImgFullFilePath) of 
-        true -> Content;  %% file already generated.
-        false -> 
-            GenImgRes=percept2_dot:gen_callgraph_img(Pid, SvgDir),
-            process_gen_graph_img_result(Content, GenImgRes)
+       "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++
+       "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+       " overflow=\"visible\"  scrolling=\"yes\" "++
+       "></object>"++
+       "<h3 style=\"text-align:center;\">" ++ "Accumulated Calltime"++"</h3>"++
+       Table++
+       "<br></br><br></br>"++
+       "</div>",
+    case filelib:is_regular(ImgFullFilePath) of
+         true -> Content;  %% file already generated.
+         false -> GenImgRes=percept2_dot:gen_callgraph_img(Pid, SvgDir),
+	          process_gen_graph_img_result(Content, GenImgRes)
     end.
 
 
@@ -1734,6 +1779,8 @@ common_header(HeaderData)->
     <head>
     <meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\">
     <title>percept2</title>
+    <link rel=\"stylesheet\" href=\"/css/bootstrap.min.css\">
+    <link rel=\"stylesheet\" href=\"/css/bootstrap-responsive.css\">
     <link href=\"/css/percept2.css\" rel=\"stylesheet\" type=\"text/css\">
     <script type=\"text/javascript\" src=\"/javascript/percept_error_handler.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_select_all.js\"></script>
@@ -1767,17 +1814,17 @@ menu(Input) ->
 menu_1(Min, Max) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
-     	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
-        <li><a href=/cgi-bin/percept2_html/visualise_sampling_data_page>visualise sampling data</a></li>
+     	 <li><a href=/cgi-bin/percept2_html/overview_page>Activity Graph</a></li>
+	<li><a href=/cgi-bin/percept2_html/databases_page>Databases</a></li>
+        <li><a href=/cgi-bin/percept2_html/visualise_sampling_data_page>Visualise Sampling Data</a></li>
         <li><a href=/cgi-bin/percept2_html/inter_node_message_page?range_min=" ++
-        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">inter-node messaging</a></li>
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Inter-node Messaging</a></li>
         <li><a href=/cgi-bin/percept2_html/active_funcs_page?range_min=" ++
-        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">function activities</a></li>
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Function Activities</a></li>
         <li><a href=/cgi-bin/percept2_html/ports_page?range_min=" ++
-        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">ports</a></li>
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Ports</a></li>
         <li><a href=/cgi-bin/percept2_html/process_tree_page?range_min=" ++
-        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">processes</a></li>
-      	<li><a href=/cgi-bin/percept2_html/overview_page>overview</a></li>
+        term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Processes</a></li>
      </ul></div>\n".
    
 

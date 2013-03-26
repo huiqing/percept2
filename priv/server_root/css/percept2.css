@@ -1,161 +1,223 @@
-/*
- * %CopyrightBegin%
- * 
- * Copyright Ericsson AB 2007-2009. All Rights Reserved.
- * 
- * The contents of this file are subject to the Erlang Public License,
- * Version 1.1, (the "License"); you may not use this file except in
- * compliance with the License. You should have received a copy of the
- * Erlang Public License along with this software. If not, it can be
- * retrieved online at http://www.erlang.org/.
- * 
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- * 
- * %CopyrightEnd%
- */
+/* ==========================================================================
+   Authors: Jason Ardener, Elise Worrall, Chris Jenkins, Joe Flood;
+   ========================================================================== */
 
-/* Globals */
-html, body {
-	margin: 0;
+@import url(http://fonts.googleapis.com/css?family=Open+Sans:400,300);
+@import url(http://fonts.googleapis.com/css?family=PT+Sans+Narrow);
+
+::selection {
+	background: #333;
+	color: #FFF;
+}
+
+::-webkit-scrollbar {
+	width: 9px;
+}
+
+::-webkit-scrollbar-track {
+	background:#eee;
+	border: thin solid lightgray;
+	box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.1) inset;
+}
+
+::-webkit-scrollbar-thumb {
+	background:#999;
+	border: thin solid gray;
+}
+
+/* --------------------------
+	Body
+----------------------------- */
+
+body {
 	padding: 0;
-	font: 12px Verdana;
-	background: #7a83a2;
+	margin: 0;
+	font-family: 'Open Sans', sans-serif;
+	font-size  : 62.5%;
+	background: url('../images/bg.gif');
+	border-top: 10px solid #9d2e2c;
+	text-align: left;
 }
 
-table {
-	border-collapse: collapse;
-	/*width: 100%;*/
+a {text-decoration: none;}
+a:link {color: #666;}
+a:visited {color: #666;}
+a:hover {color: #000;}
+a:active {text-decoration:none;}
+
+/* --------------------------
+	Container
+----------------------------- */
+
+#content table {
+	width: 990px;
+	margin: 10px auto;
+	font-size: 1.4em;
+	-webkit-transform: translateZ(0);
 }
 
-tr.even {
-	background-color: #ffffff; color: black;
-}
-
-tr.odd {
-	background-color: #def2ef; color: black;
-}
-
-td {
-	text-valign: top;
-	text-align: right;
-	font: 14px Verdana;
-}
-
-th {
-	letter-spacing: 2px;
-	text-align: right;
-	padding: 4px 4px 4px 8px;
-}
-
-a {
-	color: yellow;
-/*	text-decoration: none;*/
-}
-
-a:hover {
-	text-decoration: underline;
-}
-
-td a {
-	color: #101010;
-}	
-
-img {
-	border: 0;
-}
-
-
-/* Header and footer stuff */
-
+/* --------------------------
+	Header
+----------------------------- */
 #header {
-	font: bold 24px Verdana;
-	padding-left: 156px;
-	padding-right: 156px;
-	padding-top: 10px;
-	padding-bottom: 10px;
-	height: 74px;
-	text-align: right;
-	background: #7a83a2;
+	text-align: center;
+	font-weight: 300;
+	font-size: 8em;
+	padding: 25px 0 15px 0;
+  	margin: 0;
 }
 
-#footer {
-	font: 12px Verdana;
+/* --------------------------
+	Navigation
+----------------------------- */
+
+#menu ul {
+	list-style: none;
+	padding: 0;
+	margin: 40px 0;
+	text-align: center;
+	font-size: 1.4em;
+}
+
+#menu ul li {
+	display: inline;
+	cursor: pointer;
+	margin-right: 10px;
+
+	transition: 0.3s;
+	-webkit-transition: 0.3s;
+	-moz-transition: 0.3s;
+	-o-transition: 0.3s;
+	-ms-transition: 0.3s;
+}
+
+#menu ul li:last-child {
+	margin-right: 0;
+}
+
+#menu ul li:after {
+	margin-left: 10px;
+	content: '/';
+}
+
+#menu ul li:last-child:after {
+	content: '';
+}
+
+/* --------------------------
+	Main Image Box
+----------------------------- */
+
+.work {
+	margin: 20px 0;
+}
+
+.work figure {
+	float: left;
+	margin: 20px;
+	width: 200px;
+	height: 200px;
+	background: #9d2e2c;
+	line-height: 200px;
+	-webkit-filter: sepia(0.4);
 	position: relative;
-	padding: 5px;
-	border-top: 1px solid black;
-	clear:left;
+	padding: 0 !important;
+	box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.5);
+	transition: 0.6s;
+	-webkit-transition: 0.6s;
+	-moz-transition: 0.6s;
+	-o-transition: 0.6s;
+	-ms-transition: 0.6s;
 }
 
-
-/* Content stuff */
-
-#content {
-	background: #fefefe;
-	position: relative;
-	padding: 5px 25px 5px 25px;
-	margin: 0px 60px 0px 60px;
-	border-top: 1px solid #383a32;
-	border-left: 1px solid #383a32;
-	border-right: 1px solid #383a32;
-	border-bottom: 1px solid #383a32;
-}
-
-.table_header {
-	font-decoration: underline;
+.work figure a img {
+	height: 100%;
 	width: 100%;
 }
 
-/* Menu */
-
-#menu {
-	margin: 0px 60px 0px 60px;
-	height: 30px;
-	padding-right: 0px;
-	background-image: url('../images/nav.png');
-	background-repeat: repeat-x;
-	padding-top: 0px;
-	border-top: 1px solid #383a32;
-	border-left: 1px solid #383a32;
-	border-right: 1px solid #383a32;
-}
-
-.menu_tabs {
-	overflow: hidden;
-}
-
-.menu_tabs ul {
+.work figure dl {
+	opacity: 0;
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	top: 0;
+	padding: 20px;
 	margin: 0;
-	padding: 0;
-	font: bold 12px Verdana;
-	list-style-type: none;
+	line-height: 2.5;
+	background: rgba(0, 0, 0, 0.8);
+	color: white;
+	transition: 0.6s;
+	-webkit-transition: 0.6s;
+	-moz-transition: 0.6s;
+	-o-transition: 0.6s;
+	-ms-transition: 0.6s;
 }
 
-.menu_tabs li {
-	display: inline;
-	margin: 0;
-	background-repeat: repeat-x;
+.work figure:hover dl {
+	opacity: 1;
 }
 
-.menu_tabs li a {
-	float: right;
-	display: block;
-	text-decoration: none;
-	margin: 0;
-	padding: 8px; 7px 8px; 3px;
-	border-left: 1px solid #777487;
+.work figure dl dt {
+	text-transform: uppercase;
+	font-family: 'PT Sans Narrow';
+	font-size: 1.2em;
+	margin-bottom: -16px;
 }
 
-.menu_tabs li a:visited {
-	color: black;
+.work figure dl dd {
+	margin-left: 0;
 }
 
-.menu_tabs li a:hover {
-	background: #cae8ea;
+.current-li {
+	color: #000;
 }
 
-.menu_tabs li a:selected .menu_tabs li a:active {
-	background: yellow;
+.current {
+	-webkit-filter: sepia(0) !important;
+
+	-webkit-transform: scale(1.05);
+	-moz-transform: scale(1.05);
+	-o-transform: scale(1.05);
+	-ms-transform: scale(1.05);
+	transform: scale(1.05);
+
+	-webkit-backface-visibility: hidden;
+	-moz-backface-visibility: hidden;
+	-o-backface-visibility: hidden;
+	-ms-backface-visibility: hidden;
+	backface-visibility: hidden;
+}
+
+.not-current {
+	-webkit-transform: scale(0.75);
+	-moz-transform: scale(0.75);
+	-o-transform: scale(0.75);
+	-ms-transform: scale(0.75);
+	transform: scale(0.75);
+
+	-webkit-filter: grayscale(1) !important;
+}
+
+.not-current:hover dl {
+	opacity: 0 !important;
+}
+
+/*---------------------------
+	Process table
+----------------------------- */
+table .processes {
+	font-size: 98% !important;
+}
+
+/* --------------------------
+	Tree
+----------------------------- */
+pre {
+  font-size: 1em;
+}
+
+.nText:hover {
+  cursor: pointer;
+  font-weight: bold;
 }
