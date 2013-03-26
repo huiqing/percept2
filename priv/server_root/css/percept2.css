@@ -56,10 +56,15 @@ a:active {text-decoration:none;}
 	-webkit-transform: translateZ(0);
 }
 
+.container {
+  width: 90%;
+  overflow: auto;
+}
+
 /* --------------------------
 	Header
 ----------------------------- */
-#header {
+#header h1 {
 	text-align: center;
 	font-weight: 300;
 	font-size: 8em;
@@ -208,6 +213,16 @@ a:active {text-decoration:none;}
 ----------------------------- */
 table .processes {
 	font-size: 98% !important;
+}
+
+/* --------------------------
+	Processes & Ports
+----------------------------- */
+div#procsportsgraph {
+	width: 1000px;
+	height: 600px;
+	margin-left: auto;
+	margin-right: auto;
 }
 
 /* --------------------------

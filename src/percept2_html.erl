@@ -1757,30 +1757,32 @@ header() -> header([]).
 header(HeaderData) ->
     common_header(HeaderData)++ 
    "<body onLoad=\"load_image()\">
-   <div id=\"header\"><a href=/index.html>percept2</a></div>\n".
+   <div id=\"header\"><h1><a href=/index.html>percept2</a></h1>\n".
 
 %%TODO: refactor this out.
 -spec inter_node_message_header() -> string().
 inter_node_message_header() ->
     common_header([])++ 
    "<body onLoad=\"load_message_image()\">
-   <div id=\"header\"><a href=/index.html>percept2</a></div>\n".
+   <div id=\"header\"><h1><a href=/index.html>percept2</a></h1></div>\n".
 
 -spec concurrency_header() -> string().
 concurrency_header() ->
     common_header([])++ 
    "<body onLoad=\"load_concurrency_image()\">
-   <div id=\"header\"><a href=/index.html>percept2</a></div>\n".
+   <div id=\"header\"><h1><a href=/index.html>percept2</a></h1></div>\n".
 
 
 common_header(HeaderData)->
     "Content-Type: text/html\r\n\r\n" ++
-    "<html>
+    "<!DOCTYPE html>
+    <html>
     <head>
     <meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\">
     <title>percept2</title>
     <link rel=\"stylesheet\" href=\"/css/bootstrap.min.css\">
     <link rel=\"stylesheet\" href=\"/css/bootstrap-responsive.css\">
+    <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
     <link href=\"/css/percept2.css\" rel=\"stylesheet\" type=\"text/css\">
     <script type=\"text/javascript\" src=\"/javascript/percept_error_handler.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_select_all.js\"></script>
@@ -1825,7 +1827,7 @@ menu_1(Min, Max) ->
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Ports</a></li>
         <li><a href=/cgi-bin/percept2_html/process_tree_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">Processes</a></li>
-     </ul></div>\n".
+     </ul></div></div>\n".
    
 
 %%% -------------------------------------%%%

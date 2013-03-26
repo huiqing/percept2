@@ -2,8 +2,27 @@
 --------------------------------------------------------------------
 * MAIN.JS
 * Core functionality for PERCEPT2.
-* Authors:    Jason Ardener, Joe Flood, Chris Jenkins,
-*             Elise Worrall
+* Authors:        Jason Ardener, Joe Flood, Chris Jenkins,
+*                 Elise Worrall
+* Key Functions:  There are some key functions and code blocks to
+*                 focus on for core functionality (use ctrl+f to
+*                 find):
+*
+*               createTree()        [All tree functionality is
+*                                   here.]
+*               d3.text()           [Grabs the JSON for the tree.]
+*               update()            [Updates the tree.]
+*               @NODETEXT           [This is where the text for
+*                                   node is set.]
+*               @OPENMODAL          [This is where modal onclick
+*                                   is set.]
+*               getFile()           [File contents to stored as
+*                                   array.]
+*               getCode()           [File contents are added to
+*                                   modal, which is displayed.]
+*               parseText()         [description]
+*               eatCallInfoTuple()  [description]
+*               eatChild()          [description]
 --------------------------------------------------------------------
 *******************************************************************/
 
@@ -13,26 +32,25 @@
 * @var fileArray:   Erlang code file lines in an array.
 * @var root:        The root of the callgraph
 */
-var dHeight = $(window).height() - $('header').height() - 60;
+var dHeight = $(window).height() - $('#header').height() - 80;
 var fileArray;
-//var root;
 
 createTree();
 
 /**
  * Generate the tree.
- * @var m:          Margins for the tree canvas.
- * @var w:          Width of the tree canvas.
- * @var h:          Height of the tree canvas.
- * @var i:          Node id.
- * @var root:       ???
- * @var tree:       Tree object.
+ * @var m:          [Margins for the tree canvas.]
+ * @var w:          [Width of the tree canvas.]
+ * @var h:          [Height of the tree canvas.]
+ * @var i:          [Node id.]
+ * @var root:       [Which node is the root.]
+ * @var tree:       [Tree object.]
  * @var diagonal:
  * @var vis:
  * @var pid:
  */
 function createTree(){
-  var m = [40, 60, 40, 60],
+  var m = [40, 0, 40, 175],
       w = 1080 - m[1] - m[3],
       h = dHeight - m[0] - m[2],
       i = 0,
@@ -60,7 +78,7 @@ function createTree(){
     }
   }
 
-    //Set size of graph div to dHeight.
+  //Set size of graph div to dHeight.
   $("graph").height(dHeight);
 
   //Check for window resize and adjust the size of graph div.
@@ -71,11 +89,10 @@ function createTree(){
     setTimeout(createTree(), 5000);
   });
 
-
+  //Grabs the JSON and updates the root.
   d3.text("/cgi-bin/percept2_html/callgraph?pid="+pid, "application/json", function (callgraph)
   {
       console.log("RAW: " + callgraph);
-
       var parseString =  callgraph  .split('\n').join('')           //remove newlines
                                     .split('\t').join('')           //and tabs
                                     .split(' ').join('')          //and spaces
@@ -87,6 +104,7 @@ function createTree(){
 
       console.log("DONE: \n\n" + JSON.stringify(root, null, '\t'));
 
+      //Show all nodes.
       function toggleAll(d) {
           if (d.children) {
               d.children.forEach(toggleAll);
@@ -97,29 +115,36 @@ function createTree(){
   });
 
 
-
+  /**
+   * Update the tree.
+   * @var duration      [description]
+   * @var nodes         [description]
+   * @var tDepth        [description]
+   * @var nSpacing      [Spacing between each node, horizontally.]
+   * @var w             [description]
+   * @var node          [Node object.]
+   * @var nodeEnter     [The point of which the node enters from (parent node).]
+   * @var nodeUpdate    [Transition node to new position.]
+   * @var nodeExit      [Transition exiting node to parents new position.]
+   * @var link          [Updates links.]
+   */
   function update(source) {
       var duration = d3.event && d3.event.altKey ? 5000 : 500;
 
       // Compute the new tree layout.
       var nodes = tree.nodes(root).reverse();
       var tDepth = 1+ d3.max(nodes, function(x) { return x.depth;});
-
       var nSpacing = 265;
       var w = tDepth*nSpacing;
 
-
-
-
       $("#svg").width(w);
-
 
       // Normalize for fixed-depth.
       nodes.forEach(function(d) {
           d.y = d.depth * nSpacing;
       });
 
-      // Update the nodes…
+      // Update the nodes.
       var node = vis.selectAll("g.node").data(nodes, function(d) {
           return d.id || (d.id = ++i);
       });
@@ -136,14 +161,17 @@ function createTree(){
           update(d);
       });
 
-      // Adding the text
+      // Adds the text to each node.
+      // @NODETEXT
       nodeEnter.append("svg:text").attr("class", "nText").attr("x", function(d) {
           return d.children || d._children ? -10 : 10;
       }).attr("dy", ".35em").attr("text-anchor", function(d) {
           return d.children || d._children ? "end" : "start";
       }).text(function(d) {
+          //Text is set to function name and callcount.
           return d.function + " ("+d.callCount+")";
       }).style("fill-opacity", 1e-6).attr("href", function(d) {
+          //Start row, end row and module names are stored in the href.
           return d.start.row + " " + d.end.row + " " + d.module;
       });
 
@@ -155,6 +183,9 @@ function createTree(){
       nodeUpdate.select("circle").attr("r", 4.5).style("fill", function(d) {
           return d._children ? "lightsteelblue" : "#fff";
       });
+
+      //Set onclick of text to open modal by called getCode() function.
+      //@OPENMODAL
       nodeEnter.select("text").style("fill-opacity", 1).attr("onclick","getCode(this)");
 
       // Transition exiting nodes to the parent's new position.
@@ -163,7 +194,6 @@ function createTree(){
       }).remove();
 
       nodeExit.select("circle").attr("r", 1e-6);
-
       nodeExit.select("text").style("fill-opacity", 1e-6);
 
       // Update the links…
@@ -203,11 +233,6 @@ function createTree(){
           d.x0 = d.x;
           d.y0 = d.y;
       });
-
-       $(".nText").each(function() {
-            //console.log(this);
-            //$(this).ellipsis();
-      });
   }
 
   // Toggle children.
@@ -220,48 +245,65 @@ function createTree(){
         d._children = null;
     }
   }
-
 }
 
-function getFile(module) {
-  var query = document.location.toString().split('?')[1];
-  console.log(query);
 
-  var filePath = '/cgi-bin/percept2_html/module_content?mod=' + module;
-  xmlhttp = new XMLHttpRequest();
-  xmlhttp.open("GET",filePath,false);
-  xmlhttp.send(null);
-  var fileContent = xmlhttp.responseText;
-  var fileArray = fileContent.split('\n');
-  return fileArray;
-}
+  /**
+   * Grab the content of a Erlang file and store as an array.
+   * @param  {[string]} module  [The name of the module.]
+   * @return {[array]}          [Array containing each line of Erlang file.]
+   */
+  function getFile(module) {
+    var filePath = '/cgi-bin/percept2_html/module_content?mod=' + module;
 
-function getCode(text) {
-  var values = text.getAttribute('href').split(' ');
-  var title = text.firstChild.data;
+    //Grab contents of the file.
+    xmlhttp = new XMLHttpRequest();
+    xmlhttp.open("GET",filePath,false);
+    xmlhttp.send(null);
+    var fileContent = xmlhttp.responseText;
 
-  var start = values[0]-1;
-  var end = values[1];
+    //Add each line of file to array.
+    var fileArray = fileContent.split('\n');
 
-  if (start == -1)
-  {
-    alert("No source available for this function.");
-    return;
-  }
-  console.log(start + " " + end);
-
-  var fileArray = getFile(values[2]);
-
-  $('#myModal pre').empty();
-  $('#myModal h3').empty();
-  $('#myModal h3').append(title);
-
-  for(var i=start; i<end; i++) {
-    $('#myModal pre').append(fileArray[i] +'<br/>');
+    return fileArray;
   }
 
-  $('#myModal').modal('toggle');
-}
+  /**
+   * Calls getFile to get the code array, empties the modal of any previous content,
+   * then adds the new code to it.
+   * @param  {[string]} text  [The starting line, end line and module name seperated by spaces.]
+   * @var    values           [Seperates the values in 'text' by the space and stores in array.]
+   * @var    title            [The title of the modal.]
+   * @var    start            [The start line of method.]
+   * @var    end              [The end line of method.]
+   * @var    fileArray        [Array of lines from file.]
+   */
+  function getCode(text) {
+    var values = text.getAttribute('href').split(' ');
+    var title = text.firstChild.data;
+    var start = values[0]-1;
+    var end = values[1];
+    var fileArray = getFile(values[2]);
+
+    //Empty the modal and then add new contents.
+    $('#myModal pre').empty();
+    $('#myModal h3').empty();
+    $('#myModal h3').append(title);
+
+    if (start == -1) {
+      $('#myModal h3').append(" - Source Unavailable");
+      $('#myModal pre').append("The Erlang source for this function is not available :(.");
+    }
+    else{
+      for(var i=start; i<end; i++) {
+        $('#myModal pre').append(fileArray[i] +'<br/>');
+      }
+    }
+
+    //Show the modal.
+    $('#myModal').modal('toggle');
+  }
+
 
 //JOEJOEJOE erlang parsing shenanigans:
 function parseText(text) {

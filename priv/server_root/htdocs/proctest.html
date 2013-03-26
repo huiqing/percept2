@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+    <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+    <title>percept2</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/bootstrap-responsive.css">
+    <link href="/css/percept2.css" rel="stylesheet" type="text/css">
+    <script type="text/javascript" src="/javascript/percept_error_handler.js"></script>
+    <script type="text/javascript" src="/javascript/percept_select_all.js"></script>
+    <script type="text/javascript" src="/javascript/percept_area_select.js"></script>
+    <script type="text/javascript" src="/javascript/sorttable.js"></script>
+    <script type="text/javascript">
+           function toggle(lnkid, tbid)
+           {
+           if(document.all)
+		     {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == "block" ? "none" : "block";}
+           else
+		    {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == "table" ? "none" : "table";}
+           document.getElementById(lnkid).value = document.getElementById(lnkid).value == "[-]" ? "[+]" : "[-]";
+          }
+     </script>
+    <script src="/javascript/modernizr-2.6.1-respond-1.1.0.min.js"></script>
+    <style type="text/css">
+        .node circle { cursor: pointer; fill: #fff; stroke: #f77128; stroke-width: .5px; } .node text { font-size: 11px; } path.link { fill: none; stroke: #cecece; stroke-width: 1px; }
+    </style>
+    </head><body onLoad="load_image()">
+   <div id="header"><h1><a href=/index.html>percept2</a></h1></div>
+<div id="menu" class="menu_tabs">
+	<ul>
+     	 <li><a href=/cgi-bin/percept2_html/overview_page>Activity Graph</a></li>
+	<li><a href=/cgi-bin/percept2_html/databases_page>Databases</a></li>
+        <li><a href=/cgi-bin/percept2_html/visualise_sampling_data_page>Visualise Sampling Data</a></li>
+        <li><a href=/cgi-bin/percept2_html/inter_node_message_page?range_min=0.0000&range_max=7.4137>Inter-node Messaging</a></li>
+        <li><a href=/cgi-bin/percept2_html/active_funcs_page?range_min=0.0000&range_max=7.4137>Function Activities</a></li>
+        <li><a href=/cgi-bin/percept2_html/ports_page?range_min=0.0000&range_max=7.4137>Ports</a></li>
+        <li><a href=/cgi-bin/percept2_html/process_tree_page?range_min=0.0000&range_max=7.4137>Processes</a></li>
+     </ul></div>
+<div id="main" class="container">
+        <div id="graph"></div>
+        <!--[if lt IE 9]>
+            <p class="chromeframe">You are using an outdated browser. <a href="http://browsehappy.com/">Upgrade your browser today</a> or <a href="http://www.google.com/chromeframe/?redirect=true">install Google Chrome Frame</a> to better experience this site.</p>
+        <![endif]-->
+    </div>
+
+
+    <div id="myModal" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">x</button>
+            <h3 id="myModalLabel"></h3>
+        </div>
+        <div class="modal-body">
+            <pre class="prettyprint linenums"></pre>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
+        </div>
+    </div>
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="/javascript/jquery-1.8.2.min.js"><\/script>')</script>
+
+    <script src="/javascript/bootstrap.min.js"></script>
+    <script type="text/javascript" src="/javascript/d3.js"></script>
+    <script type="text/javascript" src="/javascript/d3.layout.js"></script>
+    <script type="text/javascript" src="/javascript/jquery.autoellipsis-1.0.10.min.js"></script>
+
+    <script src="/javascript/tree.js"></script>
+
+    <script>
+        var _gaq=[['_setAccount','UA-XXXXX-X'],['_trackPageview']];
+        (function(d,t){var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+            g.src=('https:'==location.protocol?'//ssl':'//www')+'.google-analytics.com/ga.js';
+            s.parentNode.insertBefore(g,s)}(document,'script'));
+    </script></body>
+     </html>
