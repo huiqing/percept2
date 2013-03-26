@@ -426,7 +426,7 @@ div_tag_graph(Name) ->
 	border-right: 1px solid #101010;
 	z-index:2;
 	width:40px;
-	height:40px;\"></div></div>".
+	height:500px;\"></div></div>".
 
 url_graph(Min,Max,Pids) ->
     graph("/cgi-bin/percept2_graph/graph",Min,Max,Pids).
