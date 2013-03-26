@@ -62,12 +62,24 @@ overview_page(SessionID, Env, Input) ->
             _ ->
                 Menu = menu(Input),
                 OverviewContent = overview_content(Env, Input),
-                deliver_page(SessionID, Menu, OverviewContent)
+
+                mod_esi:deliver(SessionID, header(overview_page_header())),
+                mod_esi:deliver(SessionID, Menu),
+                mod_esi:deliver(SessionID, OverviewContent),
+                mod_esi:deliver(SessionID, footer())
         end
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
+
+-spec(overview_page_header() -> string()).
+overview_page_header() ->
+    "<script src=\"/javascript/jquery-1.8.2.min.js\"></script>
+    <script src=\"/javascript/jquery.flot.min.js\"></script>
+    <script src=\"/javascript/jquery.flot.crosshair.min.js\"></script>
+    <script src=\"/javascript/jquery.flot.selection.min.js\"></script>
+    <script src=\"/javascript/procsports.js\"></script>".
 
 -spec(concurrency_page(pid(), list(), string()) -> ok | {error, term()}).
 concurrency_page(SessionID, Env, Input) ->
@@ -254,14 +266,14 @@ new_callgraph_html_page() ->
 
     <div id=\"myModal\" class=\"modal hide fade\" tabindex=\"-1\" role=\"dialog\" aria-labelledby=\"myModalLabel\" aria-hidden=\"true\">
         <div class=\"modal-header\">
-            <button type=\"button\" class=\"close\" data-dismiss=\"modal\" aria-hidden=\"true\">x</button>
+            <button type=\"button\" class=\"close btn btn-large\" data-dismiss=\"modal\" aria-hidden=\"true\">x</button>
             <h3 id=\"myModalLabel\"></h3>
         </div>
         <div class=\"modal-body\">
             <pre class=\"prettyprint linenums\"></pre>
         </div>
         <div class=\"modal-footer\">
-            <button class=\"btn\" data-dismiss=\"modal\" aria-hidden=\"true\">Close</button>
+            <button class=\"btn btn-large\" data-dismiss=\"modal\" aria-hidden=\"true\">Close</button>
         </div>
     </div>
 
@@ -367,7 +379,7 @@ overview_content_1(_Env, Input) ->
     Procs = percept2_db:select({information, procs_count}),
     Ports = percept2_db:select({information, ports_count}),
     InformationTable = 
-	"<table>" ++
+	"<table class=\"table table-hover\">" ++
 	table_line(["Profile time:", TotalProfileTime]) ++
         table_line(["Schedulers:", erlang:system_info(schedulers)]) ++
 	table_line(["Processes:", Procs]) ++
@@ -381,34 +393,15 @@ overview_content_1(_Env, Input) ->
     <form name=form_area method=POST action=/cgi-bin/percept2_html/overview_page>
     <input name=data_min type=hidden value=" ++ term2html(float(Min)) ++ ">
     <input name=data_max type=hidden value=" ++ term2html(float(Max)) ++ ">\n",
-    RangeTable = 
-	"<table>"++
-	table_line([
-	    "Min:", 
-	    "<input name=range_min value=" ++ term2html(float(Min)) ++">",
-	    "<select name=\"graph_select\" onChange=\"select_image()\">
-                <option value=\"" ++ url_procs_graph(Min, Max, []) ++ "\">Processes </option>
-                <option value=\"" ++ url_sched_graph(Min, Max, []) ++ "\">Schedulers </option>
-                <option value=\"" ++ url_ports_graph(Min, Max, []) ++ "\">Ports </option>
-	      	<option value=\"" ++ url_graph(Min,Max,[]) ++ "\">Ports & Processes </option>
-            </select>",
-	    "<input type=submit value=Update>"
-	    ]) ++
-	table_line([
-	    "Max:", 
-	    "<input name=range_max value=" ++ term2html(float(Max)) ++">",
-            "",
-	    "<a href=\"/cgi-bin/percept2_html/codelocation_page?range_min=" ++
-	    term2html(Min) ++ "&range_max=" ++ term2html(Max) ++"\">Code location</a>"
-            ]) ++
-    	"</table>",
-    MainTable = 
-	"<table>" ++
-	table_line([div_tag_graph("percept_graph")]) ++
-	table_line([RangeTable]) ++
-	"</table>",
+    Graph =    "<div id=\"spinner\"></div>
+                <div id=\"procsportsgraph\"></div>
+                <div style=\"margin-left: auto; margin-right: auto; text-align: center; width: 500px\"> 
+                    Click and drag a rectangle over the graph above to zoom into that portion. Double-click, or click Zoom Out below to zoom out one level.
+                    <br />
+                    <h2><button class=\"btn btn-large\" id=\"zoomOut\">Zoom Out</a></h2>
+                </div>",
     Footer = "</div></form>",
-    Header ++ MainTable ++ Footer.
+    Header ++ Graph ++ Footer.
     
 -spec(div_tag_graph(string()) -> string()).
 div_tag_graph(Name) ->
@@ -556,7 +549,7 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
     Header1 = 
         "<div id=\"content\">
          <form name=form_area1 method=POST action=/cgi-bin/percept2_html/concurrency_page>\n",  
-    FuncActs = "<table>"++table_line(
+    FuncActs = "<table class=\"table table-hover\">"++table_line(
                             [
                              "Min:",
                              "<input name=range_min value=" ++ term2html(float(T0)) ++">",
@@ -564,17 +557,17 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                              "Max:", 
                              "<input name=range_max value=" ++ term2html(float(T1)) ++">",
                              "",
-                             "<input type=submit value=\"Active Functions\">"
+                             "<input type=submit class=\"btn btn-large\" value=\"Active Functions\">"
                             ])
         ++"</table>",
     MainTable = 
-        "<table cellspacing=0 cellpadding=0 border=0>" ++ 
+        "<table class=\"table table-hover\" cellspacing=0 cellpadding=0 border=0>" ++ 
         table_line([div_tag_graph("percept_graph")]) ++
         table_line([FuncActs]) ++ "</table>\n",
     MainTable1 =
-        "<table cellspacing=0 cellpadding=0 border=0>" ++ 
-        table_line(["<input type=submit value=\"Compare Selected Processes\">"])++ "</table>\n"++
-        "<table  cellspacing=0 cellpadding=0 border=0>" ++
+        "<table class=\"table table-hover\" cellspacing=0 cellpadding=0 border=0>" ++ 
+        table_line(["<input type=submit class=\"btn btn-large\" value=\"Compare Selected Processes\">"])++ "</table>\n"++
+        "<table class=\"table table-hover\" cellspacing=0 cellpadding=0 border=0>" ++
         [ActivityBarTable]++"</table>",
     Footer = "</div></form>",
     Header ++ MainTable ++ Footer ++ Header1 ++ MainTable1++Footer.
@@ -689,7 +682,7 @@ active_funcs_content_2(Min, Max, _StartTs, ActiveFuns, Pids) ->
                      {td, make_image_string({FunStart, FunEnd}, {Min, Max})},
                      {td, term2html(Count)}]
                     ||{Pid, Func, {FunStart, FunEnd}, Count}<- ActiveFuns],
-    InfoTable = "<table>" ++ 
+    InfoTable = "<table class=\"table table-hover\">" ++ 
         table_line(["Min. range:", Min])++
         table_line(["Max. range:", Max])++
         "</table>",
@@ -719,10 +712,10 @@ active_funcs_content_2(Min, Max, _StartTs, ActiveFuns, Pids) ->
             Header ++
                 InfoTable ++
                 "<br></br>" ++
-                "<table>
+                "<table class=\"table table-hover\">
 	           <tr><td><select name=\"pid\">"++PidList ++
                 "</select></td>
-                 <td width=200><input type=submit value=\"Call Graph Slice\" /></td></tr>
+                 <td width=200><input type=submit class=\"btn btn-large\" value=\"Call Graph Slice\" /></td></tr>
         	</table>" 
                 ++"<br></br>"
                 ++ Table ++
@@ -762,18 +755,18 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
     <input name=node2 type=hidden value=" ++ term2html(Node2) ++ ">
     \n",
     RangeTable = 
-	"<table>"++
+	"<table class=\"table table-hover\">"++
 	table_line([
                     "Min:", 
                     "<input name=range_min value=" ++ term2html(float(Min)) ++">",
                     "Max:", 
                     "<input name=range_max value=" ++ term2html(float(Max)) ++">"
-                    "<input type=submit value=Update>"
+                    "<input type=submit class=\"btn btn-large\" value=Update>"
                    ]) ++
         "</table>",
     
     MainTable = 
-	"<table>" ++
+	"<table class=\"table table-hover\">" ++
 	table_line([div_tag_graph("percept_graph")]) ++
      	table_line([RangeTable]) ++
 	"</table>",
@@ -789,9 +782,9 @@ databases_content() ->
     "<div id=\"content\">
 	<form name=load_percept_file method=post action=/cgi-bin/percept2_html/load_database_page>
 	<center>
-	<table>
+	<table class=\"table table-hover\">
 	    <tr><td>Enter file to analyse:</td><td><input type=hidden name=path /></td></tr>
-	    <tr><td><input type=file name=file size=40 /></td><td><input type=submit value=Load onClick=\"path.value = file.value;\" /></td></tr>
+	    <tr><td><input type=file name=file size=40 /></td><td><input type=submit class=\"btn btn-large\" value=Load onClick=\"path.value = file.value;\" /></td></tr>
 	</table>
 	</center>
 	</form>
@@ -846,18 +839,18 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     SystemStopTS = percept2_db:select({system, stop_ts}),
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
     ProcsHtml = mk_procs_html(ProcessTree, ProfileTime, []), 
-    Selector = "<table class=\"processes\" cellspacing=10>" ++
-        "<tr> <td>" ++ "<input onClick='selectall()' type=checkbox name=select_all>Select all" ++ "</td>"
-        ++"<td><input type=checkbox name=include_children_procs>Include children procs"++"</td>" 
-        ++"<td><input type=checkbox name=include_unshown_procs>Include omitted procs"++"</td></tr>" ++
-        "<tr> <td> <input type=submit value=Compare> </td>" ++
+    Selector = "<table class=\"processes table table-hover\" cellspacing=10>" ++
+        "<tr> <td>" ++ "<label class=\"checkbox\"><input onClick='selectall()' type=checkbox name=select_all>Select all</label>" ++ "</td>"
+        ++"<td><label class=\"checkbox\"><input type=checkbox name=include_children_procs>Include children procs</label>"++"</td>" 
+        ++"<td><label class=\"checkbox\"><input type=checkbox name=include_unshown_procs>Include omitted procs</label>"++"</td></tr>" ++
+        "<tr> <td> <input type=submit class=\"btn btn-large\" value=Compare> </td>" ++
         "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/process_tree_visualisation_page\">"++
         "<b>Visualise Process Tree</b>"++"</a></td></tr>",
     Right = "<div>"
         ++ Selector ++ 
         "</div>\n",
     Middle = "<div id=\"content\">
-    <table>" ++
+    <table class=\"table table-hover\">" ++
         ProcsHtml ++
         "</table>" ++
         Right ++ 
@@ -936,7 +929,7 @@ ports_page_content_1(_Env, _Input) ->
     ProfileTime = ?seconds(SystemStopTS, SystemStartTS),
     Ports = percept2_db:select({information, ports}),
     PortsHtml = mk_ports_html(lists:reverse(lists:keysort(2, Ports)), ProfileTime),
-    "<div id=\"content\"> <table>" ++
+    "<div id=\"content\"> <table class=\"table table-hover\">" ++
         PortsHtml ++ 
         "</table>" ++
         "</div>\n".
@@ -964,7 +957,7 @@ mk_ports_html(Ports, ProfileTime) ->
                 end, [], Ports),        
     if length(PortsHtml) > 0 ->
     	   " <tr><td><b>Ports</b></td></tr>
-            <table  width=900  border=1 cellspacing=10 cellpadding=2>
+            <table class=\"table table-hover\" width=900  border=1 cellspacing=10 cellpadding=2>
 		<tr>
 	        <td align=middle width=80><b>Port Id</b></td>
 		<td align=middle width=80><b>Lifetime</b></td>
@@ -1008,9 +1001,9 @@ info_msg_sent(I) ->
 expand_or_collapse(Children, Id) ->
     case Children of 
         [] ->
-            "<input type=\"button\", value=\"-\">";
+            ""; %%<input type=\"button\" class=\"btn\", value=\"-\">";
         _ ->
-            "<input type=\"button\" id=\"lnk" ++ pid2str(Id) ++
+            "<input type=\"button\" class=\"btn\" id=\"lnk" ++ pid2str(Id) ++
                   "\" onclick = \"return toggle('lnk" ++ pid2str(Id) ++ "', '"
                   ++ mk_table_id(Id) ++ "')\", value=\"+\">"
     end.
@@ -1022,8 +1015,8 @@ sub_table(_Id, [], _ProfileTime, _) ->
     "";
 sub_table(Id, Children, ProfileTime, ActivePids) ->
     SubHtml=mk_procs_html(Children, ProfileTime, ActivePids),
-    "<tr><td colspan=\"10\"> <table class=\"processes\" width=950 cellspacing=10  cellpadding=2 border=1 "
-        "id=\""++mk_table_id(Id)++"\", style=\"margin-left:60px;\">" ++
+    "<tr><td colspan=\"10\"> <table class=\"processes table table-hover\" width=950 cellspacing=10  cellpadding=2 border=1 "
+        "id=\""++mk_table_id(Id)++"\", style=\"margin-left: auto; margin-right: auto;\">" ++
         SubHtml ++ "</table></td></tr>".
 
 mk_display_style(ProcessTrees) ->
@@ -1208,7 +1201,7 @@ func_callgraph_content_1(_Env, _Input) ->
 functions_content(FunCallTree) ->
     FunsHtml=mk_funs_html(FunCallTree, false),
     Table=if length(FunsHtml) >0 ->
-                  "<table border=1 cellspacing=10 cellpadding=2 bgcolor=\"#FFFFFF\">
+                  "<table class=\"table table-hover\" border=1 cellspacing=10 cellpadding=2 bgcolor=\"#FFFFFF\">
                   <tr>
 	          <td align=left width=80><b> Pid </b></td>
                   <td align=left width=80><b> [+/-] </b></td>
@@ -1252,7 +1245,7 @@ fun_sub_table(_Id, [], _IsChildren) ->
     "";
 fun_sub_table(Id={_Pid, _Fun, _Caller},Children, IsChildren) ->
     SubHtml = mk_funs_html(Children, IsChildren),
-    "<tr><td colspan=\"10\"> <table cellspacing=10  cellpadding=2 border=1 "
+    "<tr><td colspan=\"11\"> <table cellspacing=10  cellpadding=2 border=1 "
         "id=\""++mk_fun_table_id(Id)++"\" style=\"margin-left:60px;\">" ++
         SubHtml ++ "</table></td></tr>".
      %% "<tr><td colspan=\"10\"> <table width=450 cellspacing=10 "
@@ -1260,9 +1253,9 @@ fun_sub_table(Id={_Pid, _Fun, _Caller},Children, IsChildren) ->
 fun_expand_or_collapse(Children, Id) ->
     case Children of 
         [] ->
-            "<input type=\"button\", value=\"-\">";
+            "<input type=\"button\" class=\"btn btn-large\" value=\"-\">";
         _ ->
-            "<input type=\"button\" id=\"lnk"++id_to_list(Id)++
+            "<input type=\"button\" class=\"btn btn-large\" id=\"lnk"++id_to_list(Id)++
                 "\" onclick = \"return toggle('lnk"++id_to_list(Id)++"', '"
                 ++mk_fun_table_id(Id)++"')\", value=\"+\">"
     end.
@@ -1452,14 +1445,14 @@ inter_node_message_content_1(_Env, Nodes) ->
     "<div id=\"content\">
 	<form name=inter_node_message method=POST action=/cgi-bin/percept2_html/inter_node_message_graph_page>
 	<center>
-         <table>
+         <table class=\"table table-hover\">
 	    <tr><td width=200>From node:</td>
                 <td width=200>To node:</td></tr>
 	    <tr><td><select name=\"node1\">"++NodeList ++
             "</select></td>
             <td><select name=\"node2\">"++NodeList++
         "</select></td>
-         <td width=200><input type=submit value=\"Generate Graph\" /></td></tr>
+         <td width=200><input type=submit class=\"btn btn-large\" value=\"Generate Graph\" /></td></tr>
 	</table>
 	</center>
 	</form>
@@ -1490,7 +1483,7 @@ join_strings_with(S1, S2, S) ->
 html_table(Rows) ->
     html_table(Rows, "").
 
-html_table(Rows, Props) -> "<table" ++ Props++">" ++ html_table_row(Rows) ++ "</table>".
+html_table(Rows, Props) -> "<table class=\"table table-hover\"" ++ Props++">" ++ html_table_row(Rows) ++ "</table>".
 
 html_table_row(Rows) -> html_table_row(Rows, odd).
 html_table_row([], _) -> "";
@@ -1782,7 +1775,7 @@ common_header(HeaderData)->
     <title>percept2</title>
     <link rel=\"stylesheet\" href=\"/css/bootstrap.min.css\">
     <link rel=\"stylesheet\" href=\"/css/bootstrap-responsive.css\">
-    <link rel="icon" type="image/x-icon" href="images/favicon.ico" />
+    <link rel=\"icon\" type=\"image/x-icon\" href=\"/images/favicon.ico\" />
     <link href=\"/css/percept2.css\" rel=\"stylesheet\" type=\"text/css\">
     <script type=\"text/javascript\" src=\"/javascript/percept_error_handler.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_select_all.js\"></script>
@@ -1795,7 +1788,7 @@ common_header(HeaderData)->
 		     {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == \"block\" ? \"none\" : \"block\";}
            else
 		    {document.getElementById(tbid).style.display = document.getElementById(tbid).style.display == \"table\" ? \"none\" : \"table\";}
-           document.getElementById(lnkid).value = document.getElementById(lnkid).value == \"[-]\" ? \"[+]\" : \"[-]\";
+           document.getElementById(lnkid).value = document.getElementById(lnkid).value == \"-\" ? \"+\" : \"-\";
           }
      </script>
     " ++ HeaderData ++"
@@ -1859,7 +1852,7 @@ gen_content(Env,Input,CacheKey,Fun) ->
 %%% --------------------------- %%%
 -spec error_msg(Error::string()) -> string().
 error_msg(Error) ->
-    "<table width=400>
+    "<table class=\"table table-hover\" width=400>
 	<tr height=5><td></td> <td></td></tr>
 	<tr><td width=150 align=left><b>Error: </b></td> <td align=left>"++ Error ++ "</td></tr>
 	<tr height=5><td></td> <td></td></tr>
@@ -2004,7 +1997,7 @@ sample_page_content() ->
 	<form name=load_sample_data_file method=post action=/cgi-bin/percept2_html/load_sample_data_page>
 	<center>
         <br></br>
-	<table>
+	<table class=\"table table-hover\">
            <tr> <td  align=left> Select sampling data type:</td> 
                 <td  align=left> <select name=\"type\">
                      <option value=\"mem_info\">Memory Usage</option>
@@ -2018,12 +2011,12 @@ sample_page_content() ->
                </tr>
         </table>
         <br></br>
-        <table>
+        <table class=\"table table-hover\">
            <tr><td align=left>Enter file to analyse:</td>
                <td><input type=file name=file size=60 /> </tr>
            <tr><td align=left>Copy and paste path to file here:</td> 
                <td align=left><input type=text name=path size=75/> </td></tr>
-           <tr><td><input type=submit value=\"Generate Graph\" /> </td></tr>
+           <tr><td><input type=submit class=\"btn btn-large\" value=\"Generate Graph\" /> </td></tr>
         </table>
   	</center>
 	</form>

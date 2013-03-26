@@ -50,7 +50,7 @@ a:active {text-decoration:none;}
 ----------------------------- */
 
 #content table {
-	width: 990px;
+	min-width: 990px;
 	margin: 10px auto;
 	font-size: 1.4em;
 	-webkit-transform: translateZ(0);
@@ -215,14 +215,33 @@ table .processes {
 	font-size: 98% !important;
 }
 
+.table-wrap {
+	margin: 0 auto;
+	width: 90%;
+	overflow: auto;
+}
+
 /* --------------------------
 	Processes & Ports
 ----------------------------- */
+div#procsportsgraph > div.legend > table {
+	min-width: 32px !important;
+}
+
 div#procsportsgraph {
 	width: 1000px;
 	height: 600px;
 	margin-left: auto;
 	margin-right: auto;
+}
+
+div#spinner {
+	margin-left: auto;
+	margin-right: auto;
+
+	width: 100px;
+	height: 100px;
+	background: url(/images/spinner.gif);
 }
 
 /* --------------------------

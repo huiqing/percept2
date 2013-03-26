@@ -5,14 +5,14 @@ var grabSeries = function(rawText) {
     var lines = rawText.split('\n');
     var portsArr = [], processesArr = [];
 
-    for (var i = 0; i < lines.count; i += 10) //every 10 lines
+    for (var i = 0; i < lines.length; i += 10) //every 10 lines
     {
         var line = lines[i].substring(2, lines[i].length - 2);
         var data = line.split(',');
 
         var time = parseFloat(data[0]).toFixed(6);
-        var processes = parseInt(record[1]);
-        var ports = parseInt(record[2]);
+        var processes = parseInt(data[1]);
+        var ports = parseInt(data[2]);
 
         portsArr.push([time, ports]);
         processesArr.push([time, processes]);
@@ -23,6 +23,8 @@ var grabSeries = function(rawText) {
 
 $(function () {
     $.get('/cgi-bin/percept2_html/procs_ports_count', function(result) {
+        $("#spinner").fadeOut();
+
         var rawData = grabSeries(result);
 
         graph = $("#procsportsgraph");
@@ -32,7 +34,8 @@ $(function () {
             series: { lines: { show: true, steps: true }/*, points: {show: true} */},
             crosshair: { mode: "xy" },
             selection: { mode: "xy" },
-            grid: { hoverable: true, autoHighlight: false }
+            grid: { hoverable: true, autoHighlight: false },
+            legend: { backgroundColor: null, backgroundOpacity: 0 }
         };
 
         plot = $.plot(graph, data, options);
