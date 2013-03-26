@@ -50,14 +50,16 @@ a:active {text-decoration:none;}
 ----------------------------- */
 
 #content table {
+	width: 990px;
 	min-width: 990px;
 	margin: 10px auto;
 	font-size: 1.4em;
 	-webkit-transform: translateZ(0);
 }
 
-.container {
+.container, #content {
   width: 90%;
+  margin: 0 auto;
   overflow: auto;
 }
 
@@ -215,17 +217,12 @@ table .processes {
 	font-size: 98% !important;
 }
 
-.table-wrap {
-	margin: 0 auto;
-	width: 90%;
-	overflow: auto;
-}
-
 /* --------------------------
 	Processes & Ports
 ----------------------------- */
 div#procsportsgraph > div.legend > table {
 	min-width: 32px !important;
+	width: 90px !important;
 }
 
 div#procsportsgraph {

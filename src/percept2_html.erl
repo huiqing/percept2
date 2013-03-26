@@ -849,7 +849,7 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     Right = "<div>"
         ++ Selector ++ 
         "</div>\n",
-    Middle = "<div id=\"content\" class=\"table-wrap\">
+    Middle = "<div id=\"content\">
     <table class=\"table table-hover\">" ++
         ProcsHtml ++
         "</table>" ++
