@@ -849,7 +849,7 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
     Right = "<div>"
         ++ Selector ++ 
         "</div>\n",
-    Middle = "<div id=\"content\">
+    Middle = "<div id=\"content\" class=\"table-wrap\">
     <table class=\"table table-hover\">" ++
         ProcsHtml ++
         "</table>" ++
@@ -1015,7 +1015,7 @@ sub_table(_Id, [], _ProfileTime, _) ->
     "";
 sub_table(Id, Children, ProfileTime, ActivePids) ->
     SubHtml=mk_procs_html(Children, ProfileTime, ActivePids),
-    "<tr><td colspan=\"10\"> <table class=\"processes table table-hover\" width=950 cellspacing=10  cellpadding=2 border=1 "
+    "<tr><td colspan=\"11\"> <table class=\"processes table table-hover\" width=950 cellspacing=10  cellpadding=2 border=1 "
         "id=\""++mk_table_id(Id)++"\", style=\"margin-left: auto; margin-right: auto;\">" ++
         SubHtml ++ "</table></td></tr>".
 
