@@ -285,6 +285,7 @@ new_callgraph_html_page() ->
     <script type=\"text/javascript\" src=\"/javascript/d3.layout.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/jquery.autoellipsis-1.0.10.min.js\"></script>
 
+    <script src=\"/javascript/parser.js\"></script>
     <script src=\"/javascript/tree.js\"></script>
 
     <script>
