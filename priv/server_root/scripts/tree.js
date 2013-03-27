@@ -82,17 +82,16 @@ function createTree(){
   $("graph").height(dHeight);
 
   //Check for window resize and adjust the size of graph div.
-  $(window).resize(function() {
+  /*$(window).resize(function() {
     dHeight = $(window).height() - $('header').height() - 60;
     $("graph").height(dHeight);
     document.getElementById("graph").innerHTML = "";
     setTimeout(createTree(), 5000);
-  });
+  });*/
 
   //Grabs the JSON and updates the root.
   d3.text("/cgi-bin/percept2_html/callgraph?pid="+pid, "application/json", function (callgraph)
   {
-      console.log("RAW: " + callgraph);
       var parseString =  callgraph  .split('\n').join('')           //remove newlines
                                     .split('\t').join('')           //and tabs
                                     .split(' ').join('')          //and spaces
@@ -101,8 +100,6 @@ function createTree(){
       root = parseText(parseString);
       root.x0 = h / 2;
       root.y0 = 0;
-
-      console.log("DONE: \n\n" + JSON.stringify(root, null, '\t'));
 
       //Show all nodes.
       function toggleAll(d) {
