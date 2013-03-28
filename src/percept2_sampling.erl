@@ -225,8 +225,8 @@ start(Items, Entry={_Mod, _Fun, _Args}, OutDir) ->
 
 %%@doc Start the profiler and collects information about the system.
 %%
-%% Different from <a href="percept2_sampling.html#sample-2">sample/2</a>,
-%% the function allows the user to specify the time interval.
+%% Different from <a href="percept2_sampling.html#start-3">start/3</a>,
+%% this function allows the user to specify the time interval.
 -spec(start(Items :: [any()], EntryOrTime :: entry_mfa()  | seconds(),
             TimeInterval :: milliseconds(), OutDir :: file:filename()) -> 
                ok).  %%[sample_items()],         
@@ -240,7 +240,7 @@ start(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
 %% Apart from allowing the user to specify the time interval, this 
 %% function also allows the user to supply a filter function, so that 
 %% only those data that satisfy certain condition are logged.
-%% See <a href="percept2_sampling.html#sample-2">sample/2</a>.
+%% See <a href="percept2_sampling.html#start-3">start/3</a>.
 -spec(start(Items :: [any()], EntryOrTime :: entry_mfa()  | seconds(),
             TimeInterval :: milliseconds(), fun((_) ->  boolean()),
             OutDir :: file:filename()) -> 
