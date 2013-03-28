@@ -1347,7 +1347,7 @@ process_gen_graph_img_result(Content, GenImgRes) ->
                 "Percept2 tried to run was: <br>" ++ Cmd,
             graph_img_error_page(Msg);
         {gnuplot_failed, Cmd} ->
-            Msg = "Percept2 failed to use the 'gnuplot' command to generate a .png file. <br> The command "
+            Msg = "Percept2 failed to use the 'gnuplot' command to generate a .svg file. <br> The command "
                 "Percept2 tried to run was: <br>" ++ Cmd,
             graph_img_error_page(Msg)
     end.
@@ -1886,12 +1886,7 @@ procs_ports_count(SessionID, _Env, Input) ->
     
     % Convert Pids to id option list
     IDs      = [{id, ID} || ID <- Pids],
-    TypeOpt  = case Type of 
-                   procs_ports -> [{id, all}];
-                   procs -> [{id, procs}];
-                   ports -> [{id, ports}];
-                   _ ->[]
-               end,
+    TypeOpt = [{id, all}],
     Counts=case IDs/=[] of 
                true -> 
                    Options  = TypeOpt++[{ts_min, TsMin},{ts_max, TsMax} | IDs],
@@ -2037,22 +2032,22 @@ check_file_content(Filename, Type) ->
 
 analyze_sample_data(DataFileName, Type, Cols) ->
     SvgDir = percept2:get_svg_alias_dir(),
-    ImgFileName=Type++".png",
+    ImgFileName=Type++".svg",
     ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     ScriptFileName=filename:join(
                      [code:lib_dir(percept2), "gplt", 
                       Type++".plt"]),
-    Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
+    Content = "<div style=\"text-align:center; align:center; width=1000; bgcolor=#FFFFFF\">" ++
         "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
         " overflow=\"visible\"  scrolling=\"yes\" "++
         "></object>"++
         "</div>",
-    GenImgRes=gnuplot_gen_png(DataFileName, ScriptFileName, 
-                              Type, Cols,ImgFullFilePath),
+    GenImgRes=gnuplot_gen_graph(DataFileName, ScriptFileName, 
+                                Type, Cols,ImgFullFilePath),
     process_gen_graph_img_result(Content, GenImgRes).
    
 
-gnuplot_gen_png(DataFileName, ScriptFileName, Type, Cols, OutputFileName) ->
+gnuplot_gen_graph(DataFileName, ScriptFileName, Type, Cols, OutputFileName) ->
     case os:find_executable("gnuplot") of
         false ->
             gnuplot_not_found;
