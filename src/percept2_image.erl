@@ -41,21 +41,21 @@
 %% graph(Widht, Height, Range, Data)
 
 graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data,HO) ->
-    Data2 = case Data of 
-                [] -> [];
-                _ -> 
-                    {_, Proc, Port} = lists:last(Data),
-                    Last = {RXmax, Proc, Port}, 
-                    [{X, Y1 + Y2} 
-                     ||{X, Y1, Y2} <- lists:reverse([Last|lists:reverse(Data)])]
-            end,
-    MinMax = minmax(Data2),
-    {Xmin, Ymin, Xmax, Ymax} = MinMax, 
-    graf1(Width, Height,{	lists:min([RXmin, Xmin]), 
-    				lists:min([RYmin, Ymin]),
-    				lists:max([RXmax, Xmax]), 
-			      lists:max([RYmax, Ymax])},Data,HO).
-
+     case Data of
+         [] -> <<>>;
+         _ ->
+             {_, Proc, Port}=lists:last(Data),
+             Last = {RXmax, Proc, Port},
+             Data2=[{X, Y1 + Y2}||{X, Y1, Y2} <- [Last|Data]],
+             MinMax = minmax(Data2),
+             {Xmin, Ymin, Xmax, Ymax} = MinMax,
+             graf1(Width, Height,{	lists:min([RXmin, Xmin]),
+                                        lists:min([RYmin, Ymin]),
+                                        lists:max([RXmax, Xmax]),
+                                        lists:max([RYmax, Ymax])}, 
+                   lists:reverse([Last|lists:reverse(Data)]),HO)
+     end.
+     
 %% graph(Widht, Height, Data) = Image
 %% In:
 %%	Width = integer(),
@@ -120,14 +120,24 @@ draw_graf(Im, Data, Colors, GA = #graph_area{x = X0, y = Y0, width = Width, heig
     Dx = (Width)/(Xmax - Xmin),
     Dy = (Height)/(Ymax),
     Plotdata = [{trunc(X0 + X*Dx - Xmin*Dx), trunc(Y0 + Height - Y1*Dy), trunc(Y0 + Height - (Y1 + Y2)*Dy)} || {X, Y1, Y2} <- Data],
-    draw_graf(Im, Plotdata, Colors, GA).
+    Data1=lists:sort(sets:to_list(sets:from_list(Plotdata))),
+    draw_graf(Im, Data1, Colors, GA).
+
+
 
 draw_graf(Im, [{X1, Yproc1, Yport1}, {X2, Yproc2, Yport2}|Data], C, GA) when X2 - X1 < 1 ->
-    draw_graf(Im, [{X1, [{Yproc2, Yport2},{Yproc1, Yport1}]}|Data], C, GA);
-
+    if {Yproc1, Yport1} == {Yproc2, Yport2} ->
+            draw_graf(Im, [{X2, Yproc2, Yport2}|Data], C, GA);
+       true ->
+            draw_graf(Im, [{X1, [{Yproc2, Yport2},{Yproc1, Yport1}]}|Data], C, GA)
+    end;
 draw_graf(Im, [{X1, Ys1}, {X2, Yproc2, Yport2}|Data], C, GA) when X2 - X1 < 1, is_list(Ys1) ->
-    draw_graf(Im, [{X1, [{Yproc2, Yport2}|Ys1]}|Data], C, GA);
-
+    case lists:member({Yproc2, Yport2}, Ys1) of
+        true ->
+            draw_graf(Im, [{X1, Ys1}|Data], C, GA);
+        false ->
+            draw_graf(Im, [{X1, [{Yproc2, Yport2}|Ys1]}|Data], C, GA)
+    end;
 draw_graf(Im, [{X1, Yproc1, Yport1}, {X2, Yproc2, Yport2}|Data], C = {B, PrC, PoC}, GA = #graph_area{y = Y0, height = H})  ->
     GyZero  = trunc(Y0 + H),
     egd:filledRectangle(Im, {X1, GyZero}, {X2, Yproc1}, PrC),
