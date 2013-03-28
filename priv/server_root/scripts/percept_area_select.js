@@ -53,7 +53,7 @@ function load_concurrency_image() {
 	    var rmin   = document.form_area.data_min.value;
 	    var rmax   = document.form_area.data_max.value;
             var pids   = document.form_area.pids.value;
-	    percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/graph" +
+	    percept_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/procs_graph" +
 		"?range_min=" + rmin + 
 		"&range_max=" + rmax +
 		"&width=" + width + 
