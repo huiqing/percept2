@@ -3,7 +3,7 @@ set title "Run Queue Length Graph"
 set autoscale 
 set xtic auto 
 set ytic auto 
-set terminal png truecolor
+set terminal svg 
 set grid
 set xlabel "Time(Seconds)"
 set ylabel "Run ueue Length"

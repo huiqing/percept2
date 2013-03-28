@@ -2,7 +2,7 @@
 set xlabel "Time (Seconds)"
 set ylabel "Memory Usage (Mega bytes)"
 set title "Memory Usage Graph"
-set terminal png truecolor
+set terminal svg 
 plot filename using 1:2 title 'Total' with lines lw 3, \
      filename using 1:3 title 'Process' with lines lw 3, \
      filename using 1:4 title 'ETS'  with lines lw 3,\
