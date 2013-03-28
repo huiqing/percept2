@@ -41,17 +41,30 @@ and the Gnuplot tool can be used for graph visualisation of the data.</p>
 <p><tt>milliseconds() = non_neg_integer()</tt></p>
 
 
+<h3 class="typedecl"><a name="type-regname">regname()</a></h3>
+<p><tt>regname() = atom()</tt></p>
+
+
+<h3 class="typedecl"><a name="type-sample_item">sample_item()</a></h3>
+<p><tt>sample_item() = run_queue | run_queues | scheduler_utilisation | process_count | schedulers_online | mem_info | {message_queue_len, pid() | <a href="#type-regname">regname()</a>} | all</tt></p>
+<p>  the 'all' options covers all the the options apart from 'message_queue_len'.</p>
+
+<h3 class="typedecl"><a name="type-seconds">seconds()</a></h3>
+<p><tt>seconds() = non_neg_integer()</tt></p>
+
+
 <h2><a name="index">Function Index</a></h2>
-<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#sample-3">sample/3</a></td><td>Start the profiler and collects information about the system.</td></tr>
-<tr><td valign="top"><a href="#sample-4">sample/4</a></td><td>Start the profiler and collects information about the system.</td></tr>
-<tr><td valign="top"><a href="#sample-5">sample/5</a></td><td>Start the profiler and collects information about the system.</td></tr>
+<table width="100%" border="1" cellspacing="0" cellpadding="2" summary="function index"><tr><td valign="top"><a href="#start-3">start/3</a></td><td>Start the profiler and collects information about the system.</td></tr>
+<tr><td valign="top"><a href="#start-4">start/4</a></td><td>Start the profiler and collects information about the system.</td></tr>
+<tr><td valign="top"><a href="#start-5">start/5</a></td><td>Start the profiler and collects information about the system.</td></tr>
+<tr><td valign="top"><a href="#stop-0">stop/0</a></td><td>Stop the sampling.</td></tr>
 </table>
 
 <h2><a name="functions">Function Details</a></h2>
 
-<h3 class="function"><a name="sample-3">sample/3</a></h3>
+<h3 class="function"><a name="start-3">start/3</a></h3>
 <div class="spec">
-<p><tt>sample(Items::[any()], EntryOrTime::<a href="#type-entry_mfa">entry_mfa()</a> | <a href="#type-milliseconds">milliseconds()</a>, OutDir::<a href="file.html#type-filename">file:filename()</a>) -&gt; ok</tt><br></p>
+<p><tt>start(Items::[<a href="#type-sample_item">sample_item()</a>], EntryOrTime::<a href="#type-entry_mfa">entry_mfa()</a> | <a href="#type-milliseconds">milliseconds()</a>, OutDir::<a href="file.html#type-filename">file:filename()</a>) -&gt; ok</tt><br></p>
 </div><p><p>Start the profiler and collects information about the system.</p>
  
   The type of information collected is specified by <code>Items</code>:
@@ -77,51 +90,65 @@ and the Gnuplot tool can be used for graph visualisation of the data.</p>
  </ul>
  <ul>
   <code>message_queue_len</code>: returns the number of messages currently in the message queue of the process.
- </ul><p> 
-If an entry function is specified, this function profiles the system  
-for the whole duration until the entry function returns; otherwise it profiles  
-the system for the time period specified. The system is probed at the default  
-time intervals, which is 100 milliseconds.</p>
+ </ul>
+ <ul>
+  <code>all</code>:  this option covers all the above options apart from <code>message_queue_len</code>.
+ </ul><p>
+ If an entry function is specified, this function profiles the system
+  for the whole duration until the entry function returns; otherwise it profiles
+  the system for the time period specified. The system is probed at the default
+  time interval, which is 10 milliseconds. It is also possible to stop the sampling
+  manually using <a href="percept2_sampling.html#stop-0">stop/0</a>,</p>
  
-  <p><code>OutDir</code> tells the profiler where to put the data files generated. A data file is generated
-  for each type of information in <code>Items</code>. For an item <code>A</code>, the name of the data file could be
-  <code>sample_A.dat</code>. Profiling data is formatted in the way so that the graph plotting tool <code>Gnuplot</code>
-   can be used for visualisation. A pre-defined plotting script is available for each type of
-   information collected, and these scripts are in the <code>percept2/gplt</code> directory. To use the   
-one of the pre-defined plotting scripts to viusalise the data collected, the following steps   
-can be followed. We assume Gnuplot is already installed, otherwise install it first.</p>
+  <p><code>OutDir</code> tells the tool where to put the data files generated. A data file is generated
+  for each type of information in <code>Items</code>. For an item <code>A</code>, the name of the data file would be
+  <code>sample_A.dat</code>.</p>
  
-  <p>1) start the Gnuplot tool.</p>
+   <p>Sampling data is formatted in a way so that the graph plotting tool <code>Gnuplot</code>
+   can be used for visualisation.  A pre-defined plotting script is available for
+   each type of information collected, and these scripts are in the <code>percept2/gplt</code> directory.   
+If you are familiar with Gnuplot, you could generate the diagrams in Gnuplot command-line.   
+Alternately, you could visualise the sampling data through Percept2, which uses Gnuplot to   
+generate the graphs behind the scene. (It is likely that we will get rid of the dependence to   
+Gnuplot in the future).</p>
  
-  <p>2) in gnuplot, go to the <code>OutDir</code> directory, in which the data files are stored.</p>
+   <p>To visualise the sampling data, one could select the <code>Visualise sampling data</code> from the Percept2 main menu,   
+and this should lead to a page as shown in the screenshot next.</p>
  
-  <p>3) load the corresponding gnuplot script for the data to be visualised. For
-     example, to visualise the memory usage data in file <code>sample_mem_info.dat</code>,
-     the gnuplot script to load is <code>/path/to/sample_mem_info.plt</code>. The snapshot     
-next shows an example output the memory usage graph.</p>
+  <p><img src="percept2_sample.png" alt="Visualise sampling data" width="850" height="500"> </p>
  
-   <img src="percept2_sample_mem.png" alt="the front page of Percept2" width="850" height="500"> </p>
+  <p>In this page, select the type of data you would like to see, enter the data file name, and the
+  path leading to this file, then click on the <code>Generate Graph</code> button. This should leads to a page showing  
+the graph. The screenshot next shows an example output.</p>
+ 
+   <img src="percept2_sample_mem.png" alt="the front page of Percept2" width="850" height="500"> 
+ </p>
 
-<h3 class="function"><a name="sample-4">sample/4</a></h3>
+<h3 class="function"><a name="start-4">start/4</a></h3>
 <div class="spec">
-<p><tt>sample(Items::[any()], EntryOrTime::<a href="#type-entry_mfa">entry_mfa()</a> | <a href="#type-milliseconds">milliseconds()</a>, TimeInterval::<a href="#type-milliseconds">milliseconds()</a>, OutDir::<a href="file.html#type-filename">file:filename()</a>) -&gt; ok</tt><br></p>
+<p><tt>start(Items::[any()], EntryOrTime::<a href="#type-entry_mfa">entry_mfa()</a> | <a href="#type-seconds">seconds()</a>, TimeInterval::<a href="#type-milliseconds">milliseconds()</a>, OutDir::<a href="file.html#type-filename">file:filename()</a>) -&gt; ok</tt><br></p>
 </div><p><p>Start the profiler and collects information about the system.</p>
  
-  Different from <a href="percept2_sampling.html#sample-2">sample/2</a>,
-  the function allows the user to specify the time interval.</p>
+  Different from <a href="percept2_sampling.html#start-3">start/3</a>,
+  this function allows the user to specify the time interval.</p>
 
-<h3 class="function"><a name="sample-5">sample/5</a></h3>
+<h3 class="function"><a name="start-5">start/5</a></h3>
 <div class="spec">
-<p><tt>sample(Items::[any()], EntryOrTime::<a href="#type-entry_mfa">entry_mfa()</a> | <a href="#type-milliseconds">milliseconds()</a>, TimeInterval::<a href="#type-milliseconds">milliseconds()</a>, FilterFun::fun((term()) -&gt; boolean()), OutDir::<a href="file.html#type-filename">file:filename()</a>) -&gt; ok</tt><br></p>
+<p><tt>start(Items::[any()], EntryOrTime::<a href="#type-entry_mfa">entry_mfa()</a> | <a href="#type-seconds">seconds()</a>, TimeInterval::<a href="#type-milliseconds">milliseconds()</a>, FilterFun::fun((term()) -&gt; boolean()), OutDir::<a href="file.html#type-filename">file:filename()</a>) -&gt; ok</tt><br></p>
 </div><p><p>Start the profiler and collects information about the system.</p>
  
   Apart from allowing the user to specify the time interval, this
   function also allows the user to supply a filter function, so that
   only those data that satisfy certain condition are logged.
-  See <a href="percept2_sampling.html#sample-2">sample/2</a>.</p>
+  See <a href="percept2_sampling.html#start-3">start/3</a>.</p>
+
+<h3 class="function"><a name="stop-0">stop/0</a></h3>
+<div class="spec">
+<p><tt>stop() -&gt; {error, not_started} | ok</tt><br></p>
+</div><p>Stop the sampling.</p>
 <hr>
 
 <div class="navbar"><a name="#navbar_bottom"></a><table width="100%" border="0" cellspacing="0" cellpadding="2" summary="navigation bar"><tr><td><a href="overview-summary.html" target="overviewFrame">Overview</a></td><td><a href="http://www.erlang.org/"><img src="erlang.png" align="right" border="0" alt="erlang logo"></a></td></tr></table></div>
-<p><i>Generated by EDoc, Feb 27 2013, 11:36:33.</i></p>
+<p><i>Generated by EDoc, Mar 28 2013, 21:53:01.</i></p>
 </body>
 </html>
