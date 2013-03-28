@@ -43,12 +43,12 @@
 
 -module(percept2_sampling).
 
--export([sample/3, sample/4, sample/5]).
+-export([start/3, start/4, start/5, stop/0]).
 
 -export([init/5]).
 
 %%@hidden
--type sample_items():: 
+-type sample_item():: 
         'run_queue'|'run_queues'|'scheduler_utilisation'|
         'process_count'| 'schedulers_online'|'mem_info'|
         {'message_queue_len', pid()|regname()}|'all'.
@@ -57,6 +57,7 @@
 -type entry_mfa() :: {atom(), atom(),list()}.
 -type regname() :: atom().
 -type milliseconds()::non_neg_integer().
+-type seconds()::non_neg_integer().
 
 -record(run_queue_info,
         {timestamp::float(), 
@@ -97,7 +98,7 @@
 
 -compile(export_all).
 
--define(INTERVAL, 1). % in milliseconds
+-define(INTERVAL, 10). % in milliseconds
 
 -define(seconds(EndTs,StartTs), 
         timer:now_diff(EndTs, StartTs)/1000000).
@@ -127,7 +128,7 @@ sample_items()->
     ].
 
 %%@hidden
--spec(check_sample_items([sample_items()]) -> [sample_items()]).
+-spec(check_sample_items([sample_item()]) -> [sample_item()]).
 check_sample_items(Items) ->
     check_sample_items_1(Items, []).
 check_sample_items_1([{'message_queue_len', Proc}|Items], Acc)->
@@ -179,53 +180,60 @@ check_out_dir(Dir) ->
 %%<ul>
 %% `message_queue_len': returns the number of messages currently in the message queue of the process.
 %%</ul>
+%%<ul>
+%% `all':  this option covers all the above options apart from `message_queue_len'.
+%%</ul>
 %%If an entry function is specified, this function profiles the system 
 %% for the whole duration until the entry function returns; otherwise it profiles 
 %% the system for the time period specified. The system is probed at the default 
-%% time intervals, which is 100 milliseconds.
-%% `all':  this option covers all the above options apart from `message_queue_len'.
+%% time interval, which is 10 milliseconds. It is also possible to stop the sampling 
+%% manually using <a href="percept2_sampling.html#stop-0">stop/0</a>,
 %%
-%% `OutDir' tells the profiler where to put the data files generated. A data file is generated 
-%% for each type of information in `Items'. For an item `A', the name of the data file could be 
-%% `sample_A.dat'. Profiling data is formatted in the way so that the graph plotting tool `Gnuplot' 
-%%  can be used for visualisation. A pre-defined plotting script is available for each type of 
-%%  information collected, and these scripts are in the `percept2/gplt' directory. To use the 
-%%  one of the pre-defined plotting scripts to viusalise the data collected, the following steps
-%%  can be followed. We assume Gnuplot is already installed, otherwise install it first.
+%% `OutDir' tells the tool where to put the data files generated. A data file is generated 
+%% for each type of information in `Items'. For an item `A', the name of the data file would be 
+%% `sample_A.dat'. 
 %%
-%% 1) start the Gnuplot tool.
+%%  Sampling data is formatted in a way so that the graph plotting tool `Gnuplot' 
+%%  can be used for visualisation.  A pre-defined plotting script is available for 
+%%  each type of information collected, and these scripts are in the `percept2/gplt' directory. 
+%%  If you are familiar with Gnuplot, you could generate the diagrams in Gnuplot command-line. 
+%%  Alternately, you could visualise the sampling data through Percept2, which uses Gnuplot to 
+%%  generate the graphs behind the scene. (It is likely that we will get rid of the dependence to 
+%%  Gnuplot in the future).
+%% 
+%%  To visualise the sampling data, one could select the `Visualise sampling data' from the Percept2 main menu, 
+%%  and this should lead to a page as shown in the screenshot next. 
 %%
-%% 2) in gnuplot, go to the `OutDir' directory, in which the data files are stored. 
+%% <img src="percept2_sample.png"  alt="Visualise sampling data"  width="850" height="500"> </img>
 %%
-%% 3) load the corresponding gnuplot script for the data to be visualised. For 
-%%    example, to visualise the memory usage data in file `sample_mem_info.dat', 
-%%    the gnuplot script to load is `/path/to/sample_mem_info.plt'. The snapshot
-%%    next shows an example output the memory usage graph.
+%% In this page, select the type of data you would like to see, enter the data file name, and the 
+%% path leading to this file, then click on the `Generate Graph' button. This should leads to a page showing 
+%% the graph. The screenshot next shows an example output.
 %%
 %%  <img src="percept2_sample_mem.png"
 %%  alt="the front page of Percept2"  width="850" height="500"> </img>
-
--spec(sample(Items::[any()],  %%[sample_items()],
-             EntryOrTime::entry_mfa()|milliseconds(),
-             OutDir::file:filename())
-      ->ok).
-sample(Items, Time, OutDir) when is_integer(Time)->
-    sample(Items, Time, ?INTERVAL,
-           fun(_) -> true end, OutDir);
-sample(Items, Entry={_Mod, _Fun, _Args},OutDir) ->
-    sample(Items, Entry, ?INTERVAL, fun(_)-> true end,OutDir).
+%%
+-spec(start(Items :: [sample_item()],
+            EntryOrTime :: entry_mfa()  | milliseconds(),
+            OutDir :: file:filename()) -> 
+               ok).  %%[sample_items()],
+start(Items, Time, OutDir) when is_integer(Time) ->
+    start(Items, Time, ?INTERVAL,
+          fun(_) -> true end, OutDir);
+start(Items, Entry={_Mod, _Fun, _Args}, OutDir) ->
+    start(Items, Entry, ?INTERVAL, fun(_) -> true end, OutDir).
 
 %%@doc Start the profiler and collects information about the system.
 %%
 %% Different from <a href="percept2_sampling.html#sample-2">sample/2</a>,
 %% the function allows the user to specify the time interval.
--spec(sample(Items::[any()],  %%[sample_items()],
-             EntryOrTime::entry_mfa()|milliseconds(),
-             TimeInterval::milliseconds(), OutDir::file:filename())->ok).         
-sample(Items, Time, TimeInterval, OutDir) when is_integer(Time)->
-    sample(Items, Time, TimeInterval,fun(_) -> true end, OutDir);
-sample(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
-    sample(Items,Entry, TimeInterval, fun(_) ->true end,OutDir).
+-spec(start(Items :: [any()], EntryOrTime :: entry_mfa()  | seconds(),
+            TimeInterval :: milliseconds(), OutDir :: file:filename()) -> 
+               ok).  %%[sample_items()],         
+start(Items, Time, TimeInterval, OutDir) when is_integer(Time) ->
+    start(Items, Time, TimeInterval, fun(_) -> true end, OutDir);
+start(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
+    start(Items, Entry, TimeInterval, fun(_) -> true end, OutDir).
    
 %%@doc Start the profiler and collects information about the system.
 %%
@@ -233,24 +241,24 @@ sample(Items, Entry={_Mod, _Fun, _Args}, TimeInterval, OutDir) ->
 %% function also allows the user to supply a filter function, so that 
 %% only those data that satisfy certain condition are logged.
 %% See <a href="percept2_sampling.html#sample-2">sample/2</a>.
--spec(sample(Items::[any()],  %%[sample_items()],
-             EntryOrTime::entry_mfa()|milliseconds(),
-             TimeInterval::milliseconds(),
-             fun((_)-> boolean()),
-                OutDir::file:filename()) -> ok).
-sample(Items, _Entry={Mod, Fun, Args}, TimeInterval, FilterFun, OutDir) ->
+-spec(start(Items :: [any()], EntryOrTime :: entry_mfa()  | seconds(),
+            TimeInterval :: milliseconds(), fun((_) ->  boolean()),
+            OutDir :: file:filename()) -> 
+               ok).  %%[sample_items()],
+start(Items, _Entry={Mod, Fun, Args}, TimeInterval, FilterFun, OutDir) ->
     ok=check_out_dir(OutDir),
     Items1=check_sample_items(Items),
     Pid = start_sampling(Items1, TimeInterval, FilterFun, OutDir),
     erlang:apply(Mod, Fun, Args),
-    stop_sampling(Pid);
-sample(Items, Time, TimeInterval, FilterFun, OutDir) 
+    stop(Pid);
+start(Items, Time, TimeInterval, FilterFun, OutDir)
   when is_integer(Time)->
     ok=check_out_dir(OutDir),
     Items1=check_sample_items(Items),
     try 
         Pid=start_sampling(Items1, TimeInterval, FilterFun, OutDir),
-        erlang:start_timer(Time, Pid, stop)
+        erlang:start_timer(Time*1000, Pid, stop),
+        Pid
     catch
         throw:Term -> Term;
         exit:Reason -> {'EXIT',Reason};
@@ -269,22 +277,36 @@ start_sampling(Items, TimeInterval, FilterFun, OutDir) ->
         _ -> ok
     end,
     spawn_link(?MODULE, init, [now(), Items, TimeInterval, FilterFun, OutDir]).
-   
-stop_sampling(Pid) ->
+
+%%@doc Stop the sampling.
+-spec (stop() ->{error, not_started}|ok).
+stop() ->   
+    case whereis(percept2_sampling) of 
+        undefined ->
+            {error, not_started};
+        Pid ->
+            Pid ! stop,
+            ok
+    end.
+                
+stop(Pid) ->
     Pid!stop,
     ok.
 
 %%@private
 init(StartTs, Items, Interval, FilterFun, OutDir) ->
+    register(percept2_sampling, self()),
     create_ets_tables(Items),
     sampling_loop(StartTs, Interval, Items, FilterFun, OutDir).
+  
   
 sampling_loop(StartTs, Interval, Items, FilterFun, OutDir) ->
     receive
         stop -> 
             write_data(Items, OutDir);
         {timeout, _TimerRef, stop} -> 
-            write_data(Items, OutDir)
+            write_data(Items, OutDir),
+            io:format("Done.\n")    
     after Interval->
             do_sampling(Items,StartTs),
             sampling_loop(StartTs, Interval, Items, FilterFun, OutDir)
