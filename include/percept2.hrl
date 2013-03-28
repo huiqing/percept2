@@ -111,7 +111,7 @@
 
 -record(history_html, {
           id         ::string(),
-          content    ::string()|{string(), string()}
+          content    ::any()
          }).
 
 
