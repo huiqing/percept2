@@ -89,22 +89,28 @@ activities2count2([], _, _, _, Out) -> lists:reverse(Out);
 activities2count2([#activity{id = Id, timestamp = Ts, state = State} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
     case dict:find(Id, StateDict) of
         {ok, State} ->
-            activities2count2(Acts, StartTs, {Proc, Port}, StateDict, [{?seconds(Ts, StartTs), Proc, Port}|Out]);
+            activities2count2(Acts, StartTs, {Proc, Port}, StateDict, 
+                              [{?seconds(Ts, StartTs), Proc, Port}|Out]);
         _ ->
             activities2count3([#activity{id = Id, timestamp = Ts, state = State} | Acts],
-                              StartTs, {Proc, Port}, StateDict,[{?seconds(Ts, StartTs), Proc, Port}|Out])
+                              StartTs, {Proc, Port}, StateDict,Out)
+                              %% [{?seconds(Ts, StartTs), Proc, Port}|Out])
     end.
                           
-activities2count3([#activity{id = Id={pid, _}, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
+activities2count3([#activity{id = Id={pid, _}, timestamp = Ts, state = active} | Acts], 
+                  StartTs, {Proc,Port}, StateDict, Out) ->
     activities2count2(Acts, StartTs, {Proc + 1, Port}, dict:store(Id, active, StateDict),
                       [{?seconds(Ts, StartTs), Proc + 1, Port}|Out]);
-activities2count3([#activity{ id =Id={pid, _}, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
+activities2count3([#activity{ id =Id={pid, _}, timestamp = Ts, state = inactive} | Acts], 
+                  StartTs, {Proc,Port}, StateDict, Out) ->
     activities2count2(Acts, StartTs, {Proc - 1, Port},  dict:store(Id, inactive, StateDict),
                       [{?seconds(Ts, StartTs), Proc - 1, Port}|Out]);
-activities2count3([#activity{ id = Id, timestamp = Ts, state = active} | Acts], StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
+activities2count3([#activity{ id = Id, timestamp = Ts, state = active} | Acts],
+                  StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
     activities2count2(Acts, StartTs, {Proc, Port + 1},  dict:store(Id, active, StateDict), 
                       [{?seconds(Ts, StartTs), Proc, Port + 1}|Out]);
-activities2count3([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts], StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
+activities2count3([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts], 
+                  StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
     activities2count2(Acts, StartTs, {Proc, Port - 1},  dict:store(Id, inactive, StateDict),
                       [{?seconds(Ts, StartTs), Proc, Port - 1}|Out]).
 
@@ -219,18 +225,18 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
 	    % it is given via the next activity
 	    case Activities of
 	    	[] -> 
-                        [Info] = percept2_db:select({information, Pid}),
-                        case Info#information.stop of
-			    undefined ->
-			        % get profile end time
-			        Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
-			    Time2 ->
-			        Waited = ?seconds(Time2, Time)
-		        end,
-		        case get({waiting_mfa, MFA}) of
-			    undefined ->
-                                put({waiting_mfa, MFA}, {Waited, [Waited]}),
-			        [MFA | ListedMfas];
+                    [Info] = percept2_db:select({information, Pid}),
+                    case Info#information.stop of
+                        undefined ->
+                                                % get profile end time
+                            Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
+                        Time2 ->
+                            Waited = ?seconds(Time2, Time)
+                    end,
+                    case get({waiting_mfa, MFA}) of
+                        undefined ->
+                            put({waiting_mfa, MFA}, {Waited, [Waited]}),
+                            [MFA | ListedMfas];
 		    	{Total, TimedMfa} ->
                             put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
 			    ListedMfas
