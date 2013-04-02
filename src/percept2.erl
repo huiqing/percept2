@@ -545,9 +545,7 @@ rm_tmp_files(Dir) ->
             {error, Error};
         {ok, FileNames} ->
             [file:delete(filename:join(Dir, F))
-             ||F<-FileNames,
-               lists:prefix("callgraph", F) orelse
-                   lists:prefix("processtree", F)]
+             ||F<-FileNames]
     end.
 
 get_svg_alias_dir() ->
