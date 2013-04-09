@@ -143,7 +143,7 @@ graph_2(_Env, Input, Type) ->
                end,
     case IDs/=[] of 
         true -> 
-            Options  = TypeOpt++[{ts_min, TsMin},{ts_max, TsMax} | IDs],
+            Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
             Counts=percept2_analyzer:activities2count2(Acts, StartTs),
             percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts,120);
