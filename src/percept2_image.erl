@@ -84,7 +84,7 @@ error_graph(Width, Height, Text) ->
 
     
 graf1(Width,Height,{Xmin, Ymin, Xmax, Ymax},Data,HOffset) ->
-       % Calculate areas
+    % Calculate areas
     HO = HOffset,
     GrafArea   = #graph_area{x = HO, y = 4, width = Width -HO, height = Height - 17},
     XticksArea = #graph_area{x = HO, y = Height - 13, width = Width - HO, height = 13},
@@ -284,37 +284,35 @@ draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{width = Width}, Acts) ->
     White = egd:color({255, 255, 255}),
     Green = egd:color({0,250, 0}),
     Black = egd:color({0, 0, 0}),
+    Orange = egd:color({255, 165, 0}),
     Dx    = Width/(Xmax - Xmin),
-    draw_activity(Image, {Xmin, Xmax}, Area, {White, Green, Black}, Dx, Acts).
+    draw_activity(Image, {Xmin, Xmax}, Area, {White, Green, Black, Orange}, Dx, Acts).
 
-draw_activity(_, _, _, _, _, []) -> ok;
-draw_activity(Image, {Xmin, Xmax}, _Area = #graph_area{ height = Height, x = X0 }, {_Cw, Cg, _Cb}, Dx, 
+draw_activity(_, _, _, _, _, []) -> ok;  
+draw_activity(Image, {Xmin, Xmax}, _Area = #graph_area{ height = Height, x = X0 }, {_Cw, Cg, _Cb, Co}, Dx, 
               [{Xa1, active, InOutXas1}]) ->
-    Cr = egd:color(Image, {255, 165, 0}),
-    draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Cr}, 
+    draw_in_out_activities(Image, Xmin,  X0, Height, {Cg, Co}, 
                            Dx, Xa1, Xmax, {{X0, 0}, {X0, Height-1}}, InOutXas1);
 draw_activity(_, _, _, _, _, [_])-> ok;
-draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }, {Cw, Cg, Cb}, Dx, 
+draw_activity(Image, {Xmin, Xmax}, Area = #graph_area{ height = Height, x = X0 }, {Cw, Cg, Cb,Co}, Dx, 
               [{Xa1, State, InOutXas1}, {Xa2, Act2, InOutXas2} | Acts]) ->
     X1 = erlang:trunc(X0 + Dx*Xa1 - Xmin*Dx),
     X2 = erlang:trunc(X0 + Dx*Xa2 - Xmin*Dx),
-    case X1 < X2 of 
-        true ->
+    if X1 < X2 ->
             case State of
                 inactive ->
                     egd:filledRectangle(Image, {X1, 0}, {X2, Height - 1}, Cw),
                     egd:rectangle(Image, {X1, 0}, {X2, Height - 1}, Cb),
-                    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+                    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb, Co}, 
                                   Dx, [{Xa2, Act2, InOutXas2} | Acts]);
                 active ->
-                    Co = egd:color(Image, {255, 165, 0}),
                     draw_in_out_activities(Image, Xmin, X0, Height, {Cg, Co},
                                            Dx, Xa1, Xa2, {{X0, 0}, {X0, Height-1}}, InOutXas1),
-                    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+                    draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb, Co}, 
                                   Dx, [{Xa2, Act2, InOutXas2} | Acts])
             end;
-        false ->
-            draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb}, 
+       true ->
+            draw_activity(Image, {Xmin, Xmax}, Area, {Cw, Cg, Cb, Co}, 
                           Dx, [{Xa2, Act2, InOutXas2} | Acts])
     end.
   
