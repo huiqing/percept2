@@ -86,30 +86,30 @@ activities2count2(Acts, StartTs) ->
     activities2count2(Acts, StartTs, Start, dict:new(),[]).
 
 activities2count2([], _, _, _, Out) -> lists:reverse(Out);
-activities2count2([#activity{id = Id, timestamp = Ts, state = State} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
+activities2count2([{Ts,Id, State} | Acts], StartTs, {Proc,Port}, StateDict, Out) ->
     case dict:find(Id, StateDict) of
         {ok, State} ->
             activities2count2(Acts, StartTs, {Proc, Port}, StateDict, 
                               [{?seconds(Ts, StartTs), Proc, Port}|Out]);
         _ ->
-            activities2count3([#activity{id = Id, timestamp = Ts, state = State} | Acts],
+            activities2count3([{Id, Ts,State} | Acts],
                               StartTs, {Proc, Port}, StateDict,Out)
                               %% [{?seconds(Ts, StartTs), Proc, Port}|Out])
     end.
                           
-activities2count3([#activity{id = Id={pid, _}, timestamp = Ts, state = active} | Acts], 
+activities2count3([{Id={pid, _}, Ts, active} | Acts], 
                   StartTs, {Proc,Port}, StateDict, Out) ->
     activities2count2(Acts, StartTs, {Proc + 1, Port}, dict:store(Id, active, StateDict),
                       [{?seconds(Ts, StartTs), Proc + 1, Port}|Out]);
-activities2count3([#activity{ id =Id={pid, _}, timestamp = Ts, state = inactive} | Acts], 
+activities2count3([{Id={pid, _}, Ts, inactive} | Acts], 
                   StartTs, {Proc,Port}, StateDict, Out) ->
     activities2count2(Acts, StartTs, {Proc - 1, Port},  dict:store(Id, inactive, StateDict),
                       [{?seconds(Ts, StartTs), Proc - 1, Port}|Out]);
-activities2count3([#activity{ id = Id, timestamp = Ts, state = active} | Acts],
+activities2count3([{Id, Ts, active} | Acts],
                   StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
     activities2count2(Acts, StartTs, {Proc, Port + 1},  dict:store(Id, active, StateDict), 
                       [{?seconds(Ts, StartTs), Proc, Port + 1}|Out]);
-activities2count3([#activity{ id = Id, timestamp = Ts, state = inactive} | Acts], 
+activities2count3([{Id, Ts, nactive} | Acts], 
                   StartTs, {Proc,Port}, StateDict, Out) when is_port(Id) ->
     activities2count2(Acts, StartTs, {Proc, Port - 1},  dict:store(Id, inactive, StateDict),
                       [{?seconds(Ts, StartTs), Proc, Port - 1}|Out]).
@@ -123,7 +123,7 @@ inactive_start_states(Acts) ->
         (_, _, {Procs, Ports})                        -> {Procs, Ports}
     end, {0,0}, D).
 activity_start_states([], D) -> D;
-activity_start_states([#activity{id = Id, state = State}|Acts], D) ->
+activity_start_states([{Id, _Ts,State}|Acts], D) ->
     case dict:is_key(Id, D) of
         true  -> activity_start_states(Acts, D);
         false -> activity_start_states(Acts, dict:store(Id, State, D))
