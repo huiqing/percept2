@@ -65,10 +65,10 @@
           hidden_pids = []       :: [pid_value()]|special_atom()
 	}).
  
--record(inter_node, {
-          timed_from_node    ::{timestamp(),node()}|{special_atom(), special_atom()},
-          to_node            ::node()|special_atom(),
-          msg_size           ::pos_integer()|special_atom()
+-record(inter_proc, {
+          timed_from    ::{timestamp(),node(), pid()}|{special_atom(), special_atom(), special_atom()},
+          to            ::{node(), pid()}|{special_atom(), special_atom()},
+          msg_size      ::pos_integer()|special_atom()
          }).
 
 
