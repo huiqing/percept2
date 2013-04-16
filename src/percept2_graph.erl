@@ -128,20 +128,19 @@ graph_2(_Env, Input, Type) ->
     Width    = percept2_html:get_option_value("width", Query),
     Height   = percept2_html:get_option_value("height", Query),
     
-     % seconds2ts
     StartTs  = percept2_db:select({system, start_ts}),
     TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
     TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
     
-    % Convert Pids to id option list
-    IDs      = [{id, ID} || ID <- Pids],
+    %% Convert Pids to id option list
+    IDs = [{pids, Pids}],
     TypeOpt  = case Type of 
                    procs_ports -> [{id, all}];
                    procs -> [{id, procs}];
                    ports -> [{id, ports}];
                    _ ->[]
                end,
-    case IDs/=[] of 
+    case Pids/=[] of 
         true -> 
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
@@ -189,10 +188,10 @@ activity_bar(_Env, Input, StartTs) ->
     Width  = percept2_html:get_option_value("width", Query),
     Height = percept2_html:get_option_value("height", Query),
     
-    Data    = percept2_db:select({activity, [{id, Pid}]}),
+    Data    = percept2_db:select({activity, {runnable, Pid}}),
     Activities = [{?seconds(Ts, StartTs), State, [{InOut, ?seconds(InOutTs, StartTs)}
                                                   ||{InOut, InOutTs}<-lists:reverse(InOuts)]} 
-                  || #activity{timestamp = Ts, state = State, in_out=InOuts} <- Data],
+                  || {Ts, State,InOuts} <- Data],
     percept2_image:activities(Width-50, Height, {Min,Max}, Activities).
 
 proc_lifetime(_Env, Input) ->
