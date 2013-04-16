@@ -75,7 +75,7 @@
 -type information_option() ::
 	all | procs | ports | pid() | port() | procs_count| ports_count.
 
--type inter_node_option() ::
+-type inter_proc_option() ::
         all |{message_acts, {node(), node(), float(), float()}}.
 
 -type inter_sched_option() ::
@@ -175,7 +175,7 @@ stop_percept_db(FileNameSubDBPairs) ->
     ets:delete(funcall_info),
     ets:delete(fun_calltree),
     ets:delete(fun_info),
-    ets:delete(inter_node),
+    ets:delete(inter_proc),
     ets:delete(inter_sched),
     case ets:info(history_html) of
         undefined -> 
@@ -225,7 +225,8 @@ insert(SubDB, Trace) ->
              {information, information_option()}| 
              {scheduler, scheduler_option()}|
              {activity, activity_option()} |
-             {inter_node,inter_node_option()}|
+             {inter_node,inter_proc_option()}|
+             {inter_proc,inter_proc_option()}|
              {inter_sched, inter_sched_option()}|
              {calltime, pid_value()}|
              {code, term()} |
@@ -264,8 +265,8 @@ init_percept_db(Parent, TraceFileNames) ->
                            set,{read_concurrency,true}, {write_concurrency, true}]),
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
                        set,{read_concurrency, true},{read_concurrency,true}]),
-    ets:new(inter_node, [named_table, public, 
-                         {keypos,#inter_node.timed_from_node}, ordered_set]),
+    ets:new(inter_proc, [named_table, public, 
+                         {keypos,#inter_proc.timed_from}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
@@ -402,7 +403,9 @@ percept_db_select_query(FileNameSubDBPairs, Query) ->
         {calltime, _} ->
             select_query_func(Query);
         {inter_node, _} ->
-            select_query_inter_node(Query);
+            select_query_message(Query);
+        {inter_proc, _} ->
+            select_query_message(Query);
         {inter_sched, _} ->
             select_query_inter_sched(Query);
         Unhandled ->
@@ -437,26 +440,26 @@ select_query_inter_sched(Query) ->
                       [Unhandled]),
 	    []
     end.
-select_query_inter_node(Query) ->
+select_query_message(Query) ->
     case Query of
         {inter_node, all} ->
-            Head = #inter_node{timed_from_node={'$0', '$1'},
-                               to_node = '$2',
+            Head = #inter_proc{timed_from={'$0', '$1', '$2'},
+                               to = '$3',
                                _='_'},
             Constraints = [],
-            Body =  [['$1', '$2']],
-            Nodes=ets:select(inter_node, [{Head, Constraints, Body}]),
+            Body =  [['$1', '$3']],
+            Nodes=ets:select(inter_proc, [{Head, Constraints, Body}]),
             sets:to_list(sets:from_list(lists:append(Nodes)));
-        {inter_node, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
+        {inter_proc, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
             FromNode = list_to_atom(FromNode1),
             ToNode = list_to_atom(ToNode1),
-            Head = #inter_node{timed_from_node={'$0', FromNode},
-                               to_node = ToNode,
+            Head = #inter_proc{timed_from={'$0', FromNode, '_'},
+                               to = {ToNode, '_'},
                                msg_size = '$2',
                                _='_'},
             Constraints = [{'>=', '$0', {MinTs}}, {'=<', '$0', {MaxTs}}],
             Body =  [{{'$0', '$2'}}],
-            ets:select(inter_node, [{Head, Constraints, Body}]);
+            ets:select(inter_proc, [{Head, Constraints, Body}]);
         Unhandled ->
 	    io:format("select_query_inter_node, unhandled: ~p~n", 
                       [Unhandled]),
@@ -554,7 +557,10 @@ same_node_pids(_, _) -> true.
 get_node_name({_RegName, Node}) ->    
     Node;
 get_node_name(Arg) -> 
-    node(Arg).
+    try node(Arg) 
+    catch _E1:_E2 ->
+            nonode
+    end.
 
 insert_trace(SubDBIndex,Trace) ->
     case element(1, Trace) of
@@ -657,6 +663,7 @@ trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pi
 
 trace_register(SubDBIndex,_Trace={trace_ts, Pid, register, Name, _Ts}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+    ets:insert(pdb_system, {{regname, Name}, pid2value(Pid)}),
     update_information(ProcRegName, #information{id = pid2value(Pid), name = Name}).
  
 trace_unregister(_SubDBIndex, _Trace)->
@@ -806,7 +813,8 @@ trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
     end.
 
 trace_send_to_non_existing_process(SubDBIndex,
-                                   _Trace={trace_ts, Pid, send_to_non_existing_process, Msg, _To, Ts})->
+                                   _Trace={trace_ts, Pid, send_to_non_existing_process, 
+                                           Msg, _To, Ts})->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
             update_information_sent(ProcRegName,Pid, byte_size(term_to_binary(Msg)), none, Ts);
@@ -966,21 +974,25 @@ get_runnable_count(Type, State) ->
 %%% select_query_activity
 select_query_activity_1(SubDBIndex, Query) ->
     case Query of
+        {activity, {runnable, Pid}} ->
+            get_runnable(SubDBIndex, Pid);
         {activity, {runnable_counts, Options}} ->
             get_runnable_counts(SubDBIndex, Options);
         {activity, {min_max_ts, Pids}} ->
             MS= [{#activity{timestamp ='$1', id=Pid, _='_'}, [], ['$1']}
                  ||Pid<-Pids],
             Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
-            case ets:select(Tab, MS) of 
+            {First, _Cont} = ets:select(Tab, MS, 1),
+            {Last, _Cont1} = ets:select_reverse(Tab, MS, 1),
+            case First of 
                 [] -> [];
-                TSs ->
-                    [Last] = ets:lookup(Tab, lists:last(TSs)),
-                    TS1 = case Last#activity.in_out of 
-                              [] -> Last#activity.timestamp;
-                              _ ->element(2, hd(Last#activity.in_out))
-                          end,
-                    [{hd(TSs), TS1}]
+                [F] ->
+                    [Last1] = ets:lookup(Tab, hd(Last)),
+                    LastTS = case Last1#activity.in_out of 
+                              [] -> hd(Last);
+                              _ ->element(2, hd(Last1#activity.in_out))
+                           end,
+                    [{F, LastTS}]
             end;
         {activity, Options} when is_list(Options) ->
             case lists:member({ts_exact, true},Options) of
@@ -996,7 +1008,7 @@ select_query_activity_1(SubDBIndex, Query) ->
 		    MS = activity_ms(Options),
                     Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
                     case catch ets:select(Tab, MS) of
-		    {'EXIT', Reason} ->
+                        {'EXIT', Reason} ->
 	                    io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
 			    [];
 		    	Match ->
@@ -1009,6 +1021,20 @@ select_query_activity_1(SubDBIndex, Query) ->
     	    []
     end.
 
+get_runnable(SubDBIndex, _Pid={pid, {P1, P2, P3}}) ->
+    MS = [{#activity{timestamp = '$1',id = '$2',state = '$3',in_out = '$4', _='_'},
+           [{'==',  '$2',{{pid, {{P1, P2, P3}}}}}],
+           [{{'$1', '$3', '$4'}}]}],
+    Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case catch ets:select(Tab, MS) of
+        {'EXIT', Reason} ->
+            io:format(" - select_query_activity [ catch! ]: ~p~n", [Reason]),
+            [];
+        Match ->
+            Match
+    end.
+       
+    
 %% This only works when all the procs/ports are selected.
 get_runnable_counts(SubDBIndex, Options) ->
     MS = activity_count_ms(Options),
@@ -1079,35 +1105,75 @@ lists_filter([D|Ds], Options) ->
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PID1}) or
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PORT1}).
 
-activity_ms(Opts) ->
-    Head = #activity{
-    	timestamp = '$1',
-	id = '$2',
-	state = '$3',
-	where = '$4',
-	_ = '_'},
+%% activity_ms(Opts) ->
+%%     Head = #activity{
+%%     	timestamp = '$1',
+%% 	id = '$2',
+%% 	state = '$3',
+%% 	where = '$4',
+%% 	_ = '_'},
 
-    {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
-    Body = ['$_'],
+%%     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
+%%     Body = ['$_'],
     
-    lists:foldl(
-    	fun (Option, MS) ->
-	    case Option of
-		{id, ports} ->
-	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
-		{id, procs} ->
-	    	    [{Head,[{'==', pid, {element, 1, Head#activity.id}} | Conditions], Body} | MS];
-		{id, ID} when is_port(ID) ->
-	    	    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
-                {id, {pid, {P1, P2, P3}}}->
-	    	    [{Head,[{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conditions], Body} | MS];
-		{id, all} ->
-	    	    [{Head, Conditions,Body} | MS];
-		_ ->
-	    	    io:format("activity_ms id dropped ~p~n", [Option]),
-	    	    MS
-	    end
-	end, [], IDs).
+%%     lists:foldl(
+%%     	fun (Option, MS) ->
+%% 	    case Option of
+%% 		{id, ports} ->
+%% 	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
+%% 		{id, procs} ->
+%% 	    	    [{Head,[{'==', pid, {element, 1, Head#activity.id}} | Conditions], Body} | MS];
+%% 		{id, ID} when is_port(ID) ->
+%% 	    	    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
+%%                 {id, {pid, {P1, P2, P3}}}->
+%% 	    	    [{Head,[{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conditions], Body} | MS];
+%% 		{id, all} ->
+%% 	    	    [{Head, Conditions,Body} | MS];
+%% 		_ ->
+%% 	    	    io:format("activity_ms id dropped ~p~n", [Option]),
+%% 	    	    MS
+%% 	    end
+%% 	end, [], IDs).
+
+activity_ms(Opts) ->
+    Head=#activity{timestamp = '$1',id = '$2',state = '$3', _='_'},
+    Body = [{{'$1', '$2', '$3'}}],
+    {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
+    Cond =  lists:foldl(
+              fun (Option, Conds) ->
+                      case Option of
+                          {id, ports} ->
+                              [{is_port, Head#activity.id}|Conds];
+                          {id, procs} ->
+                              [{'==', pid, {element, 1, Head#activity.id}} | Conds];
+                          {id, ID} when is_port(ID) ->
+                              [{'==', Head#activity.id, ID} | Conds];
+                          {id, all} ->
+                              Conds;
+                          {pids, Pids}->
+                              case length(Pids)/ets:info(pdb_info, size) <0.6 of 
+                                  true ->
+                                      [mk_pids_cond(Pids)|Conds];
+                                  false ->
+                                      AllPids = ets:select(
+                                                  pdb_info,[{#information{id='$1', _='_'}, [], ['$1']}]),
+                                      OtherPids = AllPids -- Pids,
+                                      [{'not', mk_pids_cond(OtherPids)}|Conds]
+                              end;
+                          _ ->
+                              io:format("activity_ms id dropped ~p~n", [Option]),
+                              Conds
+                      end
+              end, lists:reverse(Conditions), IDs),
+    [{Head, lists:reverse(Cond), Body}].
+
+mk_pids_cond(Pids) ->
+    lists:foldl(fun({pid, {P1, P2, P3}},C) ->
+                        if C == [] ->
+                                {'==', '$2', {{pid, {{P1, P2, P3}}}}};
+                           true -> {'orelse', {'==', '$2', {{pid, {{P1, P2, P3}}}}}, C}
+                        end
+                end, [], Pids).
 
 activity_count_ms(Opts) ->
     Head = #activity{
@@ -1149,6 +1215,9 @@ activity_ms_and(Head, [Opt|Opts], Constraints, IDs) ->
 	{id, ID} ->
 	    activity_ms_and(Head, Opts, 
 		Constraints, [{id, ID} | IDs]);
+        {pids, Pids} ->
+	    activity_ms_and(Head, Opts, 
+		Constraints, [{pids, Pids} | IDs]);
 	{state, State} ->
 	    activity_ms_and(Head, Opts, 
 		[{'==', Head#activity.state, State} | Constraints], IDs);
@@ -1358,38 +1427,35 @@ update_information_rq_1(Pid, {TS,RQ}) ->
 %% with the parallel version, checking whether a message is 
 %% send to the same run queue needs a different algorithm,
 %% and this feature is removed for now.
-update_information_sent_1(From, MsgSize, _To, _Ts) ->
-    update_inter_node_msg_tab(From, MsgSize, _To, _Ts),
-    InternalPid =pid2value(From),
-    case  ets:lookup(pdb_info, InternalPid) of
+update_information_sent_1(From, MsgSize, To, Ts) ->
+    InternalFrom =pid2value(From),
+    update_inter_proc_msg_tab(From, MsgSize, To, Ts),
+    case ets:lookup(pdb_info, InternalFrom) of
         [] -> 
             ets:insert(pdb_info, 
-                       #information{id=InternalPid, 
+                       #information{id=InternalFrom, 
                                     msgs_sent={1, MsgSize}
                                    });            
         [I] ->
             {No, Size} =  I#information.msgs_sent,
-            ets:update_element(pdb_info, InternalPid, 
+            ets:update_element(pdb_info, InternalFrom, 
                                {#information.msgs_sent, {No+1, Size+MsgSize}})
     end.
 
-update_inter_node_msg_tab(From, MsgSize, To, Ts) ->
-    case same_node_pids(From, To) of
-        true ->
-            ok;
-        false ->
-            ets:insert(inter_node, 
-                       #inter_node{
-                         timed_from_node = {Ts, get_node_name(From)},
-                         to_node=get_node_name(To),
-                         msg_size = MsgSize})
-    end.
 
-%% update_inter_sched_msg_tab(FromSched, ToSched, MsgSize, Ts) ->
-%%     ets:insert(inter_sched,
-%%                #inter_sched{from_sched_with_ts={Ts, FromSched},
-%%                             dest_sched=ToSched,
-%%                             msg_size = MsgSize}).
+update_inter_proc_msg_tab(_From, _MsgSize, To, _Ts) when is_port(To) ->
+    ok;
+update_inter_proc_msg_tab(From, MsgSize, To, Ts) ->
+    InternalFrom=pid2value(From),
+    InternalTo = if is_pid(To) ->
+                         pid2value(To);
+                    true ->To
+                 end,
+    ets:insert(inter_proc, 
+               #inter_proc{
+                 timed_from = {Ts, get_node_name(From), InternalFrom},
+                 to={get_node_name(To), InternalTo},
+                 msg_size = MsgSize}).
 
   
 update_information_received_1(Pid, MsgSize) ->
@@ -2177,7 +2243,7 @@ get_start_time_ts() ->
               T1 when is_tuple(T1)-> T1;
                _ -> undefined
           end,
-    IMin =case ets:first(inter_node) of 
+    IMin =case ets:first(inter_proc) of 
               {T2, _} when is_tuple(T2)-> T2;
               _ -> undefined
           end,
@@ -2199,7 +2265,7 @@ get_stop_time_ts(LastIndex) ->
                T1 when is_tuple(T1)-> T1;
                _ -> undefined
            end,
-    IMax =case ets:last(inter_node) of 
+    IMax =case ets:last(inter_proc) of 
               {T2, _} when is_tuple(T2)-> T2;
               _ -> undefined
           end,
@@ -2405,6 +2471,7 @@ gen_compressed_process_tree()->
     NewTrees=compress_process_tree(Trees),
     erase(last_index),
     NewTrees.
+    
 
 -spec gen_process_tree/0::()->[process_tree()].
 gen_process_tree() ->
@@ -2418,7 +2485,7 @@ gen_process_tree() ->
                           -> [process_tree()].
 gen_process_tree([], Out) ->
     add_ancestors(Out);
-gen_process_tree([_Elem={Pid, _Start, Children}|Tail], Out) ->
+gen_process_tree([_Item={Pid, _Start, Children}|Tail], Out) ->
     {ChildrenElems, Tail1} = lists:partition(
                                fun({Pid1, _, _}) -> 
                                        lists:member(Pid1, Children) 
