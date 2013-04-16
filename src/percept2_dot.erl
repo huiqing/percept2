@@ -2,11 +2,10 @@
 
 -export([gen_callgraph_img/2,
          gen_process_tree_img/1,
+         gen_process_comm_img/4,
          gen_callgraph_slice_img/4]).
 
 -export([gen_process_tree_img_1/2]).
-
--compile(export_all).
 
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -159,7 +158,7 @@ edge_list_to_dot(Edges, OutFileName, GraphName) ->
     NodeList = NodeList1 ++ NodeList2,
     NodeSet = ordsets:from_list(NodeList),
     Start = ["digraph ",GraphName ," {"],
-    VertexList = [format_node(V, fun format_vertex/1, true)
+    VertexList = [format_node_with_label(V, fun format_vertex/1)
                   ||V <- NodeSet],
     End = ["graph [", GraphName, "=", GraphName, "]}"],
     EdgeList = [format_edge(X, Y, Cnt) || {X,Y,Cnt} <- Edges],
@@ -236,23 +235,39 @@ gen_callgraph_slice_edges(CallTree, ActiveFuns) ->
            end
     end.
 
-format_node(V, Fun, WithLabel) ->
+format_node_with_label_and_url(V, Fun, Label, URL) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
     W = (Width div 7 + 1) * 0.55,
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    case WithLabel of 
-        true ->
-            Label = format_vertex_label(V),
-            ["\"", String, "\"", " [label=\"", Label, "\" width=", 
-             SL, " heigth=", SH, " ", "", "];\n"];
-        false ->
-            ["\"", String, "\"", " [width=", SL, " heigth=", SH, " ", "", "];\n"]
-    end.
+    [String, " [URL=",  "\"", URL, 
+     " label=\"", Label,"\"",
+     " width=", SL, " heigth=", SH, " ", "", "];\n"].
+ 
+format_node_with_label(V, Fun) ->
+    String = Fun(V),
+    {Width, Heigth} = calc_dim(String),
+    W = (Width div 7 + 1) * 0.55,
+    H = Heigth * 0.4,
+    SL = io_lib:format("~f", [W]),
+    SH = io_lib:format("~f", [H]),
+    Label = format_vertex_label(V),
+    ["\"", String, "\"", " [label=\"", Label, "\" width=", 
+     SL, " heigth=", SH, " ", "", "];\n"].
 
-
+format_node(V, Fun) ->
+    String = Fun(V),
+    {Width, Heigth} = calc_dim(String),
+    W = (Width div 7 + 1) * 0.55,
+    H = Heigth * 0.4,
+    SL = io_lib:format("~f", [W]),
+    SH = io_lib:format("~f", [H]),
+    [String, " [width=", 
+     SL, " heigth=", SH, " ", "", "];\n"].
+       
+       
 format_vertex_label({V, {label, Label}}) when Label>0->
     format_vertex(V) ++ 
         io_lib:format("(~.10B%)", [round(Label*100)]);
@@ -274,12 +289,11 @@ format_vertex({{M,F,A},0}) ->
 format_vertex({{M,F,A},C}) ->
     io_lib:format("~p:~p/~p(~p)", [M,F,A, C]).
 
-
 format_edge(V1, V2, Label) ->
     String = ["\"",format_vertex(V1),"\"", " -> ",
 	      "\"", format_vertex(V2), "\""],
     [String, " [", "label=", "\"", format_label(Label), "\"",
-     "fontsize=20 fontname=\"Verdana\"", "];\n"].
+     " fontsize=14 fontname=\"Verdana\"", "];\n"].
                        
 
 %%% ------------------------------------%%%
@@ -340,7 +354,7 @@ process_tree_to_dot(ProcessTrees, DotFileName, CleanPid) ->
     {Nodes, Edges} = gen_process_tree_nodes_edges(ProcessTrees),
     MG = digraph:new(),
     digraph_add_edges_to_process_tree({Nodes, Edges}, MG),
-    process_tree_to_dot_1(MG, DotFileName, CleanPid),
+    proc_to_dot(MG, DotFileName, "ProcessTree", CleanPid),
     digraph:delete(MG),
     ok.
 
@@ -350,7 +364,8 @@ gen_process_tree_nodes_edges(Trees) ->
                     gen_process_tree_nodes_edges_1(Tree) 
             end,  Trees),
     {Nodes, Edges}=lists:unzip(Res),
-    {lists:append(Nodes), lists:append(Edges)}.
+    {sets:to_list(sets:from_list(lists:append(Nodes))), 
+     lists:append(Edges)}.
 
 gen_process_tree_nodes_edges_1({Parent, []}) ->
     Parent1={Parent#information.id, Parent#information.name,
@@ -361,7 +376,7 @@ gen_process_tree_nodes_edges_1({Parent, Children}) ->
              clean_entry(Parent#information.entry)},
     Nodes = [{C#information.id, C#information.name,
               clean_entry(C#information.entry)}||{C, _} <- Children],
-    Edges = [{Parent1, N, ""}||N<-Nodes],
+    Edges = [{Parent#information.id, element(1, N), ""}||N<-Nodes],
     {Nodes1, Edges1}=gen_process_tree_nodes_edges(Children),
     {[Parent1|Nodes]++Nodes1, Edges++Edges1}.
 
@@ -371,50 +386,58 @@ clean_entry(Entry) -> Entry.
 
 digraph_add_edges_to_process_tree({Nodes, Edges}, MG) ->
     %% This cannot be parallelised because of side effects.
-    [digraph:add_vertex(MG, Node)||Node<-Nodes],
+    [digraph:add_vertex(MG, Pid, {Pid, Name, Entry})||{Pid, Name, Entry}<-Nodes],
     [digraph_add_edge_1(MG, From, To, Label)||{From, To, Label}<-Edges].
 
 %% a function with side-effect.
 digraph_add_edge_1(MG, From, To, Label) ->
-    case digraph:vertex(MG, To) of 
-        false ->
-            digraph:add_vertex(MG, To);
-        _ ->
-            ok
-    end,
     digraph:add_edge(MG, From, To, Label).
 
-process_tree_to_dot_1(MG, OutFileName,CleanPid) ->
-    Edges =[digraph:edge(MG, X) || X <- digraph:edges(MG)],
-    Nodes = digraph:vertices(MG),
-    GraphName="ProcessTree",
-    Start = ["digraph ",GraphName ," {"],
-    VertexList = [format_process_tree_node(N,CleanPid) ||N <- Nodes],
-    End = ["graph [", GraphName, "=", GraphName, "]}"],
-    EdgeList = [format_process_tree_edge(X, Y, Label, CleanPid) ||{_, X, Y, Label} <- Edges],
-    String = [Start, VertexList, EdgeList, End],
-    ok = file:write_file(OutFileName, list_to_binary(String)).
-
-format_process_tree_node(V, CleanPid) ->
-    format_node({V, CleanPid}, fun format_process_tree_vertex/1, false).
-           
-format_process_tree_vertex({{Pid={pid, {_P1, P2, P3}}, Name, Entry}, CleanPid}) ->
+format_process_node(RegName, _) when is_atom(RegName) ->
+    format_node(RegName, fun atom_to_list/1);
+format_process_node(Pid={pid, {_P1, _P2, _P3}}, CleanPid) ->
+    case ets:lookup(pdb_info,Pid) of 
+        [Info] ->
+            Name =Info#information.name,
+            Entry = Info#information.entry,
+            format_process_node({Pid, Name, Entry}, CleanPid);
+        [] ->
+            format_process_node({Pid, undefined, undefined}, CleanPid)
+    end;
+format_process_node(_V={Pid={pid, {_P1, P2, P3}}, Name, Entry}, CleanPid) ->
     Pid1 = case CleanPid of 
                true -> {pid, {0, P2, P3}};
                _ -> Pid
            end,
     PidStr =  "<" ++ pid2str(Pid1) ++ ">",
+    URL ="/cgi-bin/percept2_html/process_info_page_without_menu?pid="++pid2str(Pid)++"\"",
+    Label =  format_process_vertex({PidStr, Name, Entry}),
+    format_node_with_label_and_url(PidStr, fun format_process_vertex/1, Label, URL).
+           
+format_process_vertex({PidStr, Name, Entry}) ->
     lists:flatten(io_lib:format("~s; ~p;\\n", [PidStr, Name])) ++
         format_entry(Entry);
-
-format_process_tree_vertex(Other)  ->
+format_process_vertex(Other)  ->
     io_lib:format("~p", [Other]).
-    
-format_process_tree_edge(V1, V2, Label, CleanPid) ->
-    String = ["\"",format_process_tree_vertex({V1, CleanPid}),"\"", " -> ",
-	      "\"", format_process_tree_vertex({V2, CleanPid}), "\""],
+
+format_process_tree_edge(Pid1, Pid2,Label, CleanPid) ->
+    Pid1Str= format_proc_node(Pid1, CleanPid),
+    Pid2Str=format_proc_node(Pid2, CleanPid),
+    String = [format_process_vertex(Pid1Str), " -> ",
+	      format_process_vertex(Pid2Str)],
     [String, " [", "label=", "\"", format_label(Label),
-     "\"",  "fontsize=20 fontname=\"Verdana\"", "];\n"].
+     "\"",  " fontsize=14 fontname=\"Verdana\"", "];\n"].
+
+format_proc_node(Pid, _) when is_atom(Pid) ->
+    atom_to_list(Pid);
+format_proc_node(Pid, CleanPid) ->
+    case CleanPid of
+        true ->
+            {pid, {_, P2, P3}}=Pid,
+            "<" ++pid2str({pid, {0, P2, P3}})++">";
+        _ -> 
+            "<"++pid2str(Pid)++">"
+    end.
 
 
 format_entry(undefined) ->
@@ -441,10 +464,9 @@ calc_dim([_| T], H, TmpW, MaxW) ->
 calc_dim([], H, TmpW, MaxW) ->
     {lists:max([TmpW, MaxW]), H}.
 
-format_label(Label) when is_integer(Label) ->
-    io_lib:format("~p", [Label]);
-format_label(_Label) -> "".
-
+format_label([]) -> "";
+format_label(Label) ->
+    io_lib:format("~p", [Label]).
 
 -spec pid2str(Pid :: pid()|pid_value()) ->  string().
 pid2str({pid, {P1,P2, P3}}) when is_atom(P2)->
@@ -453,3 +475,104 @@ pid2str({pid, {P1, P2, P3}}) ->
     integer_to_list(P1)++"."++integer_to_list(P2)++"."++integer_to_list(P3).
 
 
+%%% --------------------------------------------%%%
+%%% 	process communication image generation. %%%
+%%% --------------------------------------------%%%
+
+-spec(gen_process_comm_img(DestDir::file:filename(),
+                          ImgFileBaseName::string(),
+                          MinSends::non_neg_integer(),
+                          MinSize::non_neg_integer()) 
+      -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
+gen_process_comm_img(DestDir, ImgFileBaseName, MinSends,MinSize) ->
+    case ets:info(inter_proc,size) of 
+        0 -> no_image;
+        _ -> Tab=ets:new(tmp_inter_proc_tab, [named_table, protected, set]),
+             ets:foldl(fun process_a_send/2, Tab, inter_proc),
+             DotFileName = ImgFileBaseName++".dot",
+             SvgFileName =gen_svg_file_name(ImgFileBaseName, DestDir),
+             proc_comm_to_dot(Tab,DotFileName, MinSends, MinSize),
+             ets:delete(Tab),
+             dot_to_svg(DotFileName, SvgFileName)
+    end.
+
+process_a_send('$end_of_table', Tab) ->
+    Tab;    
+process_a_send(Send, Tab) ->
+    From = element(3, Send#inter_proc.timed_from),
+    To=element(2, Send#inter_proc.to),
+    MsgSize = Send#inter_proc.msg_size,
+    if is_atom(To) ->
+            if To==none ->
+                    Tab;
+               true ->
+                    case ets:lookup(pdb_system, {regname, To}) of 
+                        [] ->
+                            Tab;
+                        [{{regname, To}, Pid}] ->
+                            process_a_send(From, Pid, MsgSize, Tab)
+                    end
+            end;
+       true -> process_a_send(From, To, MsgSize, Tab)
+    end.
+
+process_a_send(FromPid, ToPid, MsgSize, Tab) ->
+    case ets:lookup(Tab, {FromPid, ToPid}) of 
+        [] ->
+            ets:insert(Tab, {{FromPid, ToPid}, {1, MsgSize}});
+        [I] ->
+            {Key, {No,Size}} = I,
+            ets:update_element(Tab,Key, {2, {No+1, Size+MsgSize}})
+    end,
+    Tab.
+
+proc_comm_to_dot(Tab, DotFileName, MinSends, MinSize) ->
+    Edges = gen_proc_comm_edges(Tab, MinSends, MinSize),
+    MG = digraph:new(),
+    proc_comm_add_edges(Edges, MG),
+    proc_to_dot(MG,DotFileName,"proc_comm", true),
+    digraph:delete(MG).
+
+gen_proc_comm_edges(Tab, MinSends, MinSize) ->
+    ets:foldl(fun(Elem, Acc) ->
+                      case Elem of 
+                          '$end_of_table' -> Acc;
+                          {{From, To}, {Times, TotalSize}} ->
+                              AvgSize = TotalSize div Times, 
+                              case Times >= MinSends andalso AvgSize >= MinSize of 
+                                  true ->
+                                      NewEdge = {From,To,{Times, AvgSize}},
+                                      [NewEdge|Acc];
+                                  false ->
+                                      Acc
+                              end
+                      end                                         
+              end, [], Tab).
+
+proc_comm_add_edges(Edges, MG)->
+    [proc_comm_add_an_edge(MG, E)||E<-Edges].
+
+proc_comm_add_an_edge(MG, _E={From, To, Label={_Times, _Size}}) ->
+    case digraph:vertex(MG,From) of 
+        false ->
+            digraph:add_vertex(MG, From);
+        _ ->
+            case digraph:vertex(MG, To) of 
+                false ->
+                    digraph:add_vertex(MG, To);
+                _-> ok
+            end
+    end,
+    digraph:add_edge(MG, From, To, Label).
+
+proc_to_dot(MG,OutFileName, GraphName,CleanPid) ->
+    Edges =[digraph:edge(MG, X) || X <- digraph:edges(MG)],
+    Nodes = digraph:vertices(MG),
+    Start = ["digraph ",GraphName ," {"],
+    VertexList = [format_process_node(N,CleanPid) ||N <- Nodes],
+    End = ["graph [", GraphName, "=", GraphName, "]}"],
+    EdgeList = [format_process_tree_edge(X, Y, Label, CleanPid) ||{_, X, Y, Label} <- Edges],
+    String = [Start, VertexList, EdgeList, End],
+    ok = file:write_file(OutFileName, list_to_binary(String)).
+ 
+   
