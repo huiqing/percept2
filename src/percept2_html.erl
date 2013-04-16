@@ -32,10 +32,12 @@
          inter_node_message_graph_page/3,
          summary_report_page/3,
          process_tree_visualisation_page/3,
+         process_comm_graph_page/3,
          callgraph_visualisation_page/3,
          callgraph_slice_visualisation_page/3,
          func_callgraph_content/3,
-         visualise_sampling_data_page/3
+         visualise_sampling_data_page/3,
+         process_info_page_without_menu/3
         ]).
 
 -export([get_option_value/2,
@@ -199,12 +201,39 @@ process_tree_visualisation_page(SessionID, Env, Input) ->
             error_page(SessionID, Env, Input)
     end.
 
+
+-spec(process_comm_graph_page(pid(), list(), string()) -> 
+             ok | {error, term()}).
+process_comm_graph_page(SessionID, Env, Input) ->
+    try
+        mod_esi:deliver(SessionID, header()),
+        mod_esi:deliver(SessionID, menu(Input)), 
+        
+        mod_esi:deliver(SessionID, process_comm_graph_content(Env, Input)),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
 -spec(process_info_page(pid(), list(), string()) -> ok | {error, term()}).
 process_info_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
         Content = process_info_content(Env, Input),
         deliver_page(SessionID, Menu, Content)
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
+-spec(process_info_page_without_menu(
+        pid(), list(), string()) -> ok | {error, term()}).
+process_info_page_without_menu(SessionID, Env, Input) ->
+    try
+        Content = process_info_content(Env, Input),
+        mod_esi:deliver(SessionID,  common_header([])),
+        mod_esi:deliver(SessionID, Content),
+        mod_esi:deliver(SessionID, footer())
     catch
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
@@ -457,7 +486,9 @@ cl_deltas([A,B|Ls], Out) -> cl_deltas([B|Ls], [B - A | Out]).
 concurrency_content(Env, Input) ->
     CacheKey = "concurrency_content"++
         integer_to_list(erlang:crc32(Input)),
-    case get_pids_to_compare(Input) of 
+    Query = httpd:parse_query(Input),
+    Pids = ticked_pids(Query),
+    case Pids of 
         [] ->
             error_msg("No processes selected!");
         _ ->
@@ -466,7 +497,7 @@ concurrency_content(Env, Input) ->
     end.
 -spec(concurrency_content_1(list(), string()) -> string()).
 concurrency_content_1(_Env, Input) ->
-    IDs = lists:sort(get_pids_to_compare(Input)),
+    IDs = get_pids_to_compare(Input),
     StartTs = percept2_db:select({system, start_ts}),
     {MinTs, MaxTs} = percept2_db:select({activity, {min_max_ts, IDs}}),
     case {MinTs, MaxTs} of 
@@ -481,22 +512,21 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
     {T0, T1} = {?seconds(MinTs, StartTs), ?seconds(MaxTs, StartTs)},
     CleanPid = percept2_db:select({system, nodes})==1,
     ActivityBarTable =
-        lists:foldl(
-          fun(Pid, Out) ->
-                  ValueString = pid2str(Pid),
-                  ActivityBar = image_string_head(
-                                  "activity", 
-                                  [{"pid", ValueString},
-                                   {range_min, T0},
-                                   {range_max, T1},
-                                   {height, 10}], []),
-                  Out ++
-                      "<tr><td><input type=checkbox name="++pid2str(Pid)++"></td>"++
-                      "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"++
-                      "<td>" ++ "<img onload=\"size_image(this, '" ++
-                      ActivityBar ++
-                      "')\" src=/images/white.png border=0 />" ++ "</td>\n"
-          end, [], IDs),
+        lists:append(lists:map(
+                       fun(Pid) ->
+                               ValueString = pid2str(Pid),
+                               ActivityBar = image_string_head(
+                                               "activity", 
+                                               [{"pid", ValueString},
+                                                {range_min, T0},
+                                                {range_max, T1},
+                                                {height, 10}], []),
+                               "<tr><td><input type=checkbox name="++pid2str(Pid)++"></td>"++
+                                   "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"++
+                                   "<td>" ++ "<img onload=\"size_image(this, '" ++
+                                   ActivityBar ++
+                                   "')\" src=/images/white.png border=0 />" ++ "</td>\n"
+                       end, IDs)),
     PidsRequest = pids2request(IDs),
     Header = "
      <div id=\"content\">
@@ -521,48 +551,51 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                             ])
         ++"</table>",
     MainTable = 
-        "<table cellspacing=0 cellpadding=0 border=0>" ++ 
-        table_line([div_tag_graph("percept_graph")]) ++
-        table_line([FuncActs]) ++ "</table>\n",
+         "<table cellspacing=0 cellpadding=0 border=0>" ++ 
+         table_line([div_tag_graph("percept_graph")])
+         ++
+         table_line([FuncActs]) ++ "</table>\n",
     MainTable1 =
         "<table cellspacing=0 cellpadding=0 border=0>" ++ 
-        table_line(["<input type=submit value=\"Compare Selected Processes\">"])++ "</table>\n"++
         "<table  cellspacing=0 cellpadding=0 border=0>" ++
         [ActivityBarTable]++"</table>",
     Footer = "</div></form>",
-    Header ++ MainTable ++ Footer ++ Header1 ++ MainTable1++Footer.
+    Header++ MainTable++ Footer ++ Header1 ++ MainTable1++Footer.
 
 -spec(get_pids_to_compare(string()) ->[pid()]).
 get_pids_to_compare(Input) ->
     Query = httpd:parse_query(Input),
-    Pids = [str_to_internal_pid(PidValue)
-            || {PidValue, Case} <- Query, 
-               Case == "on", 
-               PidValue /= "select_all",
-               PidValue /= "include_unshown_procs",
-               PidValue /= "include_children_procs"],
-    case lists:member({"select_all", "on"}, Query) orelse 
-        (not lists:member({"include_children_procs", "on"}, Query)) of 
-        true ->
-            case lists:member({"include_unshown_procs","on"}, Query) of 
-                true ->
-                    lists:append([expand_a_pid(Pid)|| Pid <- Pids]);
+    Pids = ticked_pids(Query),
+    ResPids=case lists:member({"include_children_procs", "on"}, Query) of 
+                true -> 
+                    case lists:member({"include_unshown_procs","on"}, Query) of 
+                        true ->
+                            lists:append([case is_dummy_pid(Pid) of 
+                                              true -> expand_a_pid(Pid);
+                                              false ->process_tree_pids(Pid)
+                                          end||Pid<-Pids]);
+                        false ->
+                            AllPids=lists:append([process_tree_pids(Pid)
+                                                  ||Pid<-Pids,not is_dummy_pid(Pid)]),
+                            AllPids --hidden_pids()
+                    end;
                 false ->
-                    [Pid|| Pid <- Pids,
-                           not percept2_db:is_dummy_pid(Pid)]
-            end;
-        false ->
-            case lists:member({"include_unshown_procs","on"}, Query) of
-                true ->
-                    lists:append([process_tree_pids(Pid)
-                                  ||Pid<-Pids]);
-                false ->
-                    AllPids=lists:append([process_tree_pids(Pid)
-                                          ||Pid<-Pids,
-                                            not percept2_db:is_dummy_pid(Pid)]),
-                    AllPids --hidden_pids()
-            end
-    end.
+                    case lists:member({"include_unshown_procs","on"}, Query) of
+                        true ->
+                            lists:append([expand_a_pid(Pid)|| Pid <- Pids]);
+                        false ->
+                            [Pid||Pid<-Pids,not is_dummy_pid(Pid)]
+                    end
+            end,
+    lists:usort(ResPids).
+
+ticked_pids(Query) ->
+    Options= ["select_all",
+              "include_unshown_procs", 
+              "include_children_procs"],
+    [str_to_internal_pid(PidValue)
+     || {PidValue, Case} <- Query,
+        Case == "on", not lists:member(PidValue, Options)].
     
   
 hidden_pids() ->
@@ -574,7 +607,7 @@ hidden_pids() ->
 
     
 expand_a_pid(Pid) ->
-    case percept2_db:is_dummy_pid(Pid) of
+    case is_dummy_pid(Pid) of
         true ->
             [Info] = percept2_db:select({information, Pid}),            
             PidLists=[[percept2_db:pid2value(Pid2)||Pid2<-process_tree_pids(Pid1)]
@@ -805,7 +838,10 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
         ++"<td><input type=checkbox name=include_unshown_procs>Include omitted procs"++"</td></tr>" ++
         "<tr> <td> <input type=submit value=Compare> </td>" ++
         "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/process_tree_visualisation_page\">"++
-        "<b>Visualise Process Tree</b>"++"</a></td></tr>",
+        "<b>Visualise Process Tree</b>"++"</a></td>" ++  
+        "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/process_comm_graph_page\">"++
+        "<b>Visualise Process Communication</b>"++"</a></td>" ++  
+        "</tr>",
     Right = "<div>"
         ++ Selector ++ 
         "</div>\n",
@@ -1047,7 +1083,7 @@ process_info_content_1(_Env, Input) ->
     InfoTable = html_table
                   ([
                     [{th, "Pid"},        pid2html(I#information.id, CleanPid)],
-                    [{th, "Name"}, term2html(case percept2_db:is_dummy_pid(Pid) of
+                    [{th, "Name"}, term2html(case is_dummy_pid(Pid) of
                                                  true -> dummy_process;
                                                  _ -> I#information.name
                                              end)],
@@ -1058,7 +1094,7 @@ process_info_content_1(_Env, Input) ->
                     [{th, "Children"},   lists:flatten(lists:map(fun(Child) -> 
                                                                          pid2html(Child, CleanPid) ++ " " end,
                                                                  I#information.children))]]
-                   ++ case percept2_db:is_dummy_pid(Pid) of 
+                   ++ case is_dummy_pid(Pid) of 
                           true ->
                               [];
                           false ->
@@ -1072,7 +1108,7 @@ process_info_content_1(_Env, Input) ->
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
                      term2html(info_msg_sent(I))]] 
                    ++
-                       case percept2_db:is_dummy_pid(Pid) of 
+                       case is_dummy_pid(Pid) of 
                            true -> [];
                            false->
                              [[{th, "accumulated runtime <br>(in milliseconds)"},
@@ -1080,7 +1116,7 @@ process_info_content_1(_Env, Input) ->
                        end 
                    ++
                     [[{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]]
-                   ++ case percept2_db:is_dummy_pid(Pid) of
+                   ++ case is_dummy_pid(Pid) of
                           true ->
                               [[{th, "Compressed Processes"}, lists:flatten(
                                                                 lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
@@ -1132,6 +1168,47 @@ process_tree_content(_Env, _Input) ->
             process_gen_graph_img_result(Content, GenImgRes)
     end.
  
+
+process_comm_graph_content(_Env, Input) ->
+    Query = httpd:parse_query(Input),
+    MinSends = get_option_value("sends_min", Query),
+    MinSize = get_option_value("size_min", Query),
+    SvgDir = percept2:get_svg_alias_dir(),
+    ImgFileBaseName="proc_comm_graph"++"_"++integer_to_list(MinSends)
+        ++"_"++integer_to_list(MinSize)++".svg",
+    ImgFileName = ImgFileBaseName++".svg",
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
+    Content = "<div style=\"text-align:center; align:center\">" ++
+        "<h3 style=\"text-align:center;\">Process Communication Graph</h3>"++ 
+        "<form name=filter_proc_comm_graph method=post 
+           action=/cgi-bin/percept2_html/process_comm_graph_page>
+	<center>
+        <br></br>
+        <table>
+           <tr><td align=left>Minmum number of sends:</td>
+               <td><input type=text name=sends_min  value=" 
+                 ++ term2html(MinSends) ++ "> </tr>
+           <tr><td align=left>Minmum avg. message size:</td> 
+               <td align=left><input type=text name=size_min  value=" 
+                 ++ term2html(MinSize) ++"> </td></tr>
+           <tr><td><input type=submit value=\"Update\" /> </td></tr>
+        </table>
+  	</center>
+	</form>" ++
+        "<object data=\"/svgs/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
+        "</div>",
+    case filelib:is_regular(ImgFullFilePath) of 
+        true -> 
+            %% file already generated, so reuse.
+            Content;  
+        false -> 
+            GenImgRes=percept2_dot:gen_process_comm_img(
+                        SvgDir, ImgFileBaseName, MinSends, MinSize),
+            process_gen_graph_img_result(Content, GenImgRes)
+    end.
+
 %%% function callgraph content
 func_callgraph_content(_SessionID, Env, Input) ->
     CacheKey = "func_callpath"++integer_to_list(erlang:crc32(Input)),
@@ -1558,7 +1635,7 @@ pid2html(_) ->
     "undefined".
 
 pid2html_1(Pid, PidString, PidValue) ->
-    case percept2_db:is_dummy_pid(Pid) of
+    case is_dummy_pid(Pid) of
         true ->
             "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++PidValue++"\">"
                 ++"<font color=\"#FF0000\">"++PidString++"</font></a>";
@@ -1686,6 +1763,8 @@ get_default_option_value(Option) ->
                      (percept2_db:select({system, start_ts})));
         "width" -> 800;
         "height" -> 400;
+        "sends_min" -> 1;
+        "size_min" -> 1;
         _ -> {error, {undefined_default_option, Option}}
     end.
 -spec get_number_value(string()) -> number() | {'error', 'illegal_number'}.
@@ -1871,7 +1950,6 @@ group_by(N,TupleList = [T| _Ts],Acc) ->
 -spec(procs_ports_count(pid(), list(), string()) -> 
              ok | {error, term()}).
 procs_ports_count(SessionID, _Env, Input) ->
-    Type     = procs_ports,
     Query    = httpd:parse_query(Input),
     RangeMin = percept2_html:get_option_value("range_min", Query),
     RangeMax = percept2_html:get_option_value("range_max", Query),
@@ -2085,3 +2163,7 @@ compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile) ->
     "gnuplot -e \"n=" ++ integer_to_list(Cols) ++ "; " ++
           "filename='" ++ DataFile ++ "'\" " ++
               ScriptFile ++ " > " ++ OutputFile.
+
+is_dummy_pid({pid, {_, P2, _}}) ->
+    is_atom(P2);
+is_dummy_pid(_) -> false.
