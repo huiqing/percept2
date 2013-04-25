@@ -47,13 +47,14 @@ graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data,HO) ->
              {_, Proc, Port}=lists:last(Data),
              Last = {RXmax, Proc, Port},
              Data2=[{X, Y1 + Y2}||{X, Y1, Y2} <- [Last|Data]],
+             Data3 =lists:reverse([Last|lists:reverse(Data)]),
              MinMax = minmax(Data2),
              {Xmin, Ymin, Xmax, Ymax} = MinMax,
              graf1(Width, Height,{	lists:min([RXmin, Xmin]),
                                         lists:min([RYmin, Ymin]),
                                         lists:max([RXmax, Xmax]),
                                         lists:max([RYmax, Ymax])}, 
-                   lists:reverse([Last|lists:reverse(Data)]),HO)
+                   Data3, HO)
      end.
      
 %% graph(Widht, Height, Data) = Image
@@ -120,7 +121,7 @@ draw_graf(Im, Data, Colors, GA = #graph_area{x = X0, y = Y0, width = Width, heig
     Dx = (Width)/(Xmax - Xmin),
     Dy = (Height)/(Ymax),
     Plotdata = [{trunc(X0 + X*Dx - Xmin*Dx), trunc(Y0 + Height - Y1*Dy), trunc(Y0 + Height - (Y1 + Y2)*Dy)} || {X, Y1, Y2} <- Data],
-    Data1=lists:sort(sets:to_list(sets:from_list(Plotdata))),
+    Data1=remove_duplicates(Plotdata),
     draw_graf(Im, Data1, Colors, GA).
 
 
@@ -535,3 +536,23 @@ minmax(Data) ->
     Xs = [ X || {X,_Y} <- Data],
     Ys = [ Y || {_X, Y} <- Data],
     {lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}.
+
+%% NOT for general-purpose.
+remove_duplicates([]) ->
+    [];
+remove_duplicates([X|Tl]) ->
+    remove_duplicates(Tl, element(1,X), [X]).
+
+remove_duplicates([], _, Acc) ->
+    lists:reverse(Acc);
+remove_duplicates([X], _, Acc) ->
+    lists:reverse([X|Acc]);
+remove_duplicates([X1, X2|Tl], LastKey, Acc) ->
+    Key1 = element(1, X1),
+    Key2 = element(1, X2),
+    if Key1 == LastKey andalso Key2==LastKey ->
+            remove_duplicates([X2|Tl], LastKey, Acc);
+       true ->
+            remove_duplicates([X2|Tl], Key1, [X1|Acc])
+    end.
+
