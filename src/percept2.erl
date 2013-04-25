@@ -264,6 +264,13 @@ analyze(_FileName, _Suffux, _, _) ->
 analyze_par_1(FileNameSubDBPairs) ->
     Self = self(),
     process_flag(trap_exit, true),
+    case whereis(percept_httpd) of 
+        undefined ->
+            ok;
+        _ ->
+            TmpDir=get_svg_alias_dir(), 
+            rm_tmp_files(TmpDir)
+    end,
     Pids = lists:foldl(fun({File, SubDBPid}, Acc) ->
                                Pid=spawn_link(?MODULE, parse_and_insert, [File, SubDBPid, Self]),
                                receive 
@@ -278,7 +285,9 @@ loop_analyzer_par(Pids) ->
         {Pid, done} ->
             case Pids -- [Pid] of 
                 [] ->
-                    ok=percept2_db:consolidate_db(),
+                    try percept2_db:consolidate_db()
+                    catch _E1:_E2 -> ok  %%sometimes it is not possible.
+                    end,
                     io:format("    ~p created processes.~n",
                               [percept2_db:select({information, procs_count})]),
                     io:format("    ~p opened ports.~n", 
@@ -486,7 +495,7 @@ service_memory({Pid, Port, Host, TmpDir}) ->
 	    Reply ! Pid,
 	    service_memory({Pid, Port, Host, TmpDir});
         {Reply, get_dir} ->
-            Reply ! TmpDir,
+            Reply ! {dir,TmpDir},
             service_memory({Pid, Port, Host, TmpDir})
     end.
 
@@ -535,6 +544,7 @@ get_webserver_config(Servername, Port)
 	{com_type,ip_comm},
 	{server_name, Servername},
 	{bind_address, any},
+        {accept_timeout, 50000},
 	{port, Port}],
     {ok, Config}.
 
@@ -551,7 +561,7 @@ rm_tmp_files(Dir) ->
 get_svg_alias_dir() ->
     percept_httpd!{self(), get_dir},
     receive 
-        Dir ->
+        {dir, Dir} ->
             Dir
     end.
 get_svg_alias_dir(Config) ->
