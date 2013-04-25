@@ -486,14 +486,16 @@ pid2str({pid, {P1, P2, P3}}) ->
       -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
 gen_process_comm_img(DestDir, ImgFileBaseName, MinSends,MinSize) ->
     case ets:info(inter_proc,size) of 
-        0 -> no_image;
-        _ -> Tab=ets:new(tmp_inter_proc_tab, [named_table, protected, set]),
-             ets:foldl(fun process_a_send/2, Tab, inter_proc),
-             DotFileName = ImgFileBaseName++".dot",
-             SvgFileName =gen_svg_file_name(ImgFileBaseName, DestDir),
-             proc_comm_to_dot(Tab,DotFileName, MinSends, MinSize),
-             ets:delete(Tab),
-             dot_to_svg(DotFileName, SvgFileName)
+        0 -> 
+            no_image;
+        _ ->
+            Tab=ets:new(tmp_inter_proc_tab, [named_table, protected, set]),
+            ets:foldl(fun process_a_send/2, Tab, inter_proc),
+            DotFileName = ImgFileBaseName++".dot",
+            SvgFileName =gen_svg_file_name(ImgFileBaseName, DestDir),
+            proc_comm_to_dot(Tab,DotFileName, MinSends, MinSize),
+            ets:delete(Tab),
+            dot_to_svg(DotFileName, SvgFileName)
     end.
 
 process_a_send('$end_of_table', Tab) ->
@@ -503,15 +505,11 @@ process_a_send(Send, Tab) ->
     To=element(2, Send#inter_proc.to),
     MsgSize = Send#inter_proc.msg_size,
     if is_atom(To) ->
-            if To==none ->
+            case ets:lookup(pdb_system, {regname, To}) of 
+                [] ->
                     Tab;
-               true ->
-                    case ets:lookup(pdb_system, {regname, To}) of 
-                        [] ->
-                            Tab;
-                        [{{regname, To}, Pid}] ->
+                [{{regname, To}, Pid}] ->
                             process_a_send(From, Pid, MsgSize, Tab)
-                    end
             end;
        true -> process_a_send(From, To, MsgSize, Tab)
     end.
@@ -556,12 +554,12 @@ proc_comm_add_an_edge(MG, _E={From, To, Label={_Times, _Size}}) ->
     case digraph:vertex(MG,From) of 
         false ->
             digraph:add_vertex(MG, From);
-        _ ->
-            case digraph:vertex(MG, To) of 
-                false ->
-                    digraph:add_vertex(MG, To);
-                _-> ok
-            end
+        _ -> ok
+    end,
+    case digraph:vertex(MG, To) of 
+        false ->
+            digraph:add_vertex(MG, To);
+        _-> ok
     end,
     digraph:add_edge(MG, From, To, Label).
 
