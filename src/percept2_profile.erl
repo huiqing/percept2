@@ -111,6 +111,10 @@ stop() ->
                                       scheduler, exclusive]),
     erlang:trace(all, false, [all]),
     erlang:trace_pattern({'_', '_', '_'}, false, [local]),
+    case ets:info(percept2_spawn) of 
+        undefined -> ok;
+        _ -> ets:delete(percept2_spawn)
+    end,
     deliver_all_trace(), 
     case whereis(percept2_port) of
     	undefined -> 
@@ -156,6 +160,12 @@ set_tracer(Port, Opts) ->
     {TraceOpts, ProfileOpts, Mods} = parse_profile_options(Opts),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
     load_modules(Mods),
+    case Mods of 
+        [] -> ok;
+        _ ->
+            ets:new(?percept2_spawn_tab, [named_table, protected, {keypos,1}, set]),
+            ets:insert(?percept2_spawn_tab, {mods, Mods})
+    end,
     [erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
     erlang:trace(all, true, [{tracer, Port}, timestamp,set_on_spawn| TraceOpts]),
     erlang:system_profile(Port, ProfileOpts),
