@@ -66,8 +66,8 @@
 	}).
  
 -record(inter_proc, {
-          timed_from    ::{timestamp(),node(), pid()}|{special_atom(), special_atom(), special_atom()},
-          to            ::{node(), pid()}|{special_atom(), special_atom()},
+          timed_from    ::{timestamp(),node(), pid()|pid_value()}|{special_atom(), special_atom(), special_atom()},
+          to            ::{node(), pid()}|{special_atom(), special_atom()}|special_atom(),
           msg_size      ::pos_integer()|special_atom()
          }).
 
@@ -120,6 +120,7 @@
 %%% -------------------	%%%
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
+-define(percept2_spawn_tab, percept2_spawn).
 %% -define(debug, 9).
 
 %% -define(debug, -1).
