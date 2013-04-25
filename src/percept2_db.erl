@@ -1105,8 +1105,10 @@ lists_filter([D|Ds], Options) ->
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PID1}) or
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PORT1}).
 activity_ms(Opts) ->
-    Head=#activity{timestamp = '$1',id = '$2',
-                   state = '$3', where= '$4', 
+    Head=#activity{timestamp = '$1',
+                   id = '$2',
+                   state = '$3',
+                   where= '$4', 
                    runnable_procs='$5', 
                    runnable_ports='$6',
                    _='_'},
@@ -1131,7 +1133,8 @@ activity_ms(Opts) ->
                                       [mk_pids_cond(Pids)|Conds];
                                   false ->
                                       AllPids = ets:select(
-                                                  pdb_info,[{#information{id='$1', _='_'}, [], ['$1']}]),
+                                                  pdb_info,[{#information{id='$1', _='_'}, 
+                                                             [{'not', {is_port, '$1'}}], ['$1']}]),
                                       OtherPids = AllPids -- Pids,
                                       case OtherPids of 
                                           [] -> 
