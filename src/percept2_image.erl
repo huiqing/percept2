@@ -479,7 +479,7 @@ query_fun_time(Width, Height, {QueryStart, FunStart}, {QueryEnd, FunEnd}) ->
             egd:filledRectangle(Im, {X1, 0}, {X4, Height - 1}, PaleGreen),
             egd:filledRectangle(Im, {X4, 0}, {X2, Height - 1}, Grey);
        true ->
-            io:format("Unhanled case in percept_image:query_fun_time.\n")
+            io:format("Unhandled case in percept_image:query_fun_time.\n")
     end,
     Binary = egd:render(Im, png),
     egd:destroy(Im),
