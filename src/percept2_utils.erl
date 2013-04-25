@@ -31,13 +31,22 @@
 
 -export([pmap/2, pforeach/2]).
 
--compile(export_all).
+-export([pmap_0/3, pmap_1/3,
+         pforeach_0/3, pforeach_1/3,
+         pforeach_wait/2]).
+
+-export([spawn/1,spawn/2, spawn/3, spawn/4,
+         spawn_link/1, spawn_link/2,
+         spawn_link/3, spawn_link/4,
+         spawn_monitor/1, spawn_monitor/3,
+         spawn_opt/2, spawn_opt/3,
+         spawn_opt/4, spawn_opt/5]).
 
 -include("../include/percept2.hrl").
 
 pmap(Fun, List) ->
     Parent = self(),
-    Pid = spawn_link(?MODULE, pmap_0, [Parent, Fun, List]),
+    Pid = erlang:spawn_link(?MODULE, pmap_0, [Parent, Fun, List]),
     receive
         {Pid, Res}-> Res
     end.
@@ -45,7 +54,7 @@ pmap(Fun, List) ->
 pmap_0(Parent, Fun, List) ->
     Self = self(),
     Pids=lists:map(fun(X) ->
-                       spawn_link(?MODULE, pmap_1, [Fun, Self, X])
+                       erlang:spawn_link(?MODULE, pmap_1, [Fun, Self, X])
                     end, List),
     Res=[receive {Pid, Result} ->
              Result end|| Pid<-Pids],
@@ -58,13 +67,13 @@ pmap_1(Fun, Parent, X) ->
 
 pforeach(Fun, List) ->
     Self = self(),
-    Pid = spawn_link(?MODULE, pforeach_0, [Self, Fun, List]),
+    Pid = erlang:spawn_link(?MODULE, pforeach_0, [Self, Fun, List]),
     receive 
         Pid -> ok
     end.
 pforeach_0(Parent, Fun, List) ->
     Self = self(),
-    _Pids = [spawn_link(?MODULE, pforeach_1, [Fun, Self, X])
+    _Pids = [erlang:spawn_link(?MODULE, pforeach_1, [Fun, Self, X])
              || X <- List],
     pforeach_wait(Self, length(List)),
     Parent ! Self.
@@ -79,5 +88,86 @@ pforeach_wait(S,N) ->
         S -> pforeach_wait(S,N-1)
     end.
 
+%% Use refactoring to replace the uses of erlang:spawn/spawn_link to 
+%% the uses of percept2:spawn/spawn_link.
+%% HOW ABOUT RECURSIVE FUNCTION CALLS?
+spawn(Fun) ->
+    percept2_spawn(spawn, [Fun]).
 
-   
+spawn(Node, Fun) ->
+    percept2_spawn(spawn, [Node, Fun]).
+
+spawn(M, F, A) ->
+    percept2_spawn(spawn, [M,F,A]).
+
+spawn(Node, M, F, A) ->
+    percept2_spawn(spawn, [Node, M, F, A]).
+
+spawn_link(Fun) ->
+    percept2_spawn(spawn_link,[Fun]).
+
+spawn_link(Node, Fun) ->
+    percept2_spawn(spawn_link, [Node, Fun]).
+
+spawn_link(M, F, A) ->
+    percept2_spawn(spawn_link, [M,F,A]).
+
+spawn_link(Node, M, F, A) ->
+    percept2_spawn(spawn_link, [Node, M, F, A]).
+
+spawn_monitor(Fun) ->
+    percept2_spawn(spawn_monitor, [Fun]).
+
+spawn_monitor(Module, Function, Args) ->
+    percept2_spawn(spawn_monitor, [Module, Function, Args]).
+
+spawn_opt(Fun, Options) ->
+    percept2_spawn(spawn_opt, [Fun, Options]).
+
+spawn_opt(Node, Fun, Options) ->
+    percept2_spawn(spawn_opt, [Node, Fun, Options]).
+
+spawn_opt(Module, Function, Args, Options) ->
+     percept2_spawn(spawn_opt, [Module, Function, Args, Options]).
+
+spawn_opt(Node, Module, Function, Args, Options) ->
+     percept2_spawn(spawn_opt, [Node, Module, Function, Args, Options]).
+
+
+percept2_spawn(SpawnFunc, Args) ->
+    Entry=case Args of 
+              [M, F, Args]->
+                  {M,F, length(Args)};
+              [Node, M, F, Args] ->
+                  [Node, M, F, length(Args)];
+              Others -> Others
+          end,
+    Silent = get_slient_value(Entry),
+    Pid=erlang:apply(erlang, SpawnFunc, Args),
+    if Silent ->
+            erlang:trace(Pid, false, [call, return_to]);
+       true -> ok       
+    end,
+    Pid.
+
+get_slient_value(Entry) ->
+    Tab = ?percept2_spawn_tab,
+    case ets:info(Tab) of 
+        undefined ->
+            false;
+        _  ->
+            case ets:lookup(Tab, Entry) of
+                [] ->
+                    ets:insert(Tab, {Entry, 1, 1}),
+                    false;
+                [{Entry, Count, Rate}] ->
+                    case  (Count + 1) rem Rate of
+                        0 ->
+                            ets:update_counter(Tab, Entry,[{2,-Count},{3,1}]),
+                            false;
+                        _ ->
+                            ets:update_counter(Tab, Entry,[{2,1}]),
+                            true
+                    end
+            end
+    end.
