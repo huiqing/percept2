@@ -444,12 +444,12 @@ select_query_message(Query) ->
     case Query of
         {inter_node, all} ->
             Head = #inter_proc{timed_from={'$0', '$1', '$2'},
-                               to = '$3',
+                               to = {'$3', '_'},
                                _='_'},
-            Constraints = [],
-            Body =  [['$1', '$3']],
-            Nodes=ets:select(inter_proc, [{Head, Constraints, Body}]),
-            sets:to_list(sets:from_list(lists:append(Nodes)));
+            Constraints = [{'/=', '$1','$3'}],
+            Body =  [{{'$1', '$3'}}],
+            Recs=ets:select(inter_proc, [{Head, Constraints, Body}]),
+            sets:to_list(sets:from_list(Recs));
         {inter_proc, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
             FromNode = list_to_atom(FromNode1),
             ToNode = list_to_atom(ToNode1),
@@ -1005,7 +1005,7 @@ select_query_activity_1(SubDBIndex, Query) ->
 			    Match
 		    end;		    
 		false ->
-		    MS = activity_ms(Options),
+                    MS = activity_ms(Options),
                     Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
                     case catch ets:select(Tab, MS) of
                         {'EXIT', Reason} ->
@@ -1104,40 +1104,13 @@ lists_filter([D|Ds], Options) ->
 % For example: [{ts_min, TS1}, {ts_max, TS2}, {id, PID1}, {id, PORT1}] would be
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PID1}) or
 % ({ts_min, TS1} and {ts_max, TS2} and {id, PORT1}).
-
-%% activity_ms(Opts) ->
-%%     Head = #activity{
-%%     	timestamp = '$1',
-%% 	id = '$2',
-%% 	state = '$3',
-%% 	where = '$4',
-%% 	_ = '_'},
-
-%%     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
-%%     Body = ['$_'],
-    
-%%     lists:foldl(
-%%     	fun (Option, MS) ->
-%% 	    case Option of
-%% 		{id, ports} ->
-%% 	    	    [{Head, [{is_port, Head#activity.id} | Conditions], Body} | MS];
-%% 		{id, procs} ->
-%% 	    	    [{Head,[{'==', pid, {element, 1, Head#activity.id}} | Conditions], Body} | MS];
-%% 		{id, ID} when is_port(ID) ->
-%% 	    	    [{Head,[{'==', Head#activity.id, ID} | Conditions], Body} | MS];
-%%                 {id, {pid, {P1, P2, P3}}}->
-%% 	    	    [{Head,[{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conditions], Body} | MS];
-%% 		{id, all} ->
-%% 	    	    [{Head, Conditions,Body} | MS];
-%% 		_ ->
-%% 	    	    io:format("activity_ms id dropped ~p~n", [Option]),
-%% 	    	    MS
-%% 	    end
-%% 	end, [], IDs).
-
 activity_ms(Opts) ->
-    Head=#activity{timestamp = '$1',id = '$2',state = '$3', _='_'},
-    Body = [{{'$1', '$2', '$3'}}],
+    Head=#activity{timestamp = '$1',id = '$2',
+                   state = '$3', where= '$4', 
+                   runnable_procs='$5', 
+                   runnable_ports='$6',
+                   _='_'},
+    Body = [{{activity, '$1', '$2', '$3', '$4', '$5', '$6',[]}}],
     {Conditions, IDs} = activity_ms_and(Head, Opts, [], []),
     Cond =  lists:foldl(
               fun (Option, Conds) ->
@@ -1148,6 +1121,8 @@ activity_ms(Opts) ->
                               [{'==', pid, {element, 1, Head#activity.id}} | Conds];
                           {id, ID} when is_port(ID) ->
                               [{'==', Head#activity.id, ID} | Conds];
+                          {id, {pid, {P1, P2, P3}}}->
+                              [{'==', Head#activity.id, {{pid, {{P1, P2, P3}}}}}| Conds];
                           {id, all} ->
                               Conds;
                           {pids, Pids}->
@@ -1158,7 +1133,12 @@ activity_ms(Opts) ->
                                       AllPids = ets:select(
                                                   pdb_info,[{#information{id='$1', _='_'}, [], ['$1']}]),
                                       OtherPids = AllPids -- Pids,
-                                      [{'not', mk_pids_cond(OtherPids)}|Conds]
+                                      case OtherPids of 
+                                          [] -> 
+                                              [{'==', pid, {element, 1, Head#activity.id}} | Conds];
+                                          _ ->
+                                              [{'not', mk_pids_cond(OtherPids)}|Conds]
+                                      end
                               end;
                           _ ->
                               io:format("activity_ms id dropped ~p~n", [Option]),
@@ -1189,11 +1169,11 @@ activity_count_ms(Opts) ->
       fun (Option, MS) ->
               case Option of
                   {id, ports} ->
-                      [{Head, [{is_port, Head#activity.id}, {'=/=', 0, '$4'} | Conditions], Body} | MS];
+                      [{Head, [{is_port, Head#activity.id}| Conditions], Body} | MS];
                   {id, procs} ->
-                      [{Head,[{'==', pid, {element, 1, '$2'}}, {'=/=', 0, '$3'}| Conditions], Body} | MS];
+                      [{Head,[{'==', pid, {element, 1, '$2'}}| Conditions], Body} | MS];
                   {id, all} ->
-                      [{Head, [{'not', {'andalso', {'==', 0, '$3'}, {'==', 0, '$4'}}}|Conditions],Body} | MS];
+                      [{Head, Conditions,Body} | MS];
                   _ ->
                       io:format("activity_ms id dropped ~p~n", [Option]),
                       MS
