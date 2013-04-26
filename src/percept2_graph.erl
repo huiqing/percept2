@@ -129,8 +129,8 @@ graph_2(_Env, Input, Type) ->
     Height   = percept2_html:get_option_value("height", Query),
     
     StartTs  = percept2_db:select({system, start_ts}),
-    TsMin    = percept2_html:seconds2ts(RangeMin, StartTs),
-    TsMax    = percept2_html:seconds2ts(RangeMax, StartTs),
+    TsMin    = percept2_html:seconds2ts(lists:max([RangeMin-0.1,0]), StartTs),
+    TsMax    = percept2_html:seconds2ts(RangeMax+0.1, StartTs),
     
     %% Convert Pids to id option list
     IDs = [{pids, Pids}],
