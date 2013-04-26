@@ -214,45 +214,49 @@ waiting_activities(Activities) ->
 waiting_activities_mfa_list([], ListedMfas) -> ListedMfas;
 waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
     #activity{id = Pid, state = Act, timestamp = Time, where = MFA, in_out=_InOut} = Activity,
-    case Act of 
-    	active ->
-	    waiting_activities_mfa_list(Activities, ListedMfas);
-	inactive ->
-	    % Want to know how long the wait is in a receive,
-	    % it is given via the next activity
-	    case Activities of
-	    	[] -> 
-                    [Info] = percept2_db:select({information, Pid}),
-                    case Info#information.stop of
-                        undefined ->
+    if MFA == undefined ->
+            waiting_activities_mfa_list(Activities, ListedMfas);
+       true ->
+            case Act of 
+                active ->
+                    waiting_activities_mfa_list(Activities, ListedMfas);
+                inactive ->
+                                                % Want to know how long the wait is in a receive,
+                                                % it is given via the next activity
+                    case Activities of
+                        [] -> 
+                            [Info] = percept2_db:select({information, Pid}),
+                            case Info#information.stop of
+                                undefined ->
                                                 % get profile end time
-                            Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
-                        Time2 ->
-                            Waited = ?seconds(Time2, Time)
-                    end,
-                    case get({waiting_mfa, MFA}) of
-                        undefined ->
-                            put({waiting_mfa, MFA}, {Waited, [Waited]}),
-                            [MFA | ListedMfas];
-		    	{Total, TimedMfa} ->
-                            put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
-			    ListedMfas
-		    end;
-		[#activity{timestamp=Time2, id = Pid, state =active} | _ ] ->
-		    % Calculate waiting time
-                    Waited = ?seconds(Time2, Time),
-		    % Get previous entry
-   		    case get({waiting_mfa, MFA}) of
-		    	undefined ->
-			    % add entry to list
-                            put({waiting_mfa, MFA}, {Waited, [Waited]}),
-			    waiting_activities_mfa_list(Activities, [MFA|ListedMfas]);
-			{Total, TimedMfa} ->
-                            put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
-			    waiting_activities_mfa_list(Activities, ListedMfas)
-		    end;
-		 _ -> error
-	    end
+                                    Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
+                                Time2 ->
+                                    Waited = ?seconds(Time2, Time)
+                            end,
+                            case get({waiting_mfa, MFA}) of
+                                undefined ->
+                                    put({waiting_mfa, MFA}, {Waited, [Waited]}),
+                                    [MFA | ListedMfas];
+                                {Total, TimedMfa} ->
+                                    put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
+                                    ListedMfas
+                            end;
+                        [#activity{timestamp=Time2, id = Pid, state =active} | _ ] ->
+                                                % Calculate waiting time
+                            Waited = ?seconds(Time2, Time),
+                                                % Get previous entry
+                            case get({waiting_mfa, MFA}) of
+                                undefined ->
+                                                % add entry to list
+                                    put({waiting_mfa, MFA}, {Waited, [Waited]}),
+                                    waiting_activities_mfa_list(Activities, [MFA|ListedMfas]);
+                                {Total, TimedMfa} ->
+                                    put({waiting_mfa, MFA}, {Total + Waited, [Waited | TimedMfa]}),
+                                    waiting_activities_mfa_list(Activities, ListedMfas)
+                            end;
+                        _ -> error
+                    end
+            end
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
