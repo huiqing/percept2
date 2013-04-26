@@ -659,6 +659,8 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
 
 trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+    %% added to avoid the case that the process is treated as active even after exit.
+    insert_profile_trace_1(SubDBIndex, Pid, inactive, undefined, TS, procs), 
     update_information(ProcRegName, #information{id = pid2value(Pid), stop = TS}).
 
 trace_register(SubDBIndex,_Trace={trace_ts, Pid, register, Name, _Ts}) when is_pid(Pid)->
