@@ -557,6 +557,7 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
          table_line([FuncActs]) ++ "</table>\n",
     MainTable1 =
         "<table cellspacing=0 cellpadding=0 border=0>" ++ 
+        table_line(["<input type=submit value=\"Compare Selected Processes\">"])++ "</table>\n"++
         "<table  cellspacing=0 cellpadding=0 border=0>" ++
         [ActivityBarTable]++"</table>",
     Footer = "</div></form>",
