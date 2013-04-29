@@ -1142,7 +1142,8 @@ activity_ms(Opts) ->
                                           [] -> 
                                               [{'==', pid, {element, 1, Head#activity.id}} | Conds];
                                           _ ->
-                                              [{'not', mk_pids_cond(OtherPids)}|Conds]
+                                              [{'==', pid, {element, 1, Head#activity.id}}, 
+                                               {'not', mk_pids_cond(OtherPids)}|Conds]
                                       end
                               end;
                           _ ->
