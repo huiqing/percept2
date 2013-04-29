@@ -163,7 +163,7 @@ set_tracer(Port, Opts) ->
     case Mods of 
         [] -> ok;
         _ ->
-            ets:new(?percept2_spawn_tab, [named_table, protected, {keypos,1}, set]),
+            ets:new(?percept2_spawn_tab, [named_table, public, {keypos,1}, set]),
             ets:insert(?percept2_spawn_tab, {mods, Mods})
     end,
     [erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
