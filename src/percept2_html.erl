@@ -54,6 +54,9 @@
 %%% --------------------------- %%%
 
 -spec(overview_page(pid(), list(), string()) -> ok | {error, term()}).
+
+-define(Million, 1000000).
+
 overview_page(SessionID, Env, Input) ->
     ?dbg(0, "overview_content input:~p~n", [Input]),
     try
@@ -663,8 +666,8 @@ group_active_funcs(Data=[{Pid, StartTs, Func, _EndTs}|_ActiveFuncs]) ->
     FunStart = ?seconds(StartTs, SystemStartTS),
     StartEndTs = [{Start, End}||{_Pid, Start, _Func, End}<-Data],
     FunEnd = lists:sum([timer:now_diff(End, Start)|| 
-                           {Start, End}<-StartEndTs])/1000000 
-        + FunStart,
+                           {Start, End} <- StartEndTs]) / ?Million
+       + FunStart,
     {Pid, Func,{FunStart, FunEnd}, length(Data)}.
    
 active_funcs_content_2(_Min, _Max, _StartTs, [], _) ->
@@ -1112,18 +1115,18 @@ process_info_content_1(_Env, Input) ->
                        case is_dummy_pid(Pid) of 
                            true -> [];
                            false->
-                             [[{th, "accumulated runtime <br>(in milliseconds)"},
-                               term2html(I#information.accu_runtime div 1000)]]
-                       end 
-                   ++
-                    [[{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]]
-                   ++ case is_dummy_pid(Pid) of
-                          true ->
-                              [[{th, "Compressed Processes"}, lists:flatten(
-                                                                lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
-                                                                          I#information.hidden_pids))]];
-                          false -> []
-                      end),
+                             [[{th, "accumulated runtime (in secs) <br>"},
+                              term2html(I#information.accu_runtime/?Million)]]
+                      end
+                 ++
+                   [[{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]]
+                 ++ case is_dummy_pid(Pid) of
+                        true ->
+                            [[{th, "Compressed Processes"}, lists:flatten(
+                                                              lists:map(fun(Id) -> pid2html(Id, CleanPid) ++ " " end,
+                                                                        I#information.hidden_pids))]];
+                        false -> []
+                    end),
     PidActivities = percept2_db:select({activity, [{id, Pid}]}),
     WaitingMfas   = percept2_analyzer:waiting_activities(PidActivities),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
@@ -1354,7 +1357,7 @@ function_info_content_1(_Env, Input) ->
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
                             [{th, "M:F/A"},       mfa2html_with_link({Pid, MFA})],
                             [{th, "Call count"}, term2html(F#fun_info.call_count)],
-                            [{th, "Accumulated time <br>(in milliseconds)"}, term2html(round(F#fun_info.acc_time/1000))],
+                            [{th, "Accumulated time <br>(in secs)"}, term2html((F#fun_info.acc_time/?Million))],
                             [{th, "Callers"},     CallersTable], 
                             [{th, "Called"},      CalledTable]
                            ]),
@@ -1464,7 +1467,7 @@ calltime_content_1(_Env, Pid) ->
          {td, term2html(CallCount)},
          {td, image_string(calltime_percentage, 
                            [{width,200}, {height, 10}, 
-                            {calltime, CallTime/1000000}, 
+                            {calltime, CallTime / ?Million},
                             {percentage, CallTime/ProcLifeTime}])}]
         ||{{_Pid, CallTime}, Func, CallCount}<-Elems]], Props).
    
@@ -1910,19 +1913,20 @@ blink_msg(Message) ->
 %% @doc Calculates a timestamp given a duration in seconds and a starting timestamp. 
 seconds2ts(Seconds, {Ms, S, Us}) ->
     % Calculate mega seconds integer
-    MsInteger = trunc(Seconds) div 1000000 ,
+    MsInteger = trunc(Seconds) div ?Million,
 
     % Calculate the reminder for seconds
     SInteger  = trunc(Seconds),
 
     % Calculate the reminder for micro seconds
-    UsInteger = trunc((Seconds - SInteger) * 1000000),
+    UsInteger = trunc((Seconds - SInteger) * ?Million),
 
     % Wrap overflows
 
-    UsOut = (UsInteger + Us) rem 1000000,
-    SOut  = ((SInteger + S) + (UsInteger + Us) div 1000000) rem 1000000,
-    MsOut = (MsInteger+ Ms) + ((SInteger + S) + (UsInteger + Us) div 1000000) div 1000000,
+    UsOut =  (UsInteger + Us) rem ?Million,
+
+    SOut  =   ((SInteger + S) + (UsInteger + Us) div ?Million) rem ?Million,
+    MsOut =  (MsInteger + Ms) + ((SInteger + S) + (UsInteger + Us) div ?Million) div ?Million,
 
     {MsOut, SOut, UsOut}.
 
