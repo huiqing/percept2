@@ -598,40 +598,64 @@ insert_profile_trace(SubDBIndex,Trace) ->
             %%?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
             ok
     end.
-insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, Type) ->
+
+insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, procs) ->
+    ActProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+    case check_activity_consistency(SubDBIndex, Id, State) of 
+        invalid_state ->
+            ok;
+        valid_state ->
+            InternalPid =pid2value(Id),
+            if State==active->
+                    erlang:put({active, Id}, {TS, []});
+               true ->  %% process changes to be inactive.
+                    {TS1, InOuts}=erlang:get({active, Id}),
+                    AccRunTime = calc_acc_runtime(TS1, lists:reverse(InOuts), TS),
+                    InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+                    update_information_acc_time(InfoProcRegName, {InternalPid,AccRunTime}),
+                    update_activity(ActProcRegName, {update_inouts, InternalPid, TS1, InOuts}),
+                    erlang:erase({in, Id}),
+                    erlang:erase({active, Id})
+            end,
+            ProcRC = get_runnable_count(procs, State),
+            PortRC = get({runnable, ports}),
+            update_activity(ActProcRegName,
+                            #activity{id =InternalPid,
+                                      state = State,
+                                      timestamp = TS,
+                                      runnable_procs=ProcRC,
+                                      runnable_ports=PortRC,
+                                      where = Mfa})
+    end;
+insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, ports) ->
     ProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
     case check_activity_consistency(SubDBIndex, Id, State) of 
         invalid_state ->
             ok;
         valid_state ->
-            InternalId = case Type of procs ->
-                                 pid2value(Id);
-                             ports -> Id
-                         end,
-            if State==active->
-                    erlang:put({active, Id}, TS);
-               true -> 
-                    TS1=erlang:get({active, Id}),
-                    update_activity(ProcRegName, {erase, InternalId,TS1}),
-                    erlang:erase({active, Id})
-            end,
-            {ProcRC, PortRC} = case Type of 
-                                   procs ->
-                                       {get_runnable_count(procs, State),
-                                        get({runnable, ports})};
-                                   ports ->
-                                       {get({runnable, procs}),
-                                        get_runnable_count(ports, State)}
-                               end,
+            ProcRC = get({runnable, procs}),
+            PortRC = get_runnable_count(ports, State),
             update_activity(ProcRegName,
-                            #activity{id =InternalId,
+                            #activity{id =Id,
                                       state = State,
                                       timestamp = TS,
                                       runnable_procs=ProcRC,
                                       runnable_ports=PortRC,
                                       where = Mfa})
     end.
-           
+
+calc_acc_runtime(ActiveST, [], InActiveST) -> elapsed(ActiveST, InActiveST);
+calc_acc_runtime(ActiveST, [{out, TS}|InOuts], InActiveST) -> 
+    calc_acc_runtime_1([{in, ActiveST},{out,TS}|InOuts], InActiveST,0);
+calc_acc_runtime(_ActiveST, InOuts, InActiveST) ->
+    calc_acc_runtime_1(InOuts, InActiveST,0).
+
+calc_acc_runtime_1([],_InActiveST, Acc) -> Acc;
+calc_acc_runtime_1([{in, TS1}, {out, TS2}|InOuts],InActiveST, Acc) ->
+    calc_acc_runtime_1(InOuts, InActiveST, Acc+elapsed(TS1, TS2));
+calc_acc_runtime_1([{in, TS1}], InActiveST, Acc) ->
+    elapsed(TS1, InActiveST)+Acc.
+
 check_activity_consistency(SubDBIndex, Id, State) ->
     RunnableStates = erlang:get(runnable_states),
     case lists:keyfind(Id,1,RunnableStates) of 
@@ -659,7 +683,6 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
 
 trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-    %% added to avoid the case that the process is treated as active even after exit.
     insert_profile_trace_1(SubDBIndex, Pid, inactive, undefined, TS, procs), 
     update_information(ProcRegName, #information{id = pid2value(Pid), stop = TS}).
 
@@ -682,93 +705,72 @@ trace_link(_SubDBIndex,_Trace) ->
 trace_unlink(_SubDBIndex, _Trace) ->
     ok.
 
-trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq,  MFA, TS}) when is_pid(Pid)->
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq, _MFA, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-    erlang:put({in, Pid}, {Rq, TS}),
-    InternalPid = pid2value(Pid),
     case erlang:get({run_queue, Pid}) of 
         Rq ->
             ok;
         _ ->
             erlang:put({run_queue, Pid}, Rq),
-            update_information_rq(ProcRegName, InternalPid, {TS, Rq})
+            update_information_rq(ProcRegName, pid2value(Pid), {TS, Rq})
     end,
-    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-    case erlang:get({active, Pid}) of 
-        undefined ->
-            ok; 
-        %% process scheduling data is not recorded somehow.
-        %% add activity data (as below) or not?
-        %% erlang:put({active, Pid}, TS),
-        %% update_activity(ActivityProcRegName,
-        %%                 #activity{id = InternalPid,
-        %%                           state = active,
-        %%                           timestamp = TS,
-        %%                           runnable_procs=get_runnable_count(procs,active),
-        %%                           runnable_ports=get({runnable, ports}),
-        %%                           in_out=[{in, TS}],
-        %%                           where = MFA});
-        TS1 ->
-            update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
-        end;
-trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, MFA, TS}) when is_pid(Pid)->
-    erlang:put({in, Pid}, TS),
-    InternalPid = pid2value(Pid),
-    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-    case erlang:get({active, Pid}) of 
-        undefined ->
-            ok; 
-        TS1 ->
-            update_activity(ActivityProcRegName, {in, {InternalPid, TS1},MFA, TS})
-    end;
+    process_trace_in(SubDBIndex, Pid, TS);
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, _MFA, TS}) when is_pid(Pid)->
+    process_trace_in(SubDBIndex, Pid, TS);
 trace_in(_SubDBIndex, _Trace) ->
     ok.
 
-trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, Rq,  MFA, TS}) when is_pid(Pid) ->    
-    case erlang:get({in, Pid}) of 
-        {Rq, InTime} ->
-            Elapsed = elapsed(InTime, TS),
-            erlang:erase({in,Pid}),
-            InternalPid = pid2value(Pid),
-            ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_acc_time(ProcRegName, {InternalPid, Elapsed}),
-            case erlang:get({active, Pid}) of
-                undefined ->
-                    ok;
-                TS1 ->
-                    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-                    update_activity(ActivityProcRegName, {out, {InternalPid, TS1}, MFA, TS})
-            end;
+process_trace_in(SubDBIndex, Pid, TS) ->
+    erlang:put({in, Pid}, TS),
+    case erlang:get({active, Pid}) of 
         undefined ->
-            ok;
-        _ ->
-            erlang:erase({in, Pid})    
-    end;
-trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, MFA, TS}) when is_pid(Pid) ->    
-    case erlang:get({in, Pid}) of 
-        InTime when InTime/=undefined->
-            Elapsed = elapsed(InTime, TS),
-            erlang:erase({in,Pid}),
-            InternalPid = pid2value(Pid),
-            ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-            update_information_acc_time(ProcRegName, {InternalPid, Elapsed}),
-            case erlang:get({active, Pid}) of
-                undefined ->
-                    ok;
-                TS1 ->
-                    ActivityProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
-                    update_activity(ActivityProcRegName, {out, {InternalPid, TS1}, MFA, TS})
-            end;
-        undefined ->
-            ok;
-        _ ->
-            erlang:erase({in, Pid})    
-    end;
+            %% process scheduling data is not recorded somehow.
+            %% add activity data.
+            erlang:put({active, Pid}, {TS,[]}),
+            RunnableStates =erlang:get(runnable_states),
+            NewState =[{Pid, active}|RunnableStates],
+            put(runnable_states, NewState),
+            ActProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+            update_activity(ActProcRegName,
+                            #activity{id = pid2value(Pid),
+                                      state = active,
+                                      timestamp = TS,
+                                      runnable_procs=get_runnable_count(procs,active),
+                                      runnable_ports=get({runnable, ports})});                                  
+        {TS1, InOuts} ->
+            erlang:put({active, Pid}, {TS1, [{in, TS}|InOuts]})
+    end.
+ 
+trace_out(_SubDBIndex, _Trace={trace_ts, Pid, out, _Rq,  _MFA, TS}) when is_pid(Pid) ->  
+    process_trace_out(Pid, TS);
+trace_out(_SubDBIndex, _Trace={trace_ts, Pid, out, _MFA, TS}) when is_pid(Pid) ->  
+    process_trace_out(Pid, TS);
+     
 trace_out(_SubDBIndex, _Trace)->
     ok.
 
+process_trace_out(Pid, TS) ->
+    InTime = case erlang:get({in, Pid}) of  
+                 undefined -> %% sometime there is no 'in' trace.
+                     case erlang:get({active, Pid}) of 
+                         {Ts, _InOuts} -> Ts;
+                         undefined -> undefined
+                     end;
+                 Ts -> Ts
+             end,
+    erlang:erase({in,Pid}),
+    if InTime == undefined -> ok; %% this should not happen.
+       true ->
+            case erlang:get({active, Pid}) of
+                undefined ->
+                    ok;
+                {TS1, InOuts} ->
+                    erlang:put({active, Pid}, {TS1, [{out, TS}|InOuts]})
+            end
+    end.
+
 elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
-    Me = (Me2 - Me1) * 1000000,
+    Me = (Me2 - Me1) * 1000000,  
     S  = (S2 - S1 + Me) * 1000000,
     Mi2 - Mi1 + S.
 
@@ -844,7 +846,14 @@ trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName =mk_proc_reg_name("pdb_func", SubDBIndex),
     ProcRegName ! {self(), end_of_trace_file},
     ActRegName=mk_proc_reg_name("pdb_activity", SubDBIndex),
-    update_activity(ActRegName, end_of_trace_file),
+    Data = erase(),
+    [begin
+         InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+         AccRunTime = calc_acc_runtime(TS, lists:reverse(InOuts), element(2, hd(InOuts))),
+         update_information_acc_time(InfoProcRegName, {pid2value(Pid),AccRunTime}),
+         update_activity(ActRegName, {update_inouts, pid2value(Pid), TS, InOuts})
+     end
+     ||{{active, Pid}, {TS,InOuts}}<-Data, InOuts/=[]],
     receive 
         {SubDBIndex, done} ->
             ?dbg(0, "Trace end of trace received done\n", []),
@@ -906,33 +915,8 @@ select_query_activity(FileNameSubDBPairs, Query) ->
 
 pdb_activity_loop(ProcRegName)->
     receive 
-        {update_activity, {_SubTab,{InOut, {Pid, TS1}, _MFA, TS}}} ->
-            case get({Pid, TS1}) of 
-                undefined ->
-                    put({Pid, TS1}, [{InOut, TS}]);
-                Val ->
-                    put({Pid, TS1}, [{InOut, TS}|Val])
-            end,
-            pdb_activity_loop(ProcRegName);
-        {update_activity, {SubTab, {erase, Pid, TS}}} ->
-            case get({Pid, TS}) of 
-                undefined -> 
-                    ok;
-                Val ->
-                    [Act] = ets:lookup(SubTab, TS),
-                    ets:update_element(SubTab, TS, 
-                                       {#activity.in_out, Act#activity.in_out++Val}),
-                    erase({Pid, TS})
-            end,                    
-            pdb_activity_loop(ProcRegName);
-        {update_activity, {SubTab, end_of_trace_file}} ->
-            Data = erase(),
-            [begin
-                 [Act] = ets:lookup(SubTab, TS),
-                 ets:update_element(SubTab, TS, 
-                                    {#activity.in_out, Act#activity.in_out++InOut})
-             end
-             ||{{_Pid, TS}, InOut}<-Data],
+        {update_activity, {SubTab, {update_inouts, _Pid, TS, InOuts}}} ->
+            ets:update_element(SubTab, TS, {#activity.in_out, InOuts}),
             pdb_activity_loop(ProcRegName);
         {update_activity, {SubTab,Activity}} ->
             ets:insert(SubTab, Activity),
