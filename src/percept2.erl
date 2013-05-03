@@ -366,7 +366,10 @@ stop_webserver() ->
     	undefined -> 
 	    {error, not_started};
 	Pid ->
-            do_stop([], Pid)
+            try do_stop([], Pid)
+            catch _E1:_E2 ->
+                    stop_webserver()
+            end
     end.
 
 do_stop([], Pid)->
