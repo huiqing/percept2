@@ -1179,7 +1179,7 @@ process_comm_graph_content(_Env, Input) ->
     MinSize = get_option_value("size_min", Query),
     SvgDir = percept2:get_svg_alias_dir(),
     ImgFileBaseName="proc_comm_graph"++"_"++integer_to_list(MinSends)
-        ++"_"++integer_to_list(MinSize)++".svg",
+        ++"_"++integer_to_list(MinSize),
     ImgFileName = ImgFileBaseName++".svg",
     ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     Content = "<div style=\"text-align:center; align:center\">" ++
@@ -1332,6 +1332,7 @@ id_to_list({Pid, Func, Caller}) -> pid2str(Pid) ++ mfa_to_list(Func) ++ mfa_to_l
 
 mfa_to_list({M, F, A}) when is_atom(M) andalso is_atom(F)->
     atom_to_list(M)++atom_to_list(F)++integer_to_list(A);
+mfa_to_list(suspend) -> "suspend";
 mfa_to_list(_) -> "undefined".
 
     
@@ -1559,6 +1560,8 @@ mfa2html({Module, Function, Arguments}) when is_list(Arguments) ->
     lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, length(Arguments)]));
 mfa2html({Module, Function, Arity}) when is_atom(Module), is_integer(Arity) ->
     lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity]));
+mfa2html(suspend_) ->
+    "suspend";
 mfa2html(_) ->
     "undefined".
 
@@ -1578,7 +1581,9 @@ mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_in
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
     "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++
         "&mfa=" ++ MFAValue ++ "\">" ++ MFAString ++ "</a>";
-mfa2html_with_link(_) ->
+mfa2html_with_link({_Pid, suspend}) ->
+    "suspend";
+mfa2html_with_link({_Pid, undefined}) ->
     "undefined".
 
 visual_link({Pid,_, _}, ChildrenPids)->
