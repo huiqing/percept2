@@ -129,7 +129,7 @@ digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
                         {{To, Index1}, IndexTab1}
                 end
         end,
-    digraph:add_edge(MG, From1, To1, CNT),
+    digraph:add_edge(MG, From1, To1, CNT),  
     IndexTab2.
 
 
@@ -142,15 +142,29 @@ to_dot(MG, File) ->
 
 combine_edges(Edges) ->	
     combine_edges(Edges, []).
+
 combine_edges([], Acc) ->	
     Acc;
-combine_edges([{{X,{label,LabelX}}, {Y,{label, LabelY}}, Label}|Tl], 
-              [{{X,{label, LabelX1}}, {Y, {label, LabelY1}}, Label1}|Acc]) ->
-    combine_edges(Tl, [{{X,{label, LabelX+LabelX1}}, 
-                        {Y, {label, LabelY+LabelY1}},
-                        Label+Label1}|Acc]);
-combine_edges([{X,Y, Label}|Tl], Acc) ->
-    combine_edges(Tl, [{X, Y, Label}|Acc]).
+combine_edges([{X,Y,Label}], Acc) ->
+    [{X, Y, Label}|Acc];
+combine_edges(Ts=[{From, _To, _Label}|_], Acc) ->
+    {Es1, Es2} = lists:partition(fun({F, _T, _L})-> F==From end, Ts),
+    Es3=combine_edges_1(Es1),
+    combine_edges(Es2, Es3++Acc).
+
+combine_edges_1(Es) ->
+   combine_edges_2(Es,[]).
+   
+combine_edges_2([], Acc) ->
+    lists:reverse(Acc);
+combine_edges_2([E],Acc) ->
+    [E|Acc];
+combine_edges_2(Ts=[{From, _To={{X, C}, _L1}, _L2}|_T], Acc) ->
+    {T1, T2} = lists:partition(fun({_, {{X1, _}, _},_}) ->
+                                   X==X1 end, Ts),
+    NodeLabel=lists:sum([Label||{_, {_, {label, Label}},_}<-T1]),
+    EdgeLabel=lists:sum([Label||{_, _, Label}<-T1]),
+    combine_edges_2(T2, [{From, {{X, C}, {label, NodeLabel}}, EdgeLabel}|Acc]).
 
 
 edge_list_to_dot(Edges, OutFileName, GraphName) ->
@@ -268,8 +282,8 @@ format_node(V, Fun) ->
      SL, " heigth=", SH, " ", "", "];\n"].
        
        
-format_vertex_label({V, {label, Label}}) when Label>0->
-    format_vertex(V) ++ 
+format_vertex_label({V, {label, Label}}) when Label>=0->
+    format_vertex_no_count(V) ++ 
         io_lib:format("(~.10B%)", [round(Label*100)]);
 format_vertex_label({V, {label, _Label}}) ->
     format_vertex(V);
@@ -280,14 +294,28 @@ format_vertex({V, {label, _Label}}) ->
     format_vertex(V);
 format_vertex(undefined) ->
     "undefined";
+format_vertex(suspend) ->
+    "suspend";
 format_vertex({M,F,A})when is_atom(M) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
 format_vertex({undefined,_}) ->
     "undefined";
+format_vertex({suspend,0}) ->
+    "suspend";
+format_vertex({suspend,C}) ->
+    io_lib:format("suspend(~p)",[C]);
 format_vertex({{M,F,A},0}) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
 format_vertex({{M,F,A},C}) ->
     io_lib:format("~p:~p/~p(~p)", [M,F,A, C]).
+
+
+format_vertex_no_count({undefined,_}) ->
+    "undefined";
+format_vertex_no_count({suspend,_C}) ->
+    "suspend";
+format_vertex_no_count({{M,F,A},_C}) ->
+    io_lib:format("~p:~p/~p", [M,F,A]).
 
 format_edge(V1, V2, Label) ->
     String = ["\"",format_vertex(V1),"\"", " -> ",
