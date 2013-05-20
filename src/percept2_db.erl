@@ -682,6 +682,8 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
     update_information_child(ProcRegName, pid2value(Parent), Pid).
 
 trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pid)->
+    FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
+    FuncProcRegName ! {trace_exit, {Pid, TS}},
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     insert_profile_trace_1(SubDBIndex, Pid, inactive, undefined, TS, procs), 
     update_information(ProcRegName, #information{id = pid2value(Pid), stop = TS}).
@@ -705,7 +707,7 @@ trace_link(_SubDBIndex,_Trace) ->
 trace_unlink(_SubDBIndex, _Trace) ->
     ok.
 
-trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq, _MFA, TS}) when is_pid(Pid)->
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq, MFA, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     case erlang:get({run_queue, Pid}) of 
         Rq ->
@@ -714,13 +716,15 @@ trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq, _MFA, TS}) when is_pid(Pid)-
             erlang:put({run_queue, Pid}, Rq),
             update_information_rq(ProcRegName, pid2value(Pid), {TS, Rq})
     end,
-    process_trace_in(SubDBIndex, Pid, TS);
-trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, _MFA, TS}) when is_pid(Pid)->
-    process_trace_in(SubDBIndex, Pid, TS);
+    process_trace_in(SubDBIndex, Pid, MFA, TS);
+trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, MFA, TS}) when is_pid(Pid)->
+    process_trace_in(SubDBIndex, Pid, MFA, TS);
 trace_in(_SubDBIndex, _Trace) ->
     ok.
 
-process_trace_in(SubDBIndex, Pid, TS) ->
+process_trace_in(SubDBIndex, Pid, MFA, TS) ->
+    FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
+    FuncProcRegName ! {trace_in, {Pid, MFA, TS}},
     erlang:put({in, Pid}, TS),
     case erlang:get({active, Pid}) of 
         undefined ->
@@ -741,15 +745,17 @@ process_trace_in(SubDBIndex, Pid, TS) ->
             erlang:put({active, Pid}, {TS1, [{in, TS}|InOuts]})
     end.
  
-trace_out(_SubDBIndex, _Trace={trace_ts, Pid, out, _Rq,  _MFA, TS}) when is_pid(Pid) ->  
-    process_trace_out(Pid, TS);
-trace_out(_SubDBIndex, _Trace={trace_ts, Pid, out, _MFA, TS}) when is_pid(Pid) ->  
-    process_trace_out(Pid, TS);
+trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, _Rq,  MFA, TS}) when is_pid(Pid) ->  
+    process_trace_out(SubDBIndex, Pid, MFA, TS);
+trace_out(SubDBIndex, _Trace={trace_ts, Pid, out, MFA, TS}) when is_pid(Pid) ->  
+    process_trace_out(SubDBIndex,Pid, MFA, TS);
      
 trace_out(_SubDBIndex, _Trace)->
     ok.
 
-process_trace_out(Pid, TS) ->
+process_trace_out(SubDBIndex, Pid, MFA, TS) ->
+    FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
+    FuncProcRegName ! {trace_out, {Pid, MFA, TS}},
     InTime = case erlang:get({in, Pid}) of  
                  undefined -> %% sometime there is no 'in' trace.
                      case erlang:get({active, Pid}) of 
@@ -841,6 +847,16 @@ trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
 
 trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
     trace_return_to(SubDBIndex, Pid, MFA, TS).
+
+trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, _Info, TS}) ->
+    FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
+    FuncProcRegName ! {trace_gc_start, {Pid, TS}},
+    ok.
+
+trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}) ->
+    FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
+    FuncProcRegName ! {trace_gc_end, {Pid, TS}},
+    ok.
 
 trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName =mk_proc_reg_name("pdb_func", SubDBIndex),
@@ -1621,40 +1637,34 @@ trace_return_to(SubDBIndex,Pid, MFA, TS) ->
 %% one pdb_func_loop for each trace file.
 pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
     receive
-        CallTrace={trace_call, {Pid, _, _, _}} ->
-            case lists:keyfind(Pid, 1, ChildrenProcs) of 
+        Trace={trace_call, _} ->
+            NewChildrenProcs=pdb_func_loop_process_trace(
+                               SubDBIndex, ChildrenProcs, PrevStacks, Trace),
+            pdb_func_loop({SubDB, SubDBIndex, NewChildrenProcs, PrevStacks, Done});
+        Trace={trace_return_to, _} ->
+            NewChildrenProcs=pdb_func_loop_process_trace(
+                               SubDBIndex, ChildrenProcs, PrevStacks, Trace),
+            pdb_func_loop({SubDB, SubDBIndex, NewChildrenProcs, PrevStacks, Done});
+        Trace={trace_out, _} ->
+            pdb_func_loop_process_trace_1(ChildrenProcs,Trace),
+            pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
+        Trace={trace_in, _} ->
+            pdb_func_loop_process_trace_1(ChildrenProcs,Trace),
+            pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
+        Trace={trace_exit, {Pid, _TS}} ->
+            case lists:keyfind(Pid, 1, ChildrenProcs) of
                 {Pid, Proc} ->
-                    Proc ! CallTrace,
-                    pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
+                    Proc ! {self(),Trace};
                 false ->
-                    PrevStack = case lists:keyfind(Pid,1,PrevStacks) of 
-                                    false -> false;
-                                    {Pid, Stack} -> Stack
-                                end,
-                    Proc = spawn_link(
-                             fun()-> 
-                                     pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack})
-                             end),
-                    Proc! CallTrace,
-                    pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs], PrevStacks, Done})                        
-            end;
-        ReturnTrace={trace_return_to, {Pid, _, _}} ->
-            case lists:keyfind(Pid, 1, ChildrenProcs) of 
-                {Pid, Proc} ->
-                    Proc! ReturnTrace,
-                    pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs,PrevStacks, Done});
-                false ->
-                    PrevStack = case lists:keyfind(Pid,1,PrevStacks) of 
-                                    false -> false;
-                                    {Pid, Stack} -> Stack
-                                end,
-                    Proc = spawn_link(
-                             fun()-> 
-                                     pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack})
-                             end),
-                    Proc! ReturnTrace,
-                    pdb_func_loop({SubDB, SubDBIndex,[{Pid, Proc}|ChildrenProcs],PrevStacks, Done})
-            end;
+                    ok
+            end,
+            pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
+        Trace={trace_gc_start, _} ->
+            pdb_func_loop_process_trace_1(ChildrenProcs,Trace),
+            pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
+        Trace={trace_gc_end, _} ->
+            pdb_func_loop_process_trace_1(ChildrenProcs,Trace),
+            pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
         %% the current trace file gets to the end.
         {_Parent, end_of_trace_file} ->
             Self = self(),
@@ -1709,6 +1719,36 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
             pdb_func_loop({SubDB,SubDBIndex,ChildrenProcs, PrevStacks, Done})                
     end.
 
+pdb_func_loop_process_trace(SubDBIndex, ChildrenProcs, PrevStacks, Trace) ->
+    {_TraceTag, TraceData} = Trace,
+    Pid = element(1, TraceData),
+    case lists:keyfind(Pid, 1, ChildrenProcs) of
+        {Pid, Proc} ->
+            Proc ! Trace,
+            ChildrenProcs;
+        false ->
+            PrevStack = case lists:keyfind(Pid,1,PrevStacks) of
+                            false -> false;
+                            {Pid, Stack} -> Stack
+                        end,
+            Proc = spawn_link(
+                     fun() ->
+                             pdb_sub_func_loop({SubDBIndex, Pid, [], PrevStack})
+                     end),
+            Proc ! Trace,
+            [{Pid, Proc}|ChildrenProcs]
+    end.
+
+pdb_func_loop_process_trace_1(ChildrenProcs, Trace) ->
+    {_TraceTag, TraceData} = Trace,
+    Pid = element(1, TraceData),
+    case lists:keyfind(Pid, 1, ChildrenProcs) of
+        {Pid, Proc} ->
+            Proc ! Trace;
+        false ->
+            ok
+    end.
+
 pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
     receive
         {trace_call, {Pid, Func, TS, CP}} ->
@@ -1716,31 +1756,41 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
             pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {trace_return_to, {Pid, Func, TS}} ->
             PrevSubIndex = SubDBIndex-1,
-            case trace_return_to_1(Pid, Func, TS, Stack) of
-                wait_for_prev_stack ->
-                    case SubDBIndex of 
-                        1 ->
-                            Stack1=[[{Func, TS}]],
-                            pdb_sub_func_loop({SubDBIndex, Pid, Stack1, PrevStack});
-                        _ ->
-                            case PrevStack of 
-                                false ->
-                                    receive 
-                                        {end_of_trace_file, {PrevSubIndex, Pid, PrevStack1}} ->
-                                            NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack1),
-                                            pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false})
-                                     after 1000 ->  %% what is the proper timeout value here?
-                                            io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
-                                            pdb_sub_func_loop({SubDBIndex, Pid, [[{Func, TS}]], false})
-                                    end;
-                                _ ->
-                                    NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack),
-                                    pdb_sub_func_loop({SubDBIndex, Pid, NewStack1, false})
-                            end
-                    end;
-                NewStack ->
-                    pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack})
-            end;
+            {NewStack, NewPrevStack}=trace_return_to_0(SubDBIndex, Pid, Stack,
+                                                       PrevStack, Func, TS,
+                                                       PrevSubIndex),
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, NewPrevStack});
+        {trace_in, {Pid, Func, TS}} ->
+            NewStack = trace_in_1(Pid, Func, TS, Stack),
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
+        {trace_out, {Pid, Func, TS}} ->
+            Stack1 = case Stack of 
+                         [] -> case Func of undefined -> [];
+                                   _ -> [[{Func, TS}]]
+                               end;
+                         _ -> Stack
+                     end,
+            NewStack = [[{suspend, TS}] | Stack1],
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
+        {Parent, {trace_exit, {Pid,TS}}} ->
+            trace_return_to_2(Pid, undefined, TS, Stack),
+            Parent ! {Pid, done};
+        {trace_gc_start, {Pid,TS}} ->
+            case pid2value(Pid) of 
+                {pid, {_, 8548,0}} ->
+                    io:format("gc1:~p\n", [{Pid, TS, Stack}]);
+                _ -> ok
+            end,
+            NewStack = [[{garbage_collect, TS}]|Stack],
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
+        {trace_gc_end, {Pid,TS}} ->
+            case pid2value(Pid) of 
+                {pid, {_, 8548,0}} ->
+                    io:format("gc2:~p\n", [{Pid, TS, Stack}]);
+                _ -> ok
+            end,
+            NewStack=trace_gc_end_1(Pid, TS, Stack),
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {Parent, end_of_trace_file} ->
             NextFuncRegName = mk_proc_reg_name("pdb_func",SubDBIndex+1),
             case whereis(NextFuncRegName) of 
@@ -1752,8 +1802,42 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
             end
     end.
 
-mk_proc_reg_name(RegNamePrefix,Index) ->
-    list_to_atom(RegNamePrefix ++ integer_to_list(Index)).
+trace_in_1(Pid, Func, TS, Stack) ->
+    case pid2value(Pid) of 
+        {pid, {_, 8548,0}} ->
+            io:format("In:~p\n", [{Pid, Func, TS, Stack}]);
+        _ -> ok
+    end,
+    ?dbg(-1, "trace_in(~p, ~p, ~p)~n~p~n", [Pid, Func, TS, Stack]),
+    case Stack of 
+        [] ->
+            [[{Func,TS}]]; 
+        [[{suspend, _}]] ->
+            trace_return_to_2(Pid, undefined, TS, Stack);
+        [[{suspend,_}] | [[{suspend,_}] | _]=NewStack] ->
+	    %% No stats update for a suspend on suspend
+	    NewStack;
+        [[{suspend, TS0}] | [[{Func1, TS1} | _] | _]] ->
+            update_fun_related_info(Pid, suspend, TS0, TS, Func1, TS1),
+            trace_return_to_2(Pid, Func1, TS, Stack);
+        _ ->
+            throw({inconsistent_trace_data, ?MODULE, ?LINE,
+                   [Pid, Func, TS, Stack]})
+    end.
+
+trace_gc_end_1(Pid, TS, Stack) ->
+    ?dbg(0, "trace_gc_end(~p, ~p)~n~p~n", [Pid, TS, Stack]),
+    case Stack of
+	[] ->
+	    ok;
+	[[{garbage_collect, _}]] ->
+	    trace_return_to_2(Pid, undefined, TS, Stack);
+	[[{garbage_collect, _}], [{Func1, _} | _] | _] ->
+	    trace_return_to_2(Pid, Func1, TS, Stack);
+	_ ->
+	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+		  [Pid, TS, Stack]})
+    end.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1791,7 +1875,7 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
 		end,
             [[{Func, TS}] | OldStack];
         [[{suspend, _} | _] | _] ->
-      	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
+            throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
 	[[{garbage_collect, _} | _] | _] ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
@@ -1818,7 +1902,7 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
                               trace_return_to_2(Pid, Func0, TS,
                                                 Stack));
         [_|_] ->
-           [[{Func, TS}], [{CP, TS}, dummy]|Stack]
+            [[{Func, TS}], [{CP, TS}, dummy]|Stack]
     end.
     
 %% Tail recursive stack push
@@ -1895,6 +1979,36 @@ trace_call_collapse_2(_Stack, [], _N) ->
 %%             trace function return                %%
 %%                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+trace_return_to_0(SubDBIndex, Pid, Stack, PrevStack, Func, TS,
+                  PrevSubIndex) ->
+    case trace_return_to_1(Pid, Func, TS, Stack) of
+     wait_for_prev_stack ->
+            case SubDBIndex of
+                1 ->
+                    Stack1=[[{Func, TS}]],
+                    {Stack1, PrevStack};
+                _ ->
+                    case PrevStack of
+                        false ->
+                            receive
+                                {end_of_trace_file, {PrevSubIndex, Pid, PrevStack1}} ->
+                                    NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack1),
+                                    {NewStack1, PrevStack1}
+                            after 1000  %% what is the proper timeout value here?
+                                      ->
+                                    io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
+                                    {[[{Func, TS}]], false}
+                            end;
+                        _ ->
+                            NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack),
+                            {NewStack1, PrevStack}
+                    end
+            end;
+        NewStack1 ->
+            {NewStack1, PrevStack}
+    end.
+
 trace_return_to_1(Pid, Func, TS, Stack) ->
     Caller = if is_tuple(Func) -> mfarity(Func);
                 true -> Func
@@ -2324,7 +2438,7 @@ consolidate_calltree_2(Pid) ->
                                [],
                                ['$_']
                               }]),
-    Key = Tree#fun_calltree.id,
+    Key = Tree#fun_calltree.id,  %%TODO: how to decide which is the caller?
     ets:update_element(fun_calltree, Key, {#fun_calltree.called, Others++Tree#fun_calltree.called}),
     lists:foreach(fun(T)-> 
                           ets:delete_object(fun_calltree, T) 
@@ -2667,3 +2781,7 @@ now_diff(EndTS,StartTS) ->
     catch _E1:_E2 -> 0
     end.
    
+
+mk_proc_reg_name(RegNamePrefix,Index) ->
+    list_to_atom(RegNamePrefix ++ integer_to_list(Index)).
+
