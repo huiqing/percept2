@@ -1,6 +1,6 @@
 -module(percept2_dot).
 
--export([gen_callgraph_img/2,
+-export([gen_callgraph_img/5,
          gen_process_tree_img/1,
          gen_process_comm_img/4,
          gen_callgraph_slice_img/4]).
@@ -14,37 +14,38 @@
 %%% --------------------------------%%%
 %%% 	Callgraph Image generation  %%%
 %%% --------------------------------%%%
--spec(gen_callgraph_img(Pid::pid_value(), DestDir::file:filename()) 
+-spec(gen_callgraph_img(Pid::pid_value(), DestDir::file:filename(),
+                        ImgFileBaseName::file:filename(),
+                        MinCallCount::integer(), MinTimePercent::integer()) 
       -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
-gen_callgraph_img(Pid, DestDir) ->
+gen_callgraph_img(Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent) ->
     Res=ets:select(fun_calltree, 
-                      [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
-                        [],
-                        ['$_']
-                       }]),
+                   [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
+                     [],
+                     ['$_']
+                    }]),
     case Res of 
         [] -> no_image;
         [Tree] -> 
-            gen_callgraph_img_1(Pid, Tree, DestDir)
+            gen_callgraph_img_1(Pid, Tree, DestDir, ImgFileBaseName, 
+                                MinCallCount, MinTimePercent)
     end.
    
-gen_callgraph_img_1(Pid={pid, {P1, P2, P3}}, CallTree, DestDir) ->
-    PidStr= integer_to_list(P1)++"." ++integer_to_list(P2)++
-                        "."++integer_to_list(P3),
-    BaseName = "callgraph"++PidStr,
-    DotFileName = BaseName++".dot",
-    SvgFileName =gen_svg_file_name(BaseName, DestDir),
-    fun_callgraph_to_dot(Pid, CallTree,DotFileName),
+gen_callgraph_img_1(Pid, CallTree, DestDir, ImgFileBaseName, 
+                    MinCallCount, MinTimePercent) ->
+    DotFileName = ImgFileBaseName++".dot",
+    SvgFileName =gen_svg_file_name(ImgFileBaseName, DestDir),
+    fun_callgraph_to_dot(Pid, CallTree,DotFileName, MinCallCount, MinTimePercent),
     dot_to_svg(DotFileName, SvgFileName).
 
 gen_svg_file_name(BaseName, DestDir) ->
     filename:join([DestDir, BaseName++".svg"]).
     
-fun_callgraph_to_dot(Pid, CallTree, DotFileName) ->
-    Edges=gen_callgraph_edges(Pid, CallTree),
+fun_callgraph_to_dot(Pid, CallTree, DotFileName, MinCallCount, MinTimePercent) ->
+    Edges=gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent),
     MG = digraph:new(),
     digraph_add_edges(Edges, [], MG),
-    to_dot(MG,DotFileName),
+    to_dot(MG,DotFileName, Pid),
     digraph:delete(MG).
 
 get_proc_life_time(Pid)->
@@ -56,17 +57,18 @@ get_proc_life_time(Pid)->
                       StartTs -> StartTs
                   end,
     ProcStopTs = case PidInfo#information.stop of 
-                     undefined -> SystemStopTS;
+                     undefined -> 
+                         SystemStopTS;
                      StopTs -> StopTs
                  end,
     {ProcStartTs, ProcStopTs}.
 
 
-gen_callgraph_edges(Pid, CallTree) ->
+gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent) ->
     {ProcStartTs, ProcStopTs} = get_proc_life_time(Pid),
-    gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree).
+    gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinCallCount, MinTimePercent).
 
-gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree) ->
+gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimePercent) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
     ProcTime = timer:now_diff(ProcStopTs, ProcStartTs),
     CurFuncTime = CallTree#fun_calltree.acc_time, 
@@ -75,10 +77,22 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree) ->
               fun(Tree, Acc) ->
                       {_, ToFunc, _} = Tree#fun_calltree.id,
                       ToFuncTime = Tree#fun_calltree.acc_time,
-                      NewEdge = {{CurFunc,CurFuncTime/ProcTime},
-                                 {ToFunc,ToFuncTime/ProcTime}, 
-                                 Tree#fun_calltree.cnt},
-                      [[NewEdge|gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, Tree)]|Acc]
+                      CallCount= Tree#fun_calltree.cnt,
+                      CurTimePercent = CurFuncTime/ProcTime,
+                      ToTimePercent = ToFuncTime/ProcTime,
+                      case CallCount >= MinCallCount andalso 
+                           CurTimePercent >= MinTimePercent/100 andalso
+                           ToTimePercent >= MinTimePercent/100 of 
+                          true ->
+                              NewEdge = {{CurFunc,CurTimePercent},
+                                         {ToFunc,ToTimePercent}, 
+                                         CallCount},
+                              [[NewEdge|gen_callgraph_edges_1(
+                                          {ProcStartTs, ProcStopTs}, 
+                                          Tree, MinCallCount, MinTimePercent)]
+                               |Acc];
+                          false -> Acc
+                      end
               end, [], ChildrenCallTrees),
     case CallTree#fun_calltree.rec_cnt of 
         0 ->Edges;
@@ -106,39 +120,50 @@ digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
     {From1, IndexTab1}=
         case digraph:vertex(MG, {From,0}) of
             false ->
-                digraph:add_vertex(MG, {From,0},{label, FromTime}),
-                {{From, 0}, [{From, 0}|IndexTab]};
+                digraph:add_vertex(MG, {From, 0},{label, FromTime}),
+                {{From,0}, [{{From,FromTime},0}|IndexTab]};
             _ ->
-                {From, Index}=lists:keyfind(From, 1, IndexTab),
-                {{From, Index}, IndexTab}
-        end,
-     {To1, IndexTab2}=
-        case digraph:vertex(MG, {To,0}) of
-            false ->
-                digraph:add_vertex(MG, {To,0}, {label,ToTime}),
-                {{To, 0}, [{To,0}|IndexTab1]};
-            _ when To==From ->
-                {From1, IndexTab1};
-            _ ->
-                {To, Index1} = lists:keyfind(To, 1,IndexTab1),
-                case digraph:get_path(MG, {To, Index1}, From1) of
+                case lists:keyfind({From, FromTime},1, IndexTab) of 
+                    {_, Index} ->
+                        {{From, Index},IndexTab};
                     false ->
-                        digraph:add_vertex(MG, {To, Index1+1}, {label, ToTime}),
-                        {{To,Index1+1},lists:keyreplace(To,1, IndexTab1, {To, Index1+1})};
-                    _ ->
-                        {{To, Index1}, IndexTab1}
+                        Es = length([true||{{From1, _}, _}<-IndexTab,From1==From]),
+                        digraph:add_vertex(MG, {From, Es+1}, {label, FromTime}),
+                        {{From, Es+1}, 
+                         [{{From, FromTime}, Es+1}|IndexTab]}
+                end
+        end,
+    {To1, IndexTab2}=
+        if To==From ->
+                {From1,IndexTab1};
+           true ->
+                case digraph:vertex(MG, {To,0}) of
+                    false ->
+                        digraph:add_vertex(MG, {To,0}, {label,ToTime}),
+                        {{To,0}, [{{To, ToTime},0}|IndexTab1]};
+                    _ ->  
+                        case  lists:keyfind({To, ToTime}, 1,IndexTab1) of 
+                            false ->
+                                Elems = length([true||{{To1, _}, _}<-IndexTab1,To1==To]),
+                                digraph:add_vertex(MG, {To, Elems+1}, {label, ToTime}),
+                                {{To, Elems+1}, 
+                                 [{{To, ToTime}, Elems+1}|IndexTab1]};
+                            {_, Index1} ->
+                                digraph:add_vertex(MG, {To, Index1+1}, {label, ToTime}),
+                                {{To, Index1+1}, 
+                                 lists:keyreplace({To, ToTime}, 1, IndexTab1, {{To, ToTime},  Index1+1})}
+                        end
                 end
         end,
     digraph:add_edge(MG, From1, To1, CNT),  
     IndexTab2.
 
-
-to_dot(MG, File) ->
+to_dot(MG, File, Pid) ->
     Edges = [digraph:edge(MG, X) || X <- digraph:edges(MG)],
     EdgeList=[{digraph:vertex(MG,X), digraph:vertex(MG, Y), Label} 
               || {_, X, Y, Label} <- Edges],
     EdgeList1 = combine_edges(lists:keysort(1,EdgeList)),
-    edge_list_to_dot(EdgeList1, File, "CallGraph").
+    edge_list_to_dot(Pid, EdgeList1, File, "CallGraph").
 
 combine_edges(Edges) ->	
     combine_edges(Edges, []).
@@ -167,13 +192,27 @@ combine_edges_2(Ts=[{From, _To={{X, C}, _L1}, _L2}|_T], Acc) ->
     combine_edges_2(T2, [{From, {{X, C}, {label, NodeLabel}}, EdgeLabel}|Acc]).
 
 
-edge_list_to_dot(Edges, OutFileName, GraphName) ->
+edge_list_to_dot(Pid, Edges, OutFileName, GraphName) ->
     {NodeList1, NodeList2, _} = lists:unzip3(Edges),
     NodeList = NodeList1 ++ NodeList2,
     NodeSet = ordsets:from_list(NodeList),
     Start = ["digraph ",GraphName ," {"],
-    VertexList = [format_node_with_label(V, fun format_vertex/1)
-                  ||V <- NodeSet],
+    VertexList = [begin 
+                      Label = format_vertex_label(V),
+                      MFAValue= case V of  
+                                    {{{M, F, A}, _}, _} ->
+                                        lists:flatten(
+                                          io_lib:format("{~p,~p,~p}", 
+                                                        [M, F, A]));
+                                    {{F, _}, _}  when is_atom(F) ->
+                                        atom_to_list(F)
+                                end,
+                      
+                      URL ="/cgi-bin/percept2_html/function_info_page_without_menu?pid="++pid2str(Pid)++
+                          "&mfa=" ++ MFAValue,
+                      format_node_with_label_and_url_1(
+                        V, fun format_vertex/1,  Label, URL)
+                  end   ||V <- NodeSet],
     End = ["graph [", GraphName, "=", GraphName, "]}"],
     EdgeList = [format_edge(X, Y, Cnt) || {X,Y,Cnt} <- Edges],
     String = [Start, VertexList, EdgeList, End],
@@ -187,7 +226,8 @@ gen_callgraph_slice_img(Pid, Min, Max, DestDir) ->
                      ['$_']
                     }]),
     case Res of 
-        [] -> no_image;
+        [] -> 
+            no_image;
         [Tree] -> 
             gen_callgraph_slice_img_1(Pid, Tree, Min, Max, DestDir)
     end.
@@ -200,55 +240,47 @@ gen_callgraph_slice_img_1(Pid={pid, {P1, P2, P3}}, CallTree, Min, Max, DestDir) 
     BaseName = "callgraph"++PidStr++MinTsStr++"_"++MaxTsStr,
     DotFileName = BaseName++".dot",
     SvgFileName = gen_svg_file_name(BaseName, DestDir),
-    fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName),
+    fun_callgraph_slice_to_dot(Pid, CallTree, Min, Max, DotFileName),
     dot_to_svg(DotFileName, SvgFileName).
 
-fun_callgraph_slice_to_dot(CallTree, {Pid, Min, Max}, DotFileName) ->
+fun_callgraph_slice_to_dot(Pid, CallTree, Min, Max, DotFileName) ->
     StartTs = percept2_db:select({system, start_ts}),
     TsMin   = percept2_html:seconds2ts(Min, StartTs),
     TsMax   = percept2_html:seconds2ts(Max, StartTs),
-    FunActs = percept2_db:select({code,[{ts_min, TsMin},
-                                       {ts_max, TsMax},
-                                       {pids, [Pid]}]}),
-   %% ActiveFuns =[Act#funcall_info.func||Act<-FunActs],
-    Edges=gen_callgraph_slice_edges(CallTree,FunActs),
+    {ProcStartTs, ProcStopTs} = get_proc_life_time(Pid),
+    ProcTime = timer:now_diff(ProcStopTs, ProcStartTs),
+    Edges=gen_callgraph_slice_edges(CallTree,TsMin, TsMax, ProcTime),
     MG = digraph:new(),
     digraph_add_edges(Edges, [], MG),
-    to_dot(MG,DotFileName),
+    to_dot(MG,DotFileName, Pid),
     digraph:delete(MG).
 
-gen_callgraph_slice_edges(CallTree, ActiveFuns) ->
+gen_callgraph_slice_edges(CallTree, Min, Max,ProcTime) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
-    case lists:member(CurFunc, [Act#funcall_info.func||Act<-ActiveFuns]) of
+    CurFuncTime = CallTree#fun_calltree.acc_time, 
+    StartTs = CallTree#fun_calltree.start_ts,
+    EndTs = CallTree#fun_calltree.end_ts,
+    case StartTs < Max andalso (EndTs==undefined orelse EndTs>Min) of 
         true ->
             ChildrenCallTrees = CallTree#fun_calltree.called,
             lists:foldl(fun(Tree, Acc) ->
                                 {_, ToFunc, _} = Tree#fun_calltree.id,
-                                StartTs = Tree#fun_calltree.start_ts,
-                                EndTs = Tree#fun_calltree.end_ts,
-                                CallCount = length([true||Act<-ActiveFuns,
-                                                          Act#funcall_info.func==ToFunc,
-                                                          element(2, Act#funcall_info.id)>=StartTs orelse
-                                                              StartTs == undefined,
-                                                          Act#funcall_info.end_ts =< EndTs orelse 
-                                                              EndTs == undefined]),
-                                case CallCount of 
-                                    0 -> Acc;
-                                    _ ->
-                                        NewEdge = {{CurFunc, -1}, {ToFunc,-1}, 
-                                                   lists:min([Tree#fun_calltree.cnt, CallCount])},
-                                        [[NewEdge|gen_callgraph_slice_edges(Tree, ActiveFuns)]|Acc]
+                                ToFuncTime = Tree#fun_calltree.acc_time,
+                                StartTs1 = Tree#fun_calltree.start_ts,
+                                EndTs1 = Tree#fun_calltree.end_ts,
+                                case  StartTs1 < Max andalso (EndTs1==undefined orelse EndTs1>Min) of
+                                    true ->
+                                        NewEdge = {{CurFunc, CurFuncTime/ProcTime}, 
+                                                   {ToFunc,ToFuncTime/ProcTime}, 
+                                                   Tree#fun_calltree.cnt},
+                                        [[NewEdge|gen_callgraph_slice_edges(Tree, Min, Max, ProcTime)]|Acc];
+                                    false -> Acc
                                 end
                         end, [], ChildrenCallTrees);
         false ->
-           case CurFunc of 
-               {percept2_profile, start, _} ->
-                   [ChildCallTree] = CallTree#fun_calltree.called,
-                   gen_callgraph_slice_edges(ChildCallTree, ActiveFuns);
-               _ -> []
-           end
+            []
     end.
-
+           
 format_node_with_label_and_url(V, Fun, Label, URL) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
@@ -256,21 +288,25 @@ format_node_with_label_and_url(V, Fun, Label, URL) ->
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    [String, " [URL=",  "\"", URL, 
+    [String, " [URL=\"", URL, "\""
      " label=\"", Label,"\"",
      " width=", SL, " heigth=", SH, " ", "", "];\n"].
  
-format_node_with_label(V, Fun) ->
+format_node_with_label_and_url_1(V, Fun, Label, URL) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
     W = (Width div 7 + 1) * 0.55,
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    Label = format_vertex_label(V),
-    ["\"", String, "\"", " [label=\"", Label, "\" width=", 
-     SL, " heigth=", SH, " ", "", "];\n"].
-
+    %% ["\"", String, "\"",  " [label=\"", Label,"\"",
+    %%  " width=", SL, " heigth=", SH, " ", "", "];\n"].
+    %%     _ ->
+    ["\"", String, "\"",  " [URL=\"", URL, "\""
+     " label=\"", Label,"\"",
+     " width=", SL, " heigth=", SH, " ", "", "];\n"].
+%% end.
+            
 format_node(V, Fun) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
@@ -292,28 +328,22 @@ format_vertex_label(V) ->
  
 format_vertex({V, {label, _Label}}) ->
     format_vertex(V);
-format_vertex(undefined) ->
-    "undefined";
-format_vertex(suspend) ->
-    "suspend";
+format_vertex(V) when is_atom(V)->
+    atom_to_list(V);
 format_vertex({M,F,A})when is_atom(M) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
-format_vertex({undefined,_}) ->
-    "undefined";
-format_vertex({suspend,0}) ->
-    "suspend";
-format_vertex({suspend,C}) ->
-    io_lib:format("suspend(~p)",[C]);
+format_vertex({V,0}) when is_atom(V) ->
+    atom_to_list(V);
+format_vertex({V,C}) when is_atom(V)->
+    io_lib:format(atom_to_list(V)++"(~p)",[C]);
 format_vertex({{M,F,A},0}) ->
     io_lib:format("~p:~p/~p", [M,F,A]);
 format_vertex({{M,F,A},C}) ->
     io_lib:format("~p:~p/~p(~p)", [M,F,A, C]).
 
 
-format_vertex_no_count({undefined,_}) ->
-    "undefined";
-format_vertex_no_count({suspend,_C}) ->
-    "suspend";
+format_vertex_no_count({V,_C}) when is_atom(V)->
+    atom_to_list(V);
 format_vertex_no_count({{M,F,A},_C}) ->
     io_lib:format("~p:~p/~p", [M,F,A]).
 
@@ -438,7 +468,7 @@ format_process_node(_V={Pid={pid, {_P1, P2, P3}}, Name, Entry}, CleanPid) ->
                _ -> Pid
            end,
     PidStr =  "<" ++ pid2str(Pid1) ++ ">",
-    URL ="/cgi-bin/percept2_html/process_info_page_without_menu?pid="++pid2str(Pid)++"\"",
+    URL ="/cgi-bin/percept2_html/process_info_page_without_menu?pid="++pid2str(Pid),
     Label =  format_process_vertex({PidStr, Name, Entry}),
     format_node_with_label_and_url(PidStr, fun format_process_vertex/1, Label, URL).
            
@@ -468,8 +498,8 @@ format_proc_node(Pid, CleanPid) ->
     end.
 
 
-format_entry(undefined) ->
-    "undefined";
+format_entry(Entry) when is_atom(Entry)->
+    atom_to_list(Entry);
 format_entry({M, F, A}) ->
     MStr = atom_to_list(M),
     FStr = atom_to_list(F),
