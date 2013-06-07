@@ -79,9 +79,10 @@
          }).
 
 -record(funcall_info, {
-          id                 ::{pid_value(),timestamp()}|{special_atom(),special_atom()},       
-          func               ::true_mfa() | special_atom(),
-          end_ts=undefined   ::timestamp()|undefined|special_atom()
+          id                 ::{pid_value(),timestamp(), timestamp()}|
+                               {special_atom(),special_atom(), special_atom()},       
+          func               ::true_mfa() | special_atom()|suspend|garbage_collect
+        %%  end_ts=undefined   ::timestamp()|undefined|special_atom()
          }).
                  
 -record(fun_calltree, {
@@ -121,9 +122,9 @@
 -define(seconds(EndTs,StartTs), timer:now_diff(EndTs, StartTs)/1000000).
 
 -define(percept2_spawn_tab, percept2_spawn).
-%% -define(debug, 9).
+%%-define(debug, 9).
 
-%% -define(debug, -1).
+%%-define(debug, -1).
 
 -ifdef(debug). 
 dbg(Level, F, A) when Level >= ?debug ->
