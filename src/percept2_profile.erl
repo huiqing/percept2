@@ -32,6 +32,8 @@
          stop/0
       	]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 
 %%==========================================================================
@@ -157,8 +159,10 @@ profile_to_file(FileSpec, Opts) ->
     end.
 -spec(set_tracer(pid()|port(), [percept_option()]) -> ok).
 set_tracer(Port, Opts) ->
-    {TraceOpts, ProfileOpts, Mods} = parse_profile_options(Opts),
+    {TraceOpts, ProfileOpts, ModOrMFAs} = parse_profile_options(Opts),
     MatchSpec = [{'_', [], [{message, {{cp, {caller}}}}]}],
+    Mods = [M||M<-ModOrMFAs,is_atom(M)],
+    MFAs = [MFA||MFA={_M, _F, _A}<-ModOrMFAs],
     load_modules(Mods),
     case Mods of 
         [] -> ok;
@@ -166,11 +170,16 @@ set_tracer(Port, Opts) ->
             ets:new(?percept2_spawn_tab, [named_table, public, {keypos,1}, set]),
             ets:insert(?percept2_spawn_tab, {mods, Mods})
     end,
-    [erlang:trace_pattern({Mod, '_', '_'}, MatchSpec, [local])||Mod <- Mods],
+    [erlang:trace_pattern(MFA, MatchSpec, [local])
+     ||Mod <- Mods, MFA<-module_funs(Mod)],
+    [erlang:trace_pattern(MFA, MatchSpec, [local])||MFA<-MFAs],
     erlang:trace(all, true, [{tracer, Port}, timestamp,set_on_spawn| TraceOpts]),
     erlang:system_profile(Port, ProfileOpts),
     ok.
     
+
+module_funs(Mod) ->
+    [{Mod, F, A}||{F, A}<-Mod:module_info(functions),hd(atom_to_list(F))/=$-].
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 load_modules([]) ->
     ok;
