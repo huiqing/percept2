@@ -55,7 +55,7 @@
 -type module_name()::atom().
 -type percept_option() ::
       'concurreny' | 'message'| 'process_scheduling'
-      |{'mods', [module_name()]}.
+      |{'mods', [module_name()|mfa()]}.
 
 
 %%==========================================================================
@@ -194,7 +194,7 @@ load_modules([Mod|Mods]) ->
     end.
            
 -spec(parse_profile_options([percept_option()]) -> 
-             {[trace_flags()], [profile_flags()], [module_name()]}).
+             {[trace_flags()], [profile_flags()], [module_name()|mfa()]}).
 parse_profile_options(Opts) ->
     parse_profile_options(Opts, {[],[],[]}).
 
