@@ -56,12 +56,26 @@
 %%==========================================================================
 
 size(Font) ->
-    [{_Key, _Description, Size}] = ets:lookup(egd_font_table,{Font,information}),
+    ok=ensure_font_loaded(),
+    [{_Key, _Description, Size}] = 
+        ets:lookup(egd_font_table,{Font,information}),
     Size.
+   
 
 glyph(Font, Code) ->
+    ok=ensure_font_loaded(),
     [{_Key, Translation, LSs}] = ets:lookup(egd_font_table,{Font,Code}),
     {Translation, LSs}.
+
+ensure_font_loaded() ->
+    case ets:info(egd_font_table) of
+        undefined -> 
+            FileName = filename:join([code:priv_dir(percept2),
+                                      "fonts", "6x11_latin1.wingsfont"]),
+            egd_font:load(FileName),
+            ok;
+        _ -> ok
+    end.
 
 load(Filename) ->
     {ok, Bin} = file:read_file(Filename),
