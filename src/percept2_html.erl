@@ -253,6 +253,19 @@ function_info_page(SessionID, Env, Input) ->
             error_page(SessionID, Env, Input)
     end.
 
+-spec(function_info_page_without_menu(
+        pid(), list(), string()) -> ok | {error, term()}).
+function_info_page_without_menu(SessionID, Env, Input) ->
+    try
+        Content = function_info_content(Env, Input),
+        mod_esi:deliver(SessionID,  common_header([])),
+        mod_esi:deliver(SessionID, Content),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
 -spec(callgraph_visualisation_page(pid(), list(), string()) -> 
              ok | {error, term()}).
 callgraph_visualisation_page(SessionID, Env, Input) ->
@@ -525,7 +538,13 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                                                 {range_max, T1},
                                                 {height, 10}], []),
                                "<tr><td><input type=checkbox name="++pid2str(Pid)++"></td>"++
-                                   "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"++
+                                 case has_callgraph(Pid) of 
+                                     true ->
+                                         "<td width=100; bgcolor=#E0FFFF>"++
+                                             pid2html(Pid, CleanPid)++"</td>";
+                                     false ->
+                                         "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"
+                                 end ++
                                    "<td>" ++ "<img onload=\"size_image(this, '" ++
                                    ActivityBar ++
                                    "')\" src=/images/white.png border=0 />" ++ "</td>\n"
@@ -646,7 +665,7 @@ active_funcs_content_1(_Env, Input) ->
     Pids = get_option_value("pids", Query),
     ActiveFuns  = percept2_db:select({code,[{ts_min, TsMin}, {ts_max, TsMax}, {pids, Pids}]}),
     ActiveFuns1 = [{Pid, Start, Func, End}||
-                      {funcall_info,{Pid, Start}, Func, End}<-ActiveFuns],
+                      {funcall_info,{Pid, Start, End}, Func}<-ActiveFuns],
     GroupedActiveFuns = [[group_active_funcs(ActiveFuncsByFunc)
                           ||ActiveFuncsByFunc<-group_by(3,ActiveFuncsByPid)]
                          ||ActiveFuncsByPid <- group_by(1, ActiveFuns1)],
@@ -1146,7 +1165,7 @@ process_info_content_1(_Env, Input) ->
                                {td, mfa2html(MFA)}] || 
                                  {Time, MFA, {Mean, StdDev, N}} <- WaitingMfas]),
     
-    "<div id=\"content\">" ++
+    "<div id=\"content\" scrolling=\"no\">" ++
         InfoTable ++ "<br>" ++
         MfaTable ++
         "</div>".
@@ -1208,7 +1227,9 @@ process_comm_graph_content(_Env, Input) ->
             %% file already generated, so reuse.
             Content;  
         false -> 
-            GenImgRes=percept2_dot:gen_process_comm_img(
+           %%TODO: Add a timeout here in case it takes 'dot' too long 
+           %%      generate the svg file.
+            GenImgRes=percept2_dot:gen_process_comm_img( 
                         SvgDir, ImgFileBaseName, MinSends, MinSize),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
@@ -1332,8 +1353,7 @@ id_to_list({Pid, Func, Caller}) -> pid2str(Pid) ++ mfa_to_list(Func) ++ mfa_to_l
 
 mfa_to_list({M, F, A}) when is_atom(M) andalso is_atom(F)->
     atom_to_list(M)++atom_to_list(F)++integer_to_list(A);
-mfa_to_list(suspend) -> "suspend";
-mfa_to_list(_) -> "undefined".
+mfa_to_list(V) when is_atom(V)-> atom_to_list(V).
 
     
 %%%function information
@@ -1349,7 +1369,7 @@ function_info_content_1(_Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     CallersTable = html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                   [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
-                                      {C, Count}<-F#fun_info.callers]), 
+                                      {C, Count}<-F#fun_info.callers, Count/=0]), 
     CalledTable= html_table([[{th, " module:function/arity "}, {th, " call count "}]]++
                                 [[{td, mfa2html_with_link({Pid,C})}, {td, term2html(Count)}]||
                                     {C, Count}<-F#fun_info.called]),
@@ -1371,13 +1391,33 @@ callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
-    ImgFileName="callgraph" ++ pid2str(Pid) ++".svg",
+    MinCallCount = get_option_value("callcounts_min", Query),
+    MinTimePercent = get_option_value("time_percent_min", Query),
+    ImgFileBaseName="callgraph" ++ pid2str(Pid)++"_"++integer_to_list(MinCallCount)
+        ++"_"++integer_to_list(MinTimePercent),
+    ImgFileName=ImgFileBaseName++".svg",
     SvgDir = percept2:get_svg_alias_dir(),
     ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
     Table = calltime_content(Env,Pid),
-    Content = "<div style=\"text-align:center; align:center\"; width=1000>" ++
+    Content = "<div style=\"text-align:center; align:center\">" ++
         "<h3 style=\"text-align:center;\">" ++ pid2html(Pid,CleanPid)++"</h3>"++ 
-        "<object data=\"/svgs/"++ImgFileName++"\" "++ "type=\"image/svg+xml\"" ++
+        "<form name=filter_callgraph method=post 
+           action=/cgi-bin/percept2_html/callgraph_visualisation_page>
+        <input name=pid type=hidden value=" ++ pid2str(Pid) ++ ">
+	<center>
+        <br></br>
+        <table>
+           <tr><td align=left>Minmum number of callcounts:</td>
+               <td><input type=text name=callcounts_min  value=" 
+                 ++ term2html(MinCallCount) ++ "> </tr>
+           <tr><td align=left>Minmum time percentage:</td> 
+               <td align=left><input type=text name=time_percent_min  value=" 
+                 ++ term2html(MinTimePercent) ++"> </td></tr>
+           <tr><td><input type=submit value=\"Update\" /> </td></tr>
+        </table>
+  	</center>
+	</form>" ++
+        "<object data=\"/svgs/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
         " overflow=\"visible\"  scrolling=\"yes\" "++
         "></object>"++
         "<h3 style=\"text-align:center;\">" ++ "Accumulated Calltime"++"</h3>"++
@@ -1387,7 +1427,8 @@ callgraph_time_content(Env, Input) ->
     case filelib:is_regular(ImgFullFilePath) of 
         true -> Content;  %% file already generated.
         false -> 
-            GenImgRes=percept2_dot:gen_callgraph_img(Pid, SvgDir),
+            GenImgRes=percept2_dot:gen_callgraph_img(
+                        Pid, SvgDir, ImgFileBaseName, MinCallCount, MinTimePercent),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 
@@ -1560,10 +1601,9 @@ mfa2html({Module, Function, Arguments}) when is_list(Arguments) ->
     lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, length(Arguments)]));
 mfa2html({Module, Function, Arity}) when is_atom(Module), is_integer(Arity) ->
     lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity]));
-mfa2html(suspend_) ->
-    "suspend";
-mfa2html(_) ->
-    "undefined".
+mfa2html(V) when is_atom(V)->
+    atom_to_list(V).
+    
 
 %% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
 
@@ -1581,10 +1621,10 @@ mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_in
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
     "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++
         "&mfa=" ++ MFAValue ++ "\">" ++ MFAString ++ "</a>";
-mfa2html_with_link({_Pid, suspend}) ->
-    "suspend";
-mfa2html_with_link({_Pid, undefined}) ->
-    "undefined".
+mfa2html_with_link({_Pid, V}) when is_atom(V) ->
+    atom_to_list(V).
+
+
 
 visual_link({Pid,_, _}, ChildrenPids)->
     case has_callgraph(Pid) of 
@@ -1728,14 +1768,18 @@ str_to_internal_pid(PidStr) ->
            list_to_integer(P3)}}.
 
 string2mfa(String) ->
-    Str=lists:sublist(String, 2, erlang:length(String)-2),
-    [M, F, A] = string:tokens(Str, ","),
-    F1=case hd(F) of 
-           39 ->lists:sublist(F,2,erlang:length(F)-2);
-           _ -> F
-       end,
-    {list_to_atom(M), list_to_atom(F1), list_to_integer(A)}.
     
+    Str=lists:sublist(String, 2, erlang:length(String)-2),
+    case string:tokens(Str, ",") of 
+        [M, F, A] ->
+            F1=case hd(F) of 
+                   39 ->lists:sublist(F,2,erlang:length(F)-2);
+                   _ -> F
+               end,
+            {list_to_atom(M), list_to_atom(F1), list_to_integer(A)};
+        [_F] ->
+            list_to_atom(String)
+    end.
 
 %%% --------------------------- %%%
 %%% 	get value       	%%%
@@ -1773,7 +1817,9 @@ get_default_option_value(Option) ->
         "width" -> 800;
         "height" -> 400;
         "sends_min" -> 1;
-        "size_min" -> 1;
+        "size_min" -> 100;
+        "callcounts_min" -> 1;
+        "time_percent_min" -> 0;
         _ -> {error, {undefined_default_option, Option}}
     end.
 -spec get_number_value(string()) -> number() | {'error', 'illegal_number'}.
