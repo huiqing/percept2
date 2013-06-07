@@ -541,18 +541,17 @@ minmax(Data) ->
 remove_duplicates([]) ->
     [];
 remove_duplicates([X|Tl]) ->
-    remove_duplicates(Tl, element(1,X), [X]).
+    remove_duplicates(Tl, X, [X]).
 
 remove_duplicates([], _, Acc) ->
     lists:reverse(Acc);
 remove_duplicates([X], _, Acc) ->
     lists:reverse([X|Acc]);
-remove_duplicates([X1, X2|Tl], LastKey, Acc) ->
-    Key1 = element(1, X1),
-    Key2 = element(1, X2),
-    if Key1 == LastKey andalso Key2==LastKey ->
-            remove_duplicates([X2|Tl], LastKey, Acc);
+remove_duplicates([X={X1, Y1, Y2}|Tl], Last={LastX1, LastY1, LastY2}, Acc) ->
+    if X1==LastX1 ->
+            MinY1=lists:min([Y1, LastY1]), 
+            MinY2=lists:min([Y2, LastY2]),
+            remove_duplicates(Tl, {LastX1, MinY1, MinY2}, Acc);
        true ->
-            remove_duplicates([X2|Tl], Key1, [X1|Acc])
+            remove_duplicates(Tl, X, [X,Last|Acc])
     end.
-
