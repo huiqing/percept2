@@ -136,11 +136,12 @@ spawn_opt(Node, Module, Function, Args, Options) ->
 
 percept2_spawn(SpawnFunc, Args) ->
     Entry=case Args of 
-              [M, F, Args]->
-                  {M,F, length(Args)};
-              [Node, M, F, Args] ->
-                  [Node, M, F, length(Args)];
-              Others -> Others
+              [M, F, Args1]->
+                  {M,F, length(Args1)};
+              [Node, M, F, Args1] ->
+                  [Node, M, F, length(Args1)];
+              Others -> 
+                  Others
           end,
     Silent = get_slient_value(Entry),
     Pid=erlang:apply(erlang, SpawnFunc, Args),
