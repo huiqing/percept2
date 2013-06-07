@@ -470,9 +470,8 @@ select_query_func(Query) ->
     case Query of 
         {code, Options} when is_list(Options) ->
                       Head = #funcall_info{
-              id={'$1', '$2'}, 
-              end_ts='$3',
-              _='_'},
+                        id={'$1', '$2', '$3'}, 
+                        _='_'},
             Body =  ['$_'],
             MinTs = proplists:get_value(ts_min, Options, undefined),
             MaxTs = proplists:get_value(ts_max, Options, undefined),
@@ -482,12 +481,11 @@ select_query_func(Query) ->
             case Pids of 
                 [] ->
                     Head = #funcall_info{
-                      id={'$1', '$2'}, 
-                      end_ts='$3',
+                      id={'$1', '$2', '$3'}, 
                       _='_'},
                     ets:select(funcall_info, [{Head, Constraints, Body}]);
                 _ ->
-                    MS = [{#funcall_info{id={Pid, '$2'}, end_ts='$3', _='_'},
+                    MS = [{#funcall_info{id={Pid, '$2', '$3'}, _='_'},
                            Constraints,
                            Body} || Pid<- Pids],
                     ets:select(funcall_info, MS)
@@ -781,7 +779,8 @@ elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
     Mi2 - Mi1 + S.
 
 %%{trace_ts, _Pid, out_exited, _, _, _Ts}
-trace_out_exited(_SubDBIndex, _Trace)-> ok.
+trace_out_exited(_SubDBIndex, _Trace)-> 
+    ok.
 
 %%{trace_ts, _Pid, out_exiting, _, _, _Ts}
 trace_out_exiting(_SubDBIndex, _Trace) ->
@@ -1773,22 +1772,18 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
             NewStack = [[{suspend, TS}] | Stack1],
             pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {Parent, {trace_exit, {Pid,TS}}} ->
-            trace_return_to_2(Pid, undefined, TS, Stack),
-            Parent ! {Pid, done};
+            case lists:reverse(lists:flatten(Stack)) of 
+                [] -> 
+                    Parent ! {Pid, done};
+                [{Func0, _}|_] -> 
+                    Stack1=trace_return_to_2(Pid, Func0, TS, Stack),
+                    trace_return_to_2(Pid, undefined, TS, Stack1),
+                    Parent ! {Pid, done}
+            end;
         {trace_gc_start, {Pid,TS}} ->
-            case pid2value(Pid) of 
-                {pid, {_, 8548,0}} ->
-                    io:format("gc1:~p\n", [{Pid, TS, Stack}]);
-                _ -> ok
-            end,
             NewStack = [[{garbage_collect, TS}]|Stack],
             pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {trace_gc_end, {Pid,TS}} ->
-            case pid2value(Pid) of 
-                {pid, {_, 8548,0}} ->
-                    io:format("gc2:~p\n", [{Pid, TS, Stack}]);
-                _ -> ok
-            end,
             NewStack=trace_gc_end_1(Pid, TS, Stack),
             pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {Parent, end_of_trace_file} ->
@@ -1803,11 +1798,6 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
     end.
 
 trace_in_1(Pid, Func, TS, Stack) ->
-    case pid2value(Pid) of 
-        {pid, {_, 8548,0}} ->
-            io:format("In:~p\n", [{Pid, Func, TS, Stack}]);
-        _ -> ok
-    end,
     ?dbg(-1, "trace_in(~p, ~p, ~p)~n~p~n", [Pid, Func, TS, Stack]),
     case Stack of 
         [] ->
@@ -1831,12 +1821,13 @@ trace_gc_end_1(Pid, TS, Stack) ->
 	[] ->
 	    ok;
 	[[{garbage_collect, _}]] ->
-	    trace_return_to_2(Pid, undefined, TS, Stack);
-	[[{garbage_collect, _}], [{Func1, _} | _] | _] ->
-	    trace_return_to_2(Pid, Func1, TS, Stack);
+            trace_return_to_2(Pid, undefined, TS, Stack);
+	[[{garbage_collect, TS0}], [{Func1, TS1} | _] | _] ->
+            update_fun_related_info(Pid, garbage_collect, TS0, TS, Func1, TS1),
+            trace_return_to_2(Pid, Func1, TS, Stack);
 	_ ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
-		  [Pid, TS, Stack]})
+                   [Pid, TS, Stack]})
     end.
 
 
@@ -1913,7 +1904,7 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
     Level01 = [{Func, TS} | Level0],
     [NewLevel0| NewStack1] = 
         [trace_call_collapse(Level01) | Stack1],
-    ?dbg((-1), "After collaps:\n~p\n", [[NewLevel0| NewStack1]]),
+   %% ?dbg((-1), "After collaps:\n~p\n", [[NewLevel0| NewStack1]]),
     case Level01 -- NewLevel0 of 
         [] -> ok;
         Funs ->
@@ -2024,7 +2015,7 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
                    [Pid, Caller, TS, Stack]});
         [_, [{Caller, _}|_]|_] ->
             trace_return_to_2(Pid, Caller, TS, Stack);
-        [[{Func1, TS1}, dummy]|Stack1=[_, [{Caller, _}|_]]] when Caller=/=Func1->
+        [[{Func1, TS1}, dummy]|Stack1=[_, [{Caller, _}|_]|_]] when Caller=/=Func1->
             {Caller1, Caller1StartTs}= 
                 case Stack1 of 
                     [[{Func2, TS2}|_]|_]->
@@ -2082,9 +2073,15 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
                                             end,
                     update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs)
             end;
-        _ -> ok  %% garbage collect or suspend.
+        _ -> 
+            ok        
     end,
     if Level1 ==[dummy] ->
+            case Stack1 of
+                [[{Func3, TS3} | _] | _]->
+                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Func3, TS3);
+                _ -> ok
+            end,
             trace_return_to_2(Pid, Func, TS, Stack1);
        true ->
             trace_return_to_2(Pid, Func, TS, [Level1|Stack1])
@@ -2092,7 +2089,7 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
 
 update_fun_related_info(Pid, Func0, StartTS, EndTS, Caller, CallerStartTs) ->
     ?dbg(-1, "update fun related info:\n~p\n", [{Pid, Func0, StartTS, EndTS, Caller, CallerStartTs}]),
-    ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), StartTS}, func=Func0, end_ts=EndTS}),
+    ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), StartTS, EndTS}, func=Func0}),
     update_fun_call_time({Pid, Func0}, {StartTS, EndTS}),
     update_calltree_info(Pid, {Func0, StartTS, EndTS}, {Caller, CallerStartTs}).
    
@@ -2466,6 +2463,15 @@ process_a_call_tree(Id) ->
 
 process_a_call_tree_1(CallTree) ->
     {Pid, MFA, Caller}=CallTree#fun_calltree.id,
+    RecCnt = CallTree#fun_calltree.rec_cnt,
+    if RecCnt /=0 ->
+            update_fun_info({Pid, MFA}, 
+                            {MFA, CallTree#fun_calltree.rec_cnt},
+                            [],
+                            CallTree#fun_calltree.start_ts,
+                            CallTree#fun_calltree.end_ts);
+       true -> ok
+    end,
     case MFA of 
         undefined ->
             Children=CallTree#fun_calltree.called,
@@ -2477,7 +2483,7 @@ process_a_call_tree_1(CallTree) ->
                                C#fun_calltree.cnt}
                               ||C <- CallTree#fun_calltree.called],
                              CallTree#fun_calltree.start_ts,
-                             CallTree#fun_calltree.end_ts),                             
+                             CallTree#fun_calltree.end_ts), 
             Children=CallTree#fun_calltree.called,
             [process_a_call_tree_1(C)||C <- Children]
     end.
@@ -2492,7 +2498,8 @@ update_fun_call_time({Pid, Func}, {StartTs, EndTs}) ->
                                            start_ts=StartTs,
                                            end_ts = EndTs,
                                            acc_time=Time});
-        [FunInfo] ->
+        [FunInfo] ->  %% This is not quite right whit recursive calls because 
+                       %% of the overlapping.
             ets:update_element(fun_info, {PidValue, Func},
                                [{#fun_info.acc_time, FunInfo#fun_info.acc_time+Time}])
     end.
