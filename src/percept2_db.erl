@@ -177,6 +177,7 @@ stop_percept_db(FileNameSubDBPairs) ->
     ets:delete(fun_info),
     ets:delete(inter_proc),
     ets:delete(inter_sched),
+    %% ets:delete(msg_queue_len),
     case ets:info(history_html) of
         undefined -> 
             stopped;
@@ -269,6 +270,7 @@ init_percept_db(Parent, TraceFileNames) ->
                          {keypos,#inter_proc.timed_from}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
+    %% ets:new(msg_queue_len, [named_table, public, {keypos, #msg_queue_len.pid}, bag]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept2_db, started, FileNameSubDBPairs},
     loop_percept_db(FileNameSubDBPairs).
@@ -789,6 +791,16 @@ trace_out_exiting(_SubDBIndex, _Trace) ->
 trace_in_exiting(_SubDBIndex, _Trace) ->
     ok.
 
+%% trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, MsgQueueLen, Ts}) ->
+%%     if is_pid(Pid) ->
+%%             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+%%             ets:insert(msg_queue_len, #msg_queue_len{pid=Pid, 
+%%                                                      timestamp=Ts,
+%%                                                      len=MsgQueueLen}),
+%%             update_information_received(ProcRegName, Pid, byte_size(term_to_binary(Msg)));
+%%        true ->
+%%             ok
+%%     end;
 trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, _Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
@@ -847,12 +859,14 @@ trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
 trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
     trace_return_to(SubDBIndex, Pid, MFA, TS).
 
-trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, _Info, TS}) ->
+trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, Info, TS}) ->
+    io:format("gc_start info:~p\n", [{Pid, Info}]),
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_start, {Pid, TS}},
     ok.
 
-trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}) ->
+trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, Info, TS}) ->
+    io:format("gc_end info:~p\n", [{Pid, Info}]),
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_end, {Pid, TS}},
     ok.
@@ -1658,10 +1672,10 @@ pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done}) ->
                     ok
             end,
             pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
-        Trace={trace_gc_start, _} ->
+        Trace={trace_gc_start, _Info} ->
             pdb_func_loop_process_trace_1(ChildrenProcs,Trace),
             pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
-        Trace={trace_gc_end, _} ->
+        Trace={trace_gc_end, _Info} ->
             pdb_func_loop_process_trace_1(ChildrenProcs,Trace),
             pdb_func_loop({SubDB, SubDBIndex, ChildrenProcs, PrevStacks, Done});
         %% the current trace file gets to the end.
