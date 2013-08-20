@@ -166,8 +166,10 @@ graph_2(_Env, Input, Type) ->
                                          {activity,{runnable_counts, Options}})];
                          schedulers ->
                              Acts = percept2_db:select({scheduler, Options}),
-                             [{?seconds(Ts, StartTs), Scheds, 0} ||
-                                 #scheduler{timestamp = Ts, active_scheds=Scheds} <- Acts]
+                             Schedulers = erlang:system_info(schedulers), %% not needed if the trace info is correct!
+                             [{?seconds(Ts, StartTs), lists:min([Scheds,Schedulers]), 0} ||
+                                 #scheduler{timestamp = Ts, 
+                                            active_scheds=Scheds} <- Acts]
                      end,
             case Counts of 
                 [] -> 
