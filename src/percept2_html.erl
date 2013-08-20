@@ -367,7 +367,10 @@ overview_content_1(_Env, Input) ->
     InformationTable = 
 	"<table>" ++
 	table_line(["Profile time:", TotalProfileTime]) ++
-        table_line(["Schedulers:", erlang:system_info(schedulers)]) ++
+        %% This needs to be fixed. What about if profiling was done
+        %% on another machine with different number of cores?
+        table_line(["Schedulers:", erlang:system_info(schedulers)]) ++  
+
 	table_line(["Processes:", Procs]) ++
         table_line(["Ports:", Ports]) ++
     	table_line(["Min. range:", Min]) ++
@@ -861,9 +864,9 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
         ++"<td><input type=checkbox name=include_unshown_procs>Include omitted procs"++"</td></tr>" ++
         "<tr> <td> <input type=submit value=Compare> </td>" ++
         "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/process_tree_visualisation_page\">"++
-        "<b>Visualise Process Tree</b>"++"</a></td>" ++  
+        "<b>Process Tree Graph</b>"++"</a></td>" ++  
         "<td align=right width=200> <a href=\"/cgi-bin/percept2_html/process_comm_graph_page\">"++
-        "<b>Visualise Process Communication</b>"++"</a></td>" ++  
+        "<b align=middle> Process Communication</b>"++"</a></td>" ++  
         "</tr>",
     Right = "<div>"
         ++ Selector ++ 
@@ -2223,3 +2226,54 @@ compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile) ->
 is_dummy_pid({pid, {_, P2, _}}) ->
     is_atom(P2);
 is_dummy_pid(_) -> false.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+%% only for experiments.
+
+get_live_data(SessionID, _Env, _Input) ->
+    io:format("SessionID:~p\n", [SessionID]),
+    live_data_proc ! {get_next, self()},
+    receive
+        {live_data_proc, Data} ->
+            mod_esi:deliver(SessionID, Data)
+    end.
+
+get_live_data()->
+    live_data_proc ! {get_next, self()},
+    receive
+        {live_data_proc, Data} ->
+            Data
+    end.
+start_live_data_proc(File) ->
+    spawn(?MODULE, init_live_data_proc, [File]).
+
+init_live_data_proc(File) ->
+    register(live_data_proc, self()),
+    {ok, FD} =file:open(File, [read]),
+    live_data_loop(FD).
+
+stop_live_data_proc() ->
+    live_data_proc!stop.
+
+live_data_loop(FD)->
+    receive
+        {get_next, Pid} ->
+            {ok, Data} = file:read_line(FD),
+            Pid!{live_data_proc, Data},
+            live_data_loop(FD);
+        stop ->
+            ok
+    end.
+
+%%percept2:start_webserver(8888).
+%%percept2_html:start_live_data_proc("rq_migration.txt").
+%% http://localhost:8888/cgi-bin/percept2_html/get_live_data
+%%  {{pid,{0,1578,0}},[{1.129399,13},{1.130775,12}]}. 
+%% http://localhost:8888/cgi-bin/percept2_html/get_live_data
+%%  {{pid,{0,2743,0}},[{13.596175,1}]}. 
+%%  ....
+%%  ....
+%%percept2_html:stop_live_data_proc().
+%%percept2:stop_webserver().
