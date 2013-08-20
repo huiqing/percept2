@@ -7,6 +7,8 @@
 
 -export([gen_process_tree_img_1/2]).
 
+-compile(export_all).
+
 -include("../include/percept2.hrl").
 -include_lib("kernel/include/file.hrl").
 
@@ -66,7 +68,14 @@ get_proc_life_time(Pid)->
 
 gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent) ->
     {ProcStartTs, ProcStopTs} = get_proc_life_time(Pid),
-    gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinCallCount, MinTimePercent).
+    if CallTree#fun_calltree.cnt==0 ->
+            CallTree1=CallTree#fun_calltree{cnt=1, end_ts=ProcStopTs, 
+                                            acc_time=timer:now_diff(
+                                                       ProcStopTs, CallTree#fun_calltree.start_ts)},
+            gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree1, MinCallCount, MinTimePercent);
+       true ->
+             gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinCallCount, MinTimePercent)
+    end.
 
 gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimePercent) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
