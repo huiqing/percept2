@@ -36,7 +36,8 @@
           timestamp 		 :: timestamp()|special_atom(), 
           id 			 :: pid_value() | port()|special_atom(),
           state = undefined	 :: state() | 'undefined'|special_atom(),
-          where = undefined	 :: true_mfa() | 'undefined'|special_atom(),
+          where = undefined	 :: true_mfa() | 'undefined'|'suspend'|'garbage_collect'
+                                  |special_atom(),
           runnable_procs=0       :: integer()|special_atom(),
           runnable_ports=0       :: integer()|special_atom(),
           in_out = []            :: [{atom(), timestamp()}]|special_atom()
@@ -52,7 +53,7 @@
 -record(information, {
           id			 :: pid_value() | port()|special_atom()|{pid, special_atom()},
           name = undefined	 :: atom()| string()|'undefined'|special_atom(), 
-          entry = undefined	 :: true_mfa()|'undefined'|special_atom(), 
+          entry = undefined	 :: true_mfa()|'undefined'|'suspend'|'garbage_collect'|special_atom(), 
           start = undefined 	 :: timestamp()|'undefined'|special_atom(),
           stop = undefined	 :: timestamp()|'undefined'|special_atom(), 
           parent = undefined 	 :: pid_value()|'undefined'|special_atom(),
@@ -81,14 +82,16 @@
 -record(funcall_info, {
           id                 ::{pid_value(),timestamp(), timestamp()}|
                                {special_atom(),special_atom(), special_atom()},       
-          func               ::true_mfa() | special_atom()|suspend|garbage_collect
-        %%  end_ts=undefined   ::timestamp()|undefined|special_atom()
+          func               ::true_mfa()|special_atom()|suspend|garbage_collect
          }).
                  
 -record(fun_calltree, {
-          id                     ::{pid_value()|special_atom(), true_mfa()|undefined|special_atom(), 
+          id                     ::{pid_value()|special_atom(), true_mfa()|undefined
+                                    |'suspend'|'garbage_collect'|special_atom(), 
                                     timestamp()|special_atom()}|
-                                   {pid_value()|special_atom(), true_mfa()|undefined|special_atom(), true_mfa()|special_atom()}|
+                                   {pid_value()|special_atom(), true_mfa()|undefined
+                                    |'suspend'|'garbage_collect'|
+                                    special_atom(), true_mfa()|special_atom()}|
                                    {special_atom(), special_atom(), special_atom()}|
                                    special_atom(),
           cnt =1                 ::non_neg_integer()|special_atom(),
@@ -110,6 +113,12 @@
          }).
 
 
+-record(msg_queue_len, {
+          pid         ::pid_value()|port()|special_atom()|{pid, special_atom()},
+          timestamp   ::timestamp()|special_atom(),
+          len =0      ::non_neg_integer()
+         }).
+          
 -record(history_html, {
           id         ::string(),
           content    ::any()

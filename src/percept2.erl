@@ -80,8 +80,10 @@
                               'running'|               %% distinguish process running state from runnable state.
                               'message'|               %% profile message passing.
                               'migration'|             %% profile process migration.
+                              'garbage_collection'|    %% profile garbage collection.
                               'all'      |             %% profile all the activities above.
                               {'callgraph', [module_name()]}.  %%trace the call/return of functins defined the modules specified.
+
 
 %%---------------------------------------------------------%%
 %%                                                         %%
@@ -157,7 +159,7 @@ profile(FileSpec, TraceProfileOptions) ->
 %%    -- `migration'          : this enables the profiling of process migration between 
 %%                              schedulers; If the `procs' option is not given, this 
 %%                              option enables the process concurrency automatically.
-%%
+%%    -- `garbage_collection' : this enables the profiling of garbage collection.
 %%    -- `all'                : this enable all the previous options.
 %%
 %%    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
@@ -212,16 +214,21 @@ process_trace_profile_opts([Opt|Opts], Acc) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive,
                     running, scheduler_id|Acc]);
+        garbage_collection ->
+            process_trace_profile_opts(
+              Opts,[runnable_procs, procs, exclusive,
+                    garbage_collection|Acc]);
         all ->
             process_trace_profile_opts(
               Opts, [runnable_ports, ports,
                      runnable_procs, procs, exclusive,
                      scheduler,running,exiting,
+                     garbage_collection,
                      'send','receive',scheduler_id|Acc]);
         {callgraph, Mods} when is_list(Mods) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs,exclusive, call, 
-                    return_to, arity, {callgraph, Mods}|Acc]);
+                    return_to, arity, running, {callgraph, Mods}|Acc]);
         Other ->
             Msg = lists:flatten(
                     io_lib:format(
@@ -519,13 +526,13 @@ get_webserver_config(Servername, Port)
 	% Aliases
 	{eval_script_alias,{"/eval",[io]}},
         {erl_script_alias,{"/cgi-bin",[percept2_graph,percept2_html,io]}},
-	{script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
+       	{script_alias,{"/cgi-bin/", filename:join([Root, "cgi-bin"])}},
 	{alias,{"/javascript/",filename:join([Root, "scripts"]) ++ "/"}},
 	{alias,{"/images/", filename:join([Root, "images"]) ++ "/"}},
         {alias,{"/svgs/", TmpDir}},
 	{alias,{"/css/", filename:join([Root, "css"]) ++ "/"}},
 	{alias,{"/tree/", filename:join([Root, "tree"]) ++ "/"}},
-	% Logs
+       	% Logs
 	%{transfer_log, filename:join([Path, "logs", "transfer.log"])},
 	%{error_log, filename:join([Path, "logs", "error.log"])},
 	
