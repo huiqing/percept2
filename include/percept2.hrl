@@ -53,7 +53,9 @@
 -record(information, {
           id			 :: pid_value() | port()|special_atom()|{pid, special_atom()},
           name = undefined	 :: atom()| string()|'undefined'|special_atom(), 
-          entry = undefined	 :: true_mfa()|'undefined'|'suspend'|'garbage_collect'|special_atom(), 
+          entry = undefined	 :: true_mfa()|'undefined'|'suspend'|'garbage_collect'|
+                                    special_atom()|
+                                    {special_atom(),special_atom(), special_atom()}, 
           start = undefined 	 :: timestamp()|'undefined'|special_atom(),
           stop = undefined	 :: timestamp()|'undefined'|special_atom(), 
           parent = undefined 	 :: pid_value()|'undefined'|special_atom(),
@@ -90,8 +92,8 @@
                                     |'suspend'|'garbage_collect'|special_atom(), 
                                     timestamp()|special_atom()}|
                                    {pid_value()|special_atom(), true_mfa()|undefined
-                                    |'suspend'|'garbage_collect'|
-                                    special_atom(), true_mfa()|special_atom()}|
+                                    |'suspend'|'garbage_collect'|special_atom(), 
+                                    true_mfa()|special_atom()}|
                                    {special_atom(), special_atom(), special_atom()}|
                                    special_atom(),
           cnt =1                 ::non_neg_integer()|special_atom(),

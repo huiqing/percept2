@@ -2108,7 +2108,7 @@ update_fun_related_info(Pid, Func0, StartTS, EndTS, Caller, CallerStartTs) ->
     update_calltree_info(Pid, {Func0, StartTS, EndTS}, {Caller, CallerStartTs}).
    
         
--spec(update_calltree_info(pid(), {true_mfa(), timestamp(), timestamp()|undefined}, 
+-spec(update_calltree_info(pid(), {true_mfa()|suspend|garbage_collect, timestamp(), timestamp()|undefined}, 
                            {true_mfa(), timestamp()}) ->true).       
 update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) when Caller==Callee ->
     CallerStartTS = case is_list_comp(Caller) of 
@@ -2805,4 +2805,5 @@ now_diff(EndTS,StartTS) ->
 
 mk_proc_reg_name(RegNamePrefix,Index) ->
     list_to_atom(RegNamePrefix ++ integer_to_list(Index)).
+
 
