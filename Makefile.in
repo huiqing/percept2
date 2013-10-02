@@ -53,6 +53,9 @@ clean:
 distclean: clean
 
 
+uninstall:
+	@-rm -rf ${LIB_DIR}
+
 install: default
 	@echo "* Installing Percept2"
 	install -m 775 -d $(LIB_DIR)/ebin
