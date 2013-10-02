@@ -177,6 +177,7 @@ stop_percept_db(FileNameSubDBPairs) ->
     ets:delete(fun_info),
     ets:delete(inter_proc),
     ets:delete(inter_sched),
+    ets:delete(s_group),
     %% ets:delete(msg_queue_len),
     case ets:info(history_html) of
         undefined -> 
@@ -265,11 +266,14 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, 
                            set,{read_concurrency,true}, {write_concurrency, true}]),
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
-                       set,{read_concurrency, true},{read_concurrency,true}]),
+                       set,{read_concurrency, true},{write_concurrency,true}]),
     ets:new(inter_proc, [named_table, public, 
                          {keypos,#inter_proc.timed_from}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
+    ets:new(s_group, [named_table, public, {keypos,#s_group.timed_node}, 
+                      ordered_set, {read_concurrency, true},
+                      {write_concurrency, true}]),                      
     %% ets:new(msg_queue_len, [named_table, public, {keypos, #msg_queue_len.pid}, bag]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept2_db, started, FileNameSubDBPairs},
@@ -853,6 +857,19 @@ trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{id = Port, stop = Ts}).
 
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, new_s_group, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={new_s_group, Args}});
+
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, delete_s_group, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={delete_s_group, Args}});
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, add_nodes, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={add_nodes, Args}});
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, remove_nodes, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={remove_nodes, Args}});
 trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
     trace_call(SubDBIndex, Pid, MFA, TS, CP).
 

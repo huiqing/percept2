@@ -81,6 +81,7 @@
                               'message'|               %% profile message passing.
                               'migration'|             %% profile process migration.
                               'garbage_collection'|    %% profile garbage collection.
+                              's_group'|               %% profile s_group activities.
                               'all'      |             %% profile all the activities above.
                               {'callgraph', [module_name()]}.  %%trace the call/return of functins defined the modules specified.
 
@@ -160,6 +161,7 @@ profile(FileSpec, TraceProfileOptions) ->
 %%                              schedulers; If the `procs' option is not given, this 
 %%                              option enables the process concurrency automatically.
 %%    -- `garbage_collection' : this enables the profiling of garbage collection.
+%%    -- `s_group'            : this enables the profiling of s_group-related activities.
 %%    -- `all'                : this enable all the previous options.
 %%
 %%    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
@@ -218,6 +220,10 @@ process_trace_profile_opts([Opt|Opts], Acc) ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive,
                     garbage_collection|Acc]);
+        s_group ->
+            process_trace_profile_opts(
+              Opts, [runnable_procs, procs, exclusive, 
+                     call, return_to, s_group|Acc]);
         all ->
             process_trace_profile_opts(
               Opts, [runnable_ports, ports,
