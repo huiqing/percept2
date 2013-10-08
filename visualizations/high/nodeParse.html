@@ -1,0 +1,75 @@
+<html>
+<head>
+	<script>
+		function Time(time){
+			this.time = time;
+			this.interactions = [];
+		}
+
+		function Interaction(start, end, size){
+			this.start = start;
+			this.end = end;
+			this.size = size;
+		}
+
+		var times = [];
+
+		function parseFile(){
+			var txtFile = new XMLHttpRequest();
+
+			txtFile.open("GET", "inter_node_data/data/inter_node_sum.txt", true);
+
+			txtFile.onreadystatechange = function() {
+				if (txtFile.readyState != 4) {
+					window.status="Loading";
+				} else {
+					if (txtFile.status === 200) {
+
+						var input = txtFile.responseText.split(".");
+							
+						//console.log(input[0]);	
+						//for (var i = 0; i < input.length; i++){
+						for (var i = 0; i < 5; i++){
+							var timeInstance = input[i];
+
+							var interactions = timeInstance.split(",\n");
+							
+							var timeInt = "";
+							if (i == 0) {
+								timeInt = parseInt(interactions[0].substring(1));
+							} else {
+								timeInt = parseInt(interactions[0].substring(2));
+							}
+
+							var time = new Time(timeInt);
+							times.push(time);
+
+							for (var j = 1; j < interactions.length; j++){
+								var interactionDetails = interactions[j].split(",");
+
+								var start = parseInt(interactionDetails[0].substring(8));
+								var finish = parseInt(interactionDetails[1].substring(4));
+								var count = parseInt(interactionDetails[2]);
+
+								//console.log(time);
+
+								time.interactions.push( new Interaction (start, finish, count));
+
+								//console.log(start, finish, count);
+							}
+
+						}
+
+						console.log(times);
+
+					}
+				}
+			};
+			txtFile.send(null);
+		}
+	</script>
+</head>
+<body onload="parseFile();">
+
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>Visualization</title>
+		<script type="text/javascript">
+			var originalHeight = 620;
+			var originalWidth = 1000;
+			
+			//drawing related constants
+			var cx = 500;
+			var originalcx = cx;
+			var cy = 315;
+			var originalcy = cy;
+			var rx = 150;
+			var ry = 150;
+			var boxSize = 30;
+		
+		</script>
+		<script type="text/javascript" src="lib/d3.v2.js"></script>
+		<script type="text/javascript" src="lib/jquery-1.8.3.js"></script>
+		<script type="text/javascript" src="lib/jquery-ui.js"></script>
+		<script type="text/javascript" src="lib/detect-zoom-master/detect-zoom.js"></script>
+		<script type="text/javascript" src="slider.js"></script>
+		<script type="text/javascript" src="zoom.js"></script>
+		<link rel="stylesheet" type="text/css" href="style.css">
+		<link rel="stylesheet" type="text/css" href="slider.css">	
+
+	</head>
+	<body>
+
+		<script type="text/javascript" src="body.js"></script>
+		<div class="block">
+			<div id="svgdiv" class="left">
+				<span id="loading">Loading...</span>
+			</div>
+			<div class="right">
+				<form id="options">
+					<div>
+						<span>View size on screen:&nbsp;</span><input type="checkbox" id="usage" /><br />
+						<input type="button" id="pause" value="Pause" onclick="pauseAnimation()" /><br />
+					</div>
+				</form>
+			</div>
+		</div>
+		<div id="slider" ></div>
+	</body>
+</html>
