@@ -4,5 +4,4 @@ config.status
 autom4te.cache
 *.beam
 *.dat
-*.txt
 *~

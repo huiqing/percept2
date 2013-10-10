@@ -7,12 +7,12 @@ Once these requirements are met, navigate to regions.html in your HTML5 complian
 
 It requires three files in various formats, and these formats must be exact.
 
-Example of sgroup format:
+Example of sgroup format (see sgroup.txt):
 ```
 a b c ab bc ac abc
 ```
 
-Example of node format:
+Example of node format (see nodes.txt):
 ```
 node1 abc
 node2 a
@@ -22,7 +22,7 @@ node5 b
 node6 bc
 ```
 
-Example of communication format:
+Example of communication format (see inter_node_sum.txt):
 ```
 {200,
  [{{node1,node11},1,240},
