@@ -49,6 +49,10 @@ svg line, svg path {
 	display: table-row;
 }
 
+#main {
+	display: none;
+}
+
 .grouping{
 	stroke: rgba(0,0,255,0.5);
 	fill: rgba(0,0,255,0.1);
@@ -75,4 +79,9 @@ svg line, svg path {
 
 .sameCore {
 	stroke: green;
+}
+
+.header {
+	font-weight: bold;
+	font-size: 1.5em;
 }

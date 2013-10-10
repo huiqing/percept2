@@ -207,52 +207,125 @@ function removeFromArray(arr, value){
 	return arr;
 }
 
+
+
+var migrationRead = false;
+var migrationOutput = [];
+function readMigration(){
+	readFile("migration");
+}
+
+var queueRead = false;
+var queueOutput = [];
+function readQueue(){
+	readFile("queue");
+}
+
+function readFile(fileType){
+	var uploadName = "#"+fileType+"Upload";
+	var feedbackName = "#"+fileType+"Feedback";
+
+	var file = $(uploadName)[0].files[0];
+	//var output;
+
+	var read=new FileReader();
+	read.readAsText(file);
+
+	read.onerror=function(){
+		$(feedbackName).html("An error has occurred");
+	}
+
+	read.onprogress=function(evt){
+		//console.log(evt.loaded, evt.total);
+		var percent = parseInt((evt.loaded / evt.total)*100);
+
+		$(feedbackName).html("Loading: "+percent+"% complete");
+	}
+
+	read.onloadend=function(){
+
+		$(feedbackName).html("Upload Complete");
+		//console.log(output);
+		var output = read.result.split("\n");
+
+
+		if(fileType == "migration"){
+			migrationOutput = output;
+			migrationRead = true;
+			//console.log(output);
+			//parseMigration(output);
+		} else if(fileType == "queue"){
+			queueOutput = output;
+			queueRead = true;
+			//console.log(output);
+			//parse(output);
+		}
+
+		if (queueRead && migrationRead){
+			console.log("q", queueOutput[0]);
+			console.log("m", migrationOutput[0]);
+
+			parse(queueOutput);
+			parseMigration(migrationOutput);
+			$("#instructions").hide();
+			$("#main").show();
+
+			start();
+
+		}
+		
+	}
+}
+
+
 /*
 * Read the files in and parse them
 */
-
-
 var intervalObj;
 var intervalCounter = 0;
-var txtFile = new XMLHttpRequest();
-
-if (testing){
-	txtFile.open("GET", "runQtest.txt", true);
-} else {
-	txtFile.open("GET", "sample_run_queues.txt", true);
-}
-
-txtFile.onreadystatechange = function() {
-	if (txtFile.readyState != 4) {
-		window.status="Loading";
-	} else {
-		if (txtFile.status === 200) { 
-			window.status="Loading";		
-			var output = txtFile.responseText.split("\n"); 
-			//console.log("anon function");
-			parse(output);	
-			
-		}
-	}
-};
-txtFile.send(null);
-var jsonFile = new XMLHttpRequest();
-jsonFile.open("GET", "rq_migration_by_time.txt", true);
-jsonFile.onreadystatechange = function() {
-	if (jsonFile.readyState === 4) {  
-		if (jsonFile.status === 200) {  
-			var output = jsonFile.responseText.split("\n"); 
-			parseMigration(output);
-			
-		}
-	}
-};
 var previousState;
-//console.log(times);
-prepareDrawing();
-animate(intervalCounter,intervalTimer);
+function start() {
+	
+	//var txtFile = new XMLHttpRequest();
+/*
+	if (testing){
+		txtFile.open("GET", "runQtest.txt", true);
+	} else {
+		txtFile.open("GET", "sample_run_queues.txt", true);
+	}
 
-jsonFile.send(null);
+	txtFile.onreadystatechange = function() {
+		if (txtFile.readyState != 4) {
+			window.status="Loading";
+		} else {
+			if (txtFile.status === 200) { 
+				window.status="Loading";		
+				var output = txtFile.responseText.split("\n"); 
+				//console.log("anon function");
+				parse(output);	
+				
+			}
+		}
+	};
+	txtFile.send(null);
+	var jsonFile = new XMLHttpRequest();
+	jsonFile.open("GET", "rq_migration_by_time.txt", true);
+	jsonFile.onreadystatechange = function() {
+		if (jsonFile.readyState === 4) {  
+			if (jsonFile.status === 200) {  
+				var output = jsonFile.responseText.split("\n"); 
+				parseMigration(output);
+				
+			}
+		}
+	};*/
+	
+	//console.log(times);
+	prepareDrawing();
+	animate(intervalCounter,intervalTimer);
+
+	//jsonFile.send(null);
+}
 
 /*
 * Stops the animation
