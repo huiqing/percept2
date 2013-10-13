@@ -877,13 +877,11 @@ trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
     trace_return_to(SubDBIndex, Pid, MFA, TS).
 
 trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, Info, TS}) ->
-    io:format("gc_start info:~p\n", [{Pid, Info}]),
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_start, {Pid, TS}},
     ok.
 
 trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, Info, TS}) ->
-    io:format("gc_end info:~p\n", [{Pid, Info}]),
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_end, {Pid, TS}},
     ok.
