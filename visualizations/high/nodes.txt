@@ -1,0 +1,12 @@
+node1 abc
+node2 a
+node3 ab
+node4 ab
+node5 b
+node6 b
+node7 b
+node8 bc
+node9 bc
+node10 c
+node11 c
+node12 abc

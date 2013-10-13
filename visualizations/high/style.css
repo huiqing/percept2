@@ -1,0 +1,16 @@
+html {
+	font-family:"Verdana", sans-serif;
+}
+
+#main, #nodesBox, #commsBox {
+	display: none;
+}
+
+.header {
+	font-weight: bold;
+	font-size: 1.5em;
+}
+
+.startingRect {
+	display: none;
+}

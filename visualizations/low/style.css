@@ -1,0 +1,87 @@
+html {
+	font-family:"Verdana", sans-serif;
+}
+
+.queue {
+	font-weight: bold;
+	dominant-baseline: central;
+	z-index: 50;
+}
+
+.usage {
+	font-size: 0.75em;
+	dominant-baseline: central;
+	text-align: central;
+}
+
+.border {
+	fill: none;
+	display: none;
+	stroke-width: 2px;
+	stroke: rgba(0,0,0,0.5);
+}
+
+svg circle, ellipse {
+	stroke: none;
+	stroke-width: 2px;
+	/*fill: none;*/
+}
+
+svg line, svg path {
+	stroke: #888888;
+	stroke-width: 5px;
+	fill: none;
+}
+
+.process {
+	font-size: 0.75em;
+}
+
+.left{
+	float: left;
+}
+
+.right {
+	float: right;
+}
+
+.block {
+	display: table-row;
+}
+
+#main {
+	display: none;
+}
+
+.grouping{
+	stroke: rgba(0,0,255,0.5);
+	fill: rgba(0,0,255,0.1);
+}
+
+.nodeArea{
+	stroke: rgba(255,0,0,0.5);
+	fill: rgba(255,0,0,0.1);
+	stroke-width: 1px;
+}
+
+#svgdiv {
+	/*//width: 1000px;
+	//height: 650px;*/
+}
+
+.nodeCrossing {
+	stroke: blue;
+}
+
+.coreCrossing {
+	stroke: #888888;
+}
+
+.sameCore {
+	stroke: green;
+}
+
+.header {
+	font-weight: bold;
+	font-size: 1.5em;
+}
