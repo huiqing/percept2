@@ -518,13 +518,15 @@ concurrency_content(Env, Input) ->
 concurrency_content_1(_Env, Input) ->
     IDs = get_pids_to_compare(Input),
     StartTs = percept2_db:select({system, start_ts}),
+    StopTs = percept2_db:select({system, stop_ts}),
     {MinTs, MaxTs} = percept2_db:select({activity, {min_max_ts, IDs}}),
     case {MinTs, MaxTs} of 
         {undefined, undefined} ->
             error_msg("No activities have been recorded "
                       "for the processess selected!");
         _ ->
-            concurrency_content_2(IDs, StartTs, MinTs, MaxTs)
+            %% concurrency_content_2(IDs, StartTs, MinTs, MaxTs)
+            concurrency_content_2(IDs, StartTs, StartTs, StopTs)
     end.
 
 concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
@@ -1211,10 +1213,10 @@ process_comm_graph_content(_Env, Input) ->
 	<center>
         <br></br>
         <table>
-           <tr><td align=left>Minmum number of sends:</td>
+           <tr><td align=left>Minimum number of sends:</td>
                <td><input type=text name=sends_min  value=" 
                  ++ term2html(MinSends) ++ "> </tr>
-           <tr><td align=left>Minmum avg. message size:</td> 
+           <tr><td align=left>Minimum avg. message size:</td> 
                <td align=left><input type=text name=size_min  value=" 
                  ++ term2html(MinSize) ++"> </td></tr>
            <tr><td><input type=submit value=\"Update\" /> </td></tr>
@@ -1410,10 +1412,10 @@ callgraph_time_content(Env, Input) ->
 	<center>
         <br></br>
         <table>
-           <tr><td align=left>Minmum number of callcounts:</td>
+           <tr><td align=left>Minimum number of callcounts:</td>
                <td><input type=text name=callcounts_min  value=" 
                  ++ term2html(MinCallCount) ++ "> </tr>
-           <tr><td align=left>Minmum time percentage:</td> 
+           <tr><td align=left>Minimum time percentage:</td> 
                <td align=left><input type=text name=time_percent_min  value=" 
                  ++ term2html(MinTimePercent) ++"> </td></tr>
            <tr><td><input type=submit value=\"Update\" /> </td></tr>
@@ -2233,7 +2235,6 @@ is_dummy_pid(_) -> false.
 %% only for experiments.
 
 get_live_data(SessionID, _Env, _Input) ->
-    io:format("SessionID:~p\n", [SessionID]),
     live_data_proc ! {get_next, self()},
     receive
         {live_data_proc, Data} ->
