@@ -289,7 +289,8 @@ gen_callgraph_slice_edges(CallTree, Min, Max,ProcTime) ->
         false ->
             []
     end.
-           
+            
+
 format_node_with_label_and_url(V, Fun, Label, URL) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
@@ -299,6 +300,7 @@ format_node_with_label_and_url(V, Fun, Label, URL) ->
     SH = io_lib:format("~f", [H]),
     [String, " [URL=\"", URL, "\""
      " label=\"", Label,"\"",
+     " target=\"", "_graphviz","\"",
      " width=", SL, " heigth=", SH, " ", "", "];\n"].
  
 format_node_with_label_and_url_1(V, Fun, Label, URL) ->
@@ -308,13 +310,10 @@ format_node_with_label_and_url_1(V, Fun, Label, URL) ->
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    %% ["\"", String, "\"",  " [label=\"", Label,"\"",
-    %%  " width=", SL, " heigth=", SH, " ", "", "];\n"].
-    %%     _ ->
     ["\"", String, "\"",  " [URL=\"", URL, "\""
      " label=\"", Label,"\"",
+     " target=\"", "_graphviz","\"",
      " width=", SL, " heigth=", SH, " ", "", "];\n"].
-%% end.
             
 format_node(V, Fun) ->
     String = Fun(V),
