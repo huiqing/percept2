@@ -12,6 +12,16 @@ var currentTime = 0;
 var svg;
 var times = [];
 
+var conn = new WebSocket('ws://localhost:8081');
+//var conn = new WebSocket('ws://cs.kent.ac.uk/~rb440/:8081');
+conn.onopen = function(e) {
+    console.log("Connection established!");
+};
+
+conn.onmessage = function(e) {
+    parseCircles(e.data);
+};
+
 /** A labelled circle */
 function Circle(label,r,x,y) {
 	this.label = label;
@@ -167,7 +177,8 @@ function readFile(fileType){
 		if (fileType == "sGroup"){
 			sGroupsRead = true;
 
-			parseCircles(output);
+			//parseCircles(output);
+			conn.send(output);
 
 			$(sGroupUpload).hide();
 			$(nodesBox).show();
@@ -252,30 +263,20 @@ function parseNodes(nodesFile) {
 
 function parseCircles(input){
 
+	console.log(input);
+
 	//var url = "http://www.cs.kent.ac.uk/people/rpg/rb440/Release/runJava.php?input="+input;
-	var url = "runJava.php?input="+input;
+	//var url = "runJava.php?input="+input;
 
-	var xhr = new XMLHttpRequest();
-	xhr.open("GET", url, true);
+	circleFile = input.split("\n")
+	//use 1 as first row of input are labels
+	for (var i = 1; i < circleFile.length-1; i++){
+		var result = circleFile[i].split(",");
+		//console.log(result);
+		var c = new Circle(result[0].trim(), parseInt(result[3]), parseInt(result[1]), parseInt(result[2]));
+		circles.push(c);	
+	}
 
-	xhr.onload = function() {			
-		//decodeCsv(xhr.responseText.split("\n"));
-		console.log(xhr.responseText);
-		//console.log(circles,zones);
-		//testRegion(zones);
-
-		//console.log(circleFile);
-
-		circleFile = xhr.responseText.split("\n")
-		//use 1 as first row of input are labels
-		for (var i = 1; i < circleFile.length-1; i++){
-			var result = circleFile[i].split(",");
-			//console.log(result);
-			var c = new Circle(result[0].trim(), parseInt(result[3]), parseInt(result[1]), parseInt(result[2]));
-			circles.push(c);	
-		}
-	};
-	xhr.send();
 	
 }
 

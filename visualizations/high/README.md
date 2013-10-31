@@ -1,11 +1,8 @@
-To run the offline high level visualization, there are several requirements:
+Navigate to regions.html in your HTML5 compliant browser. You must be connected to the web.
 
-All files need to be stored in a webserver, specifically one that can run PHP.
-The webserver also needs Java 1.6 or greater.
+Currently, you will need to run ws/bin/ws-server.php from the command line for the Euler diagram creation to be run. Soon, this will be stored externally so only a web connection will be required.
 
-Once these requirements are met, navigate to regions.html in your HTML5 compliant browser.
-
-It requires three files in various formats, and these formats must be exact.
+The visualization requires three files in various formats, and these formats must be exact.
 
 Example of sgroup format (see sgroup.txt):
 ```
