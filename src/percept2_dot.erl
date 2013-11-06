@@ -21,11 +21,14 @@
                         MinCallCount::integer(), MinTimePercent::integer()) 
       -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
 gen_callgraph_img(Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent) ->
+    io:format("DDD\n"),
+    io:format("Args:~p\n", [{Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent}]),
     Res=ets:select(fun_calltree, 
                    [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
                      [],
                      ['$_']
                     }]),
+    io:format("Res:~p\n", [Res])
     case Res of 
         [] -> no_image;
         [Tree] -> 
