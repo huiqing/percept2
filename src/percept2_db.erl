@@ -1933,7 +1933,7 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
     Level01 = [{Func, TS} | Level0],
     [NewLevel0| NewStack1] = 
         [trace_call_collapse(Level01) | Stack1],
-   %% ?dbg((-1), "After collaps:\n~p\n", [[NewLevel0| NewStack1]]),
+    ?dbg(-1, "After collapse:\n~p\n", [[NewLevel0| NewStack1]]),
     case Level01 -- NewLevel0 of 
         [] -> ok;
         Funs ->
@@ -1965,12 +1965,12 @@ trace_call_collapse([_ | Stack1] = Stack) ->
 %% and try if that instance may be used as stack top instead.
 trace_call_collapse_1(Stack, [], _) ->
     Stack;
-trace_call_collapse_1([{Func0, _} | _] = Stack, [{Func0, _} | S1] = S, N) ->
+trace_call_collapse_1([{Func0, _} |_] = Stack, [{Func0, _TS} | S1] = S, N) ->
     case trace_call_collapse_2(Stack, S, N) of
 	true ->
-	    S;
+            S;
 	false ->
-	    trace_call_collapse_1(Stack, S1, N+1)
+            trace_call_collapse_1(Stack, S1, N+1)
     end;
 trace_call_collapse_1(Stack, [_ | S1], N) ->
     trace_call_collapse_1(Stack, S1, N+1).
@@ -2033,7 +2033,7 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
     Caller = if is_tuple(Func) -> mfarity(Func);
                 true -> Func
              end,
-    ?dbg((-1), "trace_return_to(~p, ~p, ~p)~n~p~n",
+    ?dbg(-1, "trace_return_to(~p, ~p, ~p)~n~p~n",
 	 [Pid, Caller, TS, Stack]),
     case Stack of
 	[[{suspend, _} | _] | _] ->
@@ -2100,7 +2100,12 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
                                                 [] ->
                                                     {Func, Func0StartTS}
                                             end,
-                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs)
+                    case lists:any(fun({Func2, _}) -> Func2 ==Func0 end, lists:append(Stack1)) of 
+                        false ->
+                            update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
+                        true ->
+                            update_calltree_info(Pid, {Func0, Func0StartTS, TS}, {Caller, CallerStartTs})
+                    end
             end;
         _ -> 
             ok        
