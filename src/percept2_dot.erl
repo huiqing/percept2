@@ -81,20 +81,22 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimeP
     {_, CurFunc, _} = CallTree#fun_calltree.id,
     ProcTime = timer:now_diff(ProcStopTs, ProcStartTs),
     CurFuncTime = CallTree#fun_calltree.acc_time, 
+    CurFuncEndTs = CallTree#fun_calltree.end_ts,
     ChildrenCallTrees = CallTree#fun_calltree.called,
     Edges = lists:foldl(
               fun(Tree, Acc) ->
                       {_, ToFunc, _} = Tree#fun_calltree.id,
                       ToFuncTime = Tree#fun_calltree.acc_time,
                       CallCount= Tree#fun_calltree.cnt,
+                      ToFuncEndTs = Tree#fun_calltree.end_ts,
                       CurTimePercent = CurFuncTime/ProcTime,
                       ToTimePercent = ToFuncTime/ProcTime,
                       case CallCount >= MinCallCount andalso 
                            CurTimePercent >= MinTimePercent/100 andalso
                            ToTimePercent >= MinTimePercent/100 of 
                           true ->
-                              NewEdge = {{CurFunc,CurTimePercent},
-                                         {ToFunc,ToTimePercent}, 
+                              NewEdge = {{CurFunc,CurTimePercent, CurFuncEndTs},
+                                         {ToFunc,ToTimePercent, ToFuncEndTs}, 
                                          CallCount},
                               [[NewEdge|gen_callgraph_edges_1(
                                           {ProcStartTs, ProcStopTs}, 
@@ -105,8 +107,8 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimeP
               end, [], ChildrenCallTrees),
     case CallTree#fun_calltree.rec_cnt of 
         0 ->Edges;
-        N -> [{{CurFunc,CurFuncTime/ProcTime}, 
-               {CurFunc,CurFuncTime/ProcTime}, N}|Edges]
+        N -> [{{CurFunc,CurFuncTime/ProcTime, CurFuncEndTs}, 
+               {CurFunc,CurFuncTime/ProcTime, CurFuncEndTs}, N}|Edges]
     end.
 
 %%depth first traveral.
@@ -125,21 +127,21 @@ digraph_add_edges(Trees=[Tree|_Ts], NodeIndex, MG) when is_list(Tree)->
                 end, NodeIndex, Trees).
         
 
-digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
+digraph_add_edge({{From, FromTime, FromEndTs}, {To, ToTime, ToEndTs}, CNT}, IndexTab, MG) ->
     {From1, IndexTab1}=
         case digraph:vertex(MG, {From,0}) of
             false ->
                 digraph:add_vertex(MG, {From, 0},{label, FromTime}),
-                {{From,0}, [{{From,FromTime},0}|IndexTab]};
+                {{From,0}, [{{From,FromEndTs},0}|IndexTab]};
             _ ->
-                case lists:keyfind({From, FromTime},1, IndexTab) of 
+                case lists:keyfind({From, FromEndTs},1, IndexTab) of 
                     {_, Index} ->
                         {{From, Index},IndexTab};
                     false ->
                         Es = length([true||{{From1, _}, _}<-IndexTab,From1==From]),
                         digraph:add_vertex(MG, {From, Es+1}, {label, FromTime}),
                         {{From, Es+1}, 
-                         [{{From, FromTime}, Es+1}|IndexTab]}
+                         [{{From, FromEndTs}, Es+1}|IndexTab]}
                 end
         end,
     {To1, IndexTab2}=
@@ -149,18 +151,16 @@ digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
                 case digraph:vertex(MG, {To,0}) of
                     false ->
                         digraph:add_vertex(MG, {To,0}, {label,ToTime}),
-                        {{To,0}, [{{To, ToTime},0}|IndexTab1]};
+                        {{To,0}, [{{To, ToEndTs},0}|IndexTab1]};
                     _ ->  
-                        case  lists:keyfind({To, ToTime}, 1,IndexTab1) of 
+                        case  lists:keyfind({To, ToEndTs}, 1,IndexTab1) of 
                             false ->
                                 Elems = length([true||{{To1, _}, _}<-IndexTab1,To1==To]),
                                 digraph:add_vertex(MG, {To, Elems+1}, {label, ToTime}),
                                 {{To, Elems+1}, 
-                                 [{{To, ToTime}, Elems+1}|IndexTab1]};
+                                 [{{To, ToEndTs}, Elems+1}|IndexTab1]};
                             {_, Index1} ->
-                                digraph:add_vertex(MG, {To, Index1+1}, {label, ToTime}),
-                                {{To, Index1+1}, 
-                                 lists:keyreplace({To, ToTime}, 1, IndexTab1, {{To, ToTime},  Index1+1})}
+                                {{To, Index1}, IndexTab}
                         end
                 end
         end,

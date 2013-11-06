@@ -2281,21 +2281,33 @@ add_new_callee(CalleeInfo, CalleeList) ->
     end.
 
 combine_fun_info(FunInfo1=#fun_calltree{id=Id, called=Callees1, 
-                                        start_ts=StartTS1,end_ts= _EndTS1,
+                                        start_ts=StartTS1,end_ts= EndTS1,
                                         acc_time = AccTime1,
                                         cnt=CNT1,
                                         rec_cnt = RecCnt1}, 
                  _FunInfo2=#fun_calltree{id=Id, called=Callees2, 
-                                         start_ts=_StartTS2, end_ts=EndTS2,
+                                         start_ts=StartTS2, end_ts=EndTS2,
                                          acc_time = AccTime2,
                                          cnt=CNT2,
                                          rec_cnt = RecCnt2}) ->
+    NewAccTime = case StartTS1=<StartTS2 andalso EndTS1>=EndTS2 of 
+                     true ->
+                         AccTime1;
+                     false ->
+                         case StartTS1>=StartTS2 andalso EndTS1=<EndTS2 of 
+                             true ->
+                                 AccTime2;
+                             false ->
+                                 AccTime1+AccTime2
+                         end
+                 end,
     NewCallees=lists:foldl(fun(C, Callees) ->
                                    add_new_callee(C, Callees)
                            end, Callees1, Callees2),
     FunInfo1#fun_calltree{id=Id, called=NewCallees, 
-                          start_ts=StartTS1, end_ts=EndTS2,
-                          acc_time = AccTime1 + AccTime2,
+                          start_ts=lists:min([StartTS1,StartTS2]),
+                          end_ts=lists:max([EndTS1, EndTS2]),
+                          acc_time = NewAccTime, 
                           cnt = CNT1 + CNT2, 
                           rec_cnt = RecCnt1+RecCnt2}.
 
