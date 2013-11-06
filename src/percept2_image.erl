@@ -516,13 +516,13 @@ draw_cross_graf(Im, Data, Colors, GA = #graph_area{x = X0, y = Y0, width = Width
     Dy = (Height)/(Ymax),
     Plotdata = [{trunc(X0 + X*Dx - Xmin*Dx), trunc(Y0 + Height - Y1*Dy)} 
                 || {X, Y1, _} <- Data],
-    draw_cross_graft1(Im, Plotdata, Colors, GA).
+    draw_cross_graf1(Im, Plotdata, Colors, GA).
 
-draw_cross_graft1(Im, [{X1, Y1}|Data], C={B, _}, GA) ->
+draw_cross_graf1(Im, [{X1, Y1}|Data], C={B, _}, GA) ->
     egd:line(Im, {X1-3, Y1}, {X1+2, Y1}, B),
     egd:line(Im, {X1, Y1-3}, {X1, Y1+2}, B),  
-    draw_cross_graft1(Im, Data, C, GA);
-draw_cross_graft1(_Im, [], _, _) -> ok.
+    draw_cross_graf1(Im, Data, C, GA);
+draw_cross_graf1(_Im, [], _, _) -> ok.
 
 %% @spec minmax([{X, Y}]) -> {MinX, MinY, MaxX, MaxY}
 %%	X = number()
@@ -541,17 +541,17 @@ minmax(Data) ->
 remove_duplicates([]) ->
     [];
 remove_duplicates([X|Tl]) ->
-    remove_duplicates(Tl, X, [X]).
+    remove_duplicates(Tl, X, []).
 
-remove_duplicates([], _, Acc) ->
-    lists:reverse(Acc);
-remove_duplicates([X], _, Acc) ->
-    lists:reverse([X|Acc]);
+remove_duplicates([], Last, Acc) ->
+    lists:reverse([Last|Acc]);
+remove_duplicates([X], Last, Acc) ->
+    lists:reverse([X, Last|Acc]);
 remove_duplicates([X={X1, Y1, Y2}|Tl], Last={LastX1, LastY1, LastY2}, Acc) ->
     if X1==LastX1 ->
             MinY1=lists:min([Y1, LastY1]), 
             MinY2=lists:min([Y2, LastY2]),
             remove_duplicates(Tl, {LastX1, MinY1, MinY2}, Acc);
        true ->
-            remove_duplicates(Tl, X, [X,Last|Acc])
+            remove_duplicates(Tl, X, [Last|Acc])
     end.
