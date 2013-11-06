@@ -178,6 +178,9 @@ set_tracer(Port, Opts) ->
     ok.
     
 
+module_funs(s_group) ->
+    [{s_group, new_s_group, 2}, {s_group, delete_s_group, 1},
+     {s_group, add_nodes, 2},  {s_group, remove_nodes, 2}];
 module_funs(Mod) ->
     [{Mod, F, A}||{F, A}<-Mod:module_info(functions),hd(atom_to_list(F))/=$-].
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -198,13 +201,21 @@ load_modules([Mod|Mods]) ->
 parse_profile_options(Opts) ->
     parse_profile_options(Opts, {[],[],[]}).
 
-parse_profile_options([], Out) ->
-    Out;
+parse_profile_options([], Out={TraceOpts, ProfileOpts, ModOpts}) ->
+    case lists:member(s_group, ModOpts) of 
+        true ->
+            {TraceOpts--[arity], ProfileOpts, ModOpts};
+        false ->
+            Out
+    end;
 parse_profile_options([Opt|Opts],{TraceOpts, ProfileOpts, ModOpts}) ->
     case Opt of
         {callgraph, Mods} ->
             parse_profile_options(
               Opts, {TraceOpts, ProfileOpts, Mods ++ ModOpts});
+        s_group ->
+            parse_profile_options(
+               Opts, {TraceOpts, ProfileOpts, [s_group|ModOpts]});
 	_ -> 
             case lists:member(Opt, trace_flags()) of 
                 true ->

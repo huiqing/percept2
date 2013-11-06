@@ -177,6 +177,7 @@ stop_percept_db(FileNameSubDBPairs) ->
     ets:delete(fun_info),
     ets:delete(inter_proc),
     ets:delete(inter_sched),
+    ets:delete(s_group),
     %% ets:delete(msg_queue_len),
     case ets:info(history_html) of
         undefined -> 
@@ -265,11 +266,14 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, 
                            set,{read_concurrency,true}, {write_concurrency, true}]),
     ets:new(fun_info, [named_table, public, {keypos, #fun_info.id}, 
-                       set,{read_concurrency, true},{read_concurrency,true}]),
+                       set,{read_concurrency, true},{write_concurrency,true}]),
     ets:new(inter_proc, [named_table, public, 
                          {keypos,#inter_proc.timed_from}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
+    ets:new(s_group, [named_table, public, {keypos,#s_group.timed_node}, 
+                      ordered_set, {read_concurrency, true},
+                      {write_concurrency, true}]),                      
     %% ets:new(msg_queue_len, [named_table, public, {keypos, #msg_queue_len.pid}, bag]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept2_db, started, FileNameSubDBPairs},
@@ -853,6 +857,19 @@ trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{id = Port, stop = Ts}).
 
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, new_s_group, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={new_s_group, Args}});
+
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, delete_s_group, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={delete_s_group, Args}});
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, add_nodes, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={add_nodes, Args}});
+trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, remove_nodes, Args}, _, TS}) ->
+    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+                                 op={remove_nodes, Args}});
 trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
     trace_call(SubDBIndex, Pid, MFA, TS, CP).
 
@@ -2063,6 +2080,10 @@ trace_return_to_2(Pid, Func, TS, [[] | Stack1]) ->
 trace_return_to_2(_Pid, Func, _TS, [[{Func, _}|_Level0]|_Stack1] = Stack) ->
     Stack;
 trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
+    io:format("DDDDDDDDDDD\n"),
+    io:format("Func0:~p\n", [Func0]),
+    io:format("Level1:~p\n", [Level1]),
+    io:format("Stack1:~p\n", [Stack1]),
     case Func0 of 
          {_, _, _} ->
             case Level1 of 
@@ -2085,7 +2106,14 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
                                                 [] ->
                                                     {Func, Func0StartTS}
                                             end,
-                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs)
+                    case lists:any(fun({Func2, _}) -> Func2 ==Func0 end, lists:append(Stack1)) of 
+                        false ->
+                            update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
+                        true ->
+                            io:format("AAAAAAAAAAA\n"),
+                            update_calltree_info(Pid, {Func0,  Func0StartTS, TS}, {Caller, CallerStartTs})
+                    end
+                %%    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs)
             end;
         _ -> 
             ok        
@@ -2130,6 +2158,7 @@ update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) whe
     end;
   
 update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
+    io:format("Update_calltree_info:~p\n", [{Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}}]),
     CallerStartTS = case is_list_comp(Caller) of 
                         true -> undefined;
                        _ -> CallerStartTS0
@@ -2158,6 +2187,7 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
                     NewC1 = collapse_call_tree(NewC, Callee),
                     ets:insert(fun_calltree, NewC1);    
                 _ ->
+                    io:format("CCCCCCCCCCCCC\n"),
                     CallerInfo = create_caller_info(CallerId, EndTS, StartTS0, NewF),
                     ets:delete_object(fun_calltree, F),
                     NewCallerInfo = collapse_call_tree(CallerInfo, Callee),
@@ -2213,6 +2243,8 @@ create_caller_info(CallerId = {Pid, Caller, CallerStartTS},
 %% recursion.      
 %% TOTest: is this accurate enough?
 collapse_call_tree(CallTree, Callee) ->
+    io:format("CallTree:~p\n", [CallTree]),
+    io:format("Callee:~p\n", [Callee]),
     {_Pid, Caller,_TS} = CallTree#fun_calltree.id,
     Children=CallTree#fun_calltree.called,
     case collect_children_to_merge(Children, {Caller, Callee}) of 
@@ -2265,7 +2297,7 @@ combine_fun_info(FunInfo1=#fun_calltree{id=Id, called=Callees1,
                                         acc_time = AccTime1,
                                         cnt=CNT1,
                                         rec_cnt = RecCnt1}, 
-                 _FunInfo2=#fun_calltree{id=Id, called=Callees2, 
+                 FunInfo2=#fun_calltree{id=Id, called=Callees2, 
                                          start_ts=_StartTS2, end_ts=EndTS2,
                                          acc_time = AccTime2,
                                          cnt=CNT2,
@@ -2278,7 +2310,7 @@ combine_fun_info(FunInfo1=#fun_calltree{id=Id, called=Callees1,
                           acc_time = AccTime1 + AccTime2,
                           cnt = CNT1 + CNT2, 
                           rec_cnt = RecCnt1+RecCnt2}.
-
+    
 
 is_list_comp({_M, F, _A}) ->
     re:run(atom_to_list(F), ".*-lc.*", []) /=nomatch;
