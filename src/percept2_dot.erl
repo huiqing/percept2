@@ -21,14 +21,11 @@
                         MinCallCount::integer(), MinTimePercent::integer()) 
       -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
 gen_callgraph_img(Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent) ->
-    io:format("DDD\n"),
-    io:format("Args:~p\n", [{Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent}]),
     Res=ets:select(fun_calltree, 
                    [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
                      [],
                      ['$_']
                     }]),
-    io:format("Res:~p\n", [Res])
     case Res of 
         [] -> no_image;
         [Tree] -> 
@@ -84,20 +81,22 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimeP
     {_, CurFunc, _} = CallTree#fun_calltree.id,
     ProcTime = timer:now_diff(ProcStopTs, ProcStartTs),
     CurFuncTime = CallTree#fun_calltree.acc_time, 
+    CurFuncEndTs = CallTree#fun_calltree.end_ts,
     ChildrenCallTrees = CallTree#fun_calltree.called,
     Edges = lists:foldl(
               fun(Tree, Acc) ->
                       {_, ToFunc, _} = Tree#fun_calltree.id,
                       ToFuncTime = Tree#fun_calltree.acc_time,
                       CallCount= Tree#fun_calltree.cnt,
+                      ToFuncEndTs = Tree#fun_calltree.end_ts,
                       CurTimePercent = CurFuncTime/ProcTime,
                       ToTimePercent = ToFuncTime/ProcTime,
                       case CallCount >= MinCallCount andalso 
                            CurTimePercent >= MinTimePercent/100 andalso
                            ToTimePercent >= MinTimePercent/100 of 
                           true ->
-                              NewEdge = {{CurFunc,CurTimePercent},
-                                         {ToFunc,ToTimePercent}, 
+                              NewEdge = {{CurFunc,CurTimePercent, CurFuncEndTs},
+                                         {ToFunc,ToTimePercent, ToFuncEndTs}, 
                                          CallCount},
                               [[NewEdge|gen_callgraph_edges_1(
                                           {ProcStartTs, ProcStopTs}, 
@@ -108,8 +107,8 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimeP
               end, [], ChildrenCallTrees),
     case CallTree#fun_calltree.rec_cnt of 
         0 ->Edges;
-        N -> [{{CurFunc,CurFuncTime/ProcTime}, 
-               {CurFunc,CurFuncTime/ProcTime}, N}|Edges]
+        N -> [{{CurFunc,CurFuncTime/ProcTime, CurFuncEndTs}, 
+               {CurFunc,CurFuncTime/ProcTime, CurFuncEndTs}, N}|Edges]
     end.
 
 %%depth first traveral.
@@ -128,21 +127,21 @@ digraph_add_edges(Trees=[Tree|_Ts], NodeIndex, MG) when is_list(Tree)->
                 end, NodeIndex, Trees).
         
 
-digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
+digraph_add_edge({{From, FromTime, FromEndTs}, {To, ToTime, ToEndTs}, CNT}, IndexTab, MG) ->
     {From1, IndexTab1}=
         case digraph:vertex(MG, {From,0}) of
             false ->
                 digraph:add_vertex(MG, {From, 0},{label, FromTime}),
-                {{From,0}, [{{From,FromTime},0}|IndexTab]};
+                {{From,0}, [{{From,FromEndTs},0}|IndexTab]};
             _ ->
-                case lists:keyfind({From, FromTime},1, IndexTab) of 
+                case lists:keyfind({From, FromEndTs},1, IndexTab) of 
                     {_, Index} ->
                         {{From, Index},IndexTab};
                     false ->
                         Es = length([true||{{From1, _}, _}<-IndexTab,From1==From]),
                         digraph:add_vertex(MG, {From, Es+1}, {label, FromTime}),
                         {{From, Es+1}, 
-                         [{{From, FromTime}, Es+1}|IndexTab]}
+                         [{{From, FromEndTs}, Es+1}|IndexTab]}
                 end
         end,
     {To1, IndexTab2}=
@@ -152,18 +151,16 @@ digraph_add_edge({{From, FromTime}, {To, ToTime}, CNT}, IndexTab, MG) ->
                 case digraph:vertex(MG, {To,0}) of
                     false ->
                         digraph:add_vertex(MG, {To,0}, {label,ToTime}),
-                        {{To,0}, [{{To, ToTime},0}|IndexTab1]};
+                        {{To,0}, [{{To, ToEndTs},0}|IndexTab1]};
                     _ ->  
-                        case  lists:keyfind({To, ToTime}, 1,IndexTab1) of 
+                        case  lists:keyfind({To, ToEndTs}, 1,IndexTab1) of 
                             false ->
                                 Elems = length([true||{{To1, _}, _}<-IndexTab1,To1==To]),
                                 digraph:add_vertex(MG, {To, Elems+1}, {label, ToTime}),
                                 {{To, Elems+1}, 
-                                 [{{To, ToTime}, Elems+1}|IndexTab1]};
+                                 [{{To, ToEndTs}, Elems+1}|IndexTab1]};
                             {_, Index1} ->
-                                digraph:add_vertex(MG, {To, Index1+1}, {label, ToTime}),
-                                {{To, Index1+1}, 
-                                 lists:keyreplace({To, ToTime}, 1, IndexTab1, {{To, ToTime},  Index1+1})}
+                                {{To, Index1}, IndexTab}
                         end
                 end
         end,
@@ -292,7 +289,8 @@ gen_callgraph_slice_edges(CallTree, Min, Max,ProcTime) ->
         false ->
             []
     end.
-           
+            
+
 format_node_with_label_and_url(V, Fun, Label, URL) ->
     String = Fun(V),
     {Width, Heigth} = calc_dim(String),
@@ -302,6 +300,7 @@ format_node_with_label_and_url(V, Fun, Label, URL) ->
     SH = io_lib:format("~f", [H]),
     [String, " [URL=\"", URL, "\""
      " label=\"", Label,"\"",
+     " target=\"", "_graphviz","\"",
      " width=", SL, " heigth=", SH, " ", "", "];\n"].
  
 format_node_with_label_and_url_1(V, Fun, Label, URL) ->
@@ -311,13 +310,10 @@ format_node_with_label_and_url_1(V, Fun, Label, URL) ->
     H = Heigth * 0.4,
     SL = io_lib:format("~f", [W]),
     SH = io_lib:format("~f", [H]),
-    %% ["\"", String, "\"",  " [label=\"", Label,"\"",
-    %%  " width=", SL, " heigth=", SH, " ", "", "];\n"].
-    %%     _ ->
     ["\"", String, "\"",  " [URL=\"", URL, "\""
      " label=\"", Label,"\"",
+     " target=\"", "_graphviz","\"",
      " width=", SL, " heigth=", SH, " ", "", "];\n"].
-%% end.
             
 format_node(V, Fun) ->
     String = Fun(V),

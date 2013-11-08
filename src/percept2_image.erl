@@ -122,7 +122,7 @@ draw_graf(Im, Data, Colors, GA = #graph_area{x = X0, y = Y0, width = Width, heig
     Dy = (Height)/(Ymax),
     Plotdata = [{trunc(X0 + X*Dx - Xmin*Dx), trunc(Y0 + Height - Y1*Dy), trunc(Y0 + Height - (Y1 + Y2)*Dy)} || {X, Y1, Y2} <- Data],
     Data1=remove_duplicates(Plotdata),
-    draw_graf(Im, Plotdata, Colors, GA).
+    draw_graf(Im, Data1, Colors, GA).
 
 
 

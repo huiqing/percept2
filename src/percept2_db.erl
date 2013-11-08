@@ -199,6 +199,7 @@ is_database_loaded() ->
 %% @doc Inserts a trace or profile message to the database.  
 -spec insert(pid()|atom(), tuple()) -> ok.
 insert(SubDB, Trace) -> 
+    io:format("Trace:~p\n", [Trace]),
     SubDB ! {insert, Trace},
     ok.
 
@@ -876,14 +877,12 @@ trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
 trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
     trace_return_to(SubDBIndex, Pid, MFA, TS).
 
-trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, Info, TS}) ->
-    io:format("gc_start info:~p\n", [{Pid, Info}]),
+trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, _Info, TS}) ->
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_start, {Pid, TS}},
     ok.
 
-trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, Info, TS}) ->
-    io:format("gc_end info:~p\n", [{Pid, Info}]),
+trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}) ->
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_end, {Pid, TS}},
     ok.
@@ -1935,7 +1934,7 @@ trace_call_shove(Pid, Func, TS,  [Level0|Stack1]) ->
     Level01 = [{Func, TS} | Level0],
     [NewLevel0| NewStack1] = 
         [trace_call_collapse(Level01) | Stack1],
-   %% ?dbg((-1), "After collaps:\n~p\n", [[NewLevel0| NewStack1]]),
+    ?dbg(-1, "After collapse:\n~p\n", [[NewLevel0| NewStack1]]),
     case Level01 -- NewLevel0 of 
         [] -> ok;
         Funs ->
@@ -1967,12 +1966,12 @@ trace_call_collapse([_ | Stack1] = Stack) ->
 %% and try if that instance may be used as stack top instead.
 trace_call_collapse_1(Stack, [], _) ->
     Stack;
-trace_call_collapse_1([{Func0, _} | _] = Stack, [{Func0, _} | S1] = S, N) ->
+trace_call_collapse_1([{Func0, _} |_] = Stack, [{Func0, _TS} | S1] = S, N) ->
     case trace_call_collapse_2(Stack, S, N) of
 	true ->
-	    S;
+            S;
 	false ->
-	    trace_call_collapse_1(Stack, S1, N+1)
+            trace_call_collapse_1(Stack, S1, N+1)
     end;
 trace_call_collapse_1(Stack, [_ | S1], N) ->
     trace_call_collapse_1(Stack, S1, N+1).
@@ -2035,7 +2034,7 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
     Caller = if is_tuple(Func) -> mfarity(Func);
                 true -> Func
              end,
-    ?dbg((-1), "trace_return_to(~p, ~p, ~p)~n~p~n",
+    ?dbg(-1, "trace_return_to(~p, ~p, ~p)~n~p~n",
 	 [Pid, Caller, TS, Stack]),
     case Stack of
 	[[{suspend, _} | _] | _] ->
@@ -2080,10 +2079,6 @@ trace_return_to_2(Pid, Func, TS, [[] | Stack1]) ->
 trace_return_to_2(_Pid, Func, _TS, [[{Func, _}|_Level0]|_Stack1] = Stack) ->
     Stack;
 trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
-    io:format("DDDDDDDDDDD\n"),
-    io:format("Func0:~p\n", [Func0]),
-    io:format("Level1:~p\n", [Level1]),
-    io:format("Stack1:~p\n", [Stack1]),
     case Func0 of 
          {_, _, _} ->
             case Level1 of 
@@ -2110,10 +2105,8 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
                         false ->
                             update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
                         true ->
-                            io:format("AAAAAAAAAAA\n"),
-                            update_calltree_info(Pid, {Func0,  Func0StartTS, TS}, {Caller, CallerStartTs})
+                            update_calltree_info(Pid, {Func0, Func0StartTS, TS}, {Caller, CallerStartTs})
                     end
-                %%    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs)
             end;
         _ -> 
             ok        
@@ -2158,7 +2151,6 @@ update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) whe
     end;
   
 update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) ->
-    io:format("Update_calltree_info:~p\n", [{Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}}]),
     CallerStartTS = case is_list_comp(Caller) of 
                         true -> undefined;
                        _ -> CallerStartTS0
@@ -2187,7 +2179,6 @@ update_calltree_info(Pid, {Callee, StartTS0, EndTS}, {Caller, CallerStartTS0}) -
                     NewC1 = collapse_call_tree(NewC, Callee),
                     ets:insert(fun_calltree, NewC1);    
                 _ ->
-                    io:format("CCCCCCCCCCCCC\n"),
                     CallerInfo = create_caller_info(CallerId, EndTS, StartTS0, NewF),
                     ets:delete_object(fun_calltree, F),
                     NewCallerInfo = collapse_call_tree(CallerInfo, Callee),
@@ -2243,8 +2234,6 @@ create_caller_info(CallerId = {Pid, Caller, CallerStartTS},
 %% recursion.      
 %% TOTest: is this accurate enough?
 collapse_call_tree(CallTree, Callee) ->
-    io:format("CallTree:~p\n", [CallTree]),
-    io:format("Callee:~p\n", [Callee]),
     {_Pid, Caller,_TS} = CallTree#fun_calltree.id,
     Children=CallTree#fun_calltree.called,
     case collect_children_to_merge(Children, {Caller, Callee}) of 
@@ -2293,24 +2282,36 @@ add_new_callee(CalleeInfo, CalleeList) ->
     end.
 
 combine_fun_info(FunInfo1=#fun_calltree{id=Id, called=Callees1, 
-                                        start_ts=StartTS1,end_ts= _EndTS1,
+                                        start_ts=StartTS1,end_ts= EndTS1,
                                         acc_time = AccTime1,
                                         cnt=CNT1,
                                         rec_cnt = RecCnt1}, 
-                 FunInfo2=#fun_calltree{id=Id, called=Callees2, 
-                                         start_ts=_StartTS2, end_ts=EndTS2,
+                 _FunInfo2=#fun_calltree{id=Id, called=Callees2, 
+                                         start_ts=StartTS2, end_ts=EndTS2,
                                          acc_time = AccTime2,
                                          cnt=CNT2,
                                          rec_cnt = RecCnt2}) ->
+    NewAccTime = case StartTS1=<StartTS2 andalso EndTS1>=EndTS2 of 
+                     true ->
+                         AccTime1;
+                     false ->
+                         case StartTS1>=StartTS2 andalso EndTS1=<EndTS2 of 
+                             true ->
+                                 AccTime2;
+                             false ->
+                                 AccTime1+AccTime2
+                         end
+                 end,
     NewCallees=lists:foldl(fun(C, Callees) ->
                                    add_new_callee(C, Callees)
                            end, Callees1, Callees2),
     FunInfo1#fun_calltree{id=Id, called=NewCallees, 
-                          start_ts=StartTS1, end_ts=EndTS2,
-                          acc_time = AccTime1 + AccTime2,
+                          start_ts=lists:min([StartTS1,StartTS2]),
+                          end_ts=lists:max([EndTS1, EndTS2]),
+                          acc_time = NewAccTime, 
                           cnt = CNT1 + CNT2, 
                           rec_cnt = RecCnt1+RecCnt2}.
-    
+
 
 is_list_comp({_M, F, _A}) ->
     re:run(atom_to_list(F), ".*-lc.*", []) /=nomatch;

@@ -224,6 +224,9 @@ process_trace_profile_opts([Opt|Opts], Acc) ->
             process_trace_profile_opts(
               Opts, [runnable_procs, procs, exclusive, 
                      call, return_to, s_group|Acc]);
+        pure_procs->
+            process_trace_profile_opts(
+              Opts, [procs|Acc]);
         all ->
             process_trace_profile_opts(
               Opts, [runnable_ports, ports,
