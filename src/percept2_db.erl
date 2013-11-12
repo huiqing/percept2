@@ -2100,7 +2100,9 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
                                                 [] ->
                                                     {Func, Func0StartTS}
                                             end,
-                    case lists:any(fun({Func2, _}) -> Func2 ==Func0 end, lists:append(Stack1)) of 
+                    case lists:any(fun({Func2, _}) -> Func2 ==Func0;
+                                       (_) -> false 
+                                  end, lists:append(Stack1)) of 
                         false ->
                             update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
                         true ->
