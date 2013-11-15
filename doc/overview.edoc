@@ -68,33 +68,54 @@ The second argument is a callback entry-point, from where the profiling starts.
 
 The third argument is a list of options that decide what kind of events to be profiled.
 
-The following options are available:
-   
-     -- `procs'             : enables the profiling of process concurrency. 
+The profiling starts with executing the entry function given, and goes on for 
+the whole duration until the entry function returns and the profiling 
+has concluded. The events to be traced/profiled depends on the options 
+specified by `TraceProfileOptions'. The following options are available:
 
-     -- `ports'             : enables the profiling of port concurrecny.
+   -- `procs_basic'       : only profile basic process activities including
+                            spawn, exit, register. Other activiites including 
+                            unregister, link, unlink, getting_linked, and 
+                            getting_unlinked, are traced but not profiled.
 
-     -- `schedulers'        : enables the profiling of scheduler concurrency.
+   -- `procs'             : enable `'procs_baisc', but also profile the 
+                            runnablity of processes. 
 
-     -- `running'           : enables the feature to distinguish running from 
-                              runnable process states.
+   -- `ports_basic'       : only profile basic port activities: open and close.
 
-     -- `message'           : this enables the profiling of message passing between 
-                              processes; 
+   -- `ports'             : enable `ports_basic', but also profile the 
+                            runnablity of ports.
 
-    -- `migration'          : this enables the profiling of process migration between 
-                              schedulers; 
+   -- `schedulers'        : enable the profiling of scheduler concurrency.
 
-    -- `all'                : this enables all the previous options.
+   -- `running'           : enable the feature to distinguish running from 
+                            runnable process states. If the `procs' option is 
+                            not given, this option enables the process concurrency
+                            automatically.
 
-    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
-                              (`call' and `return_to') of functions defined in `Mods'.
-                              Given the huge amount of data that could possibly be produced when this 
-                              feature is on, we do not recommend profiling many modules 
-                              in one go at this stage.
+   -- `message'           : enable the profiling of message passing between 
+                            processes; This option enables `procs_basic' automically.
+         
+   -- `migration'         : enable the profiling of process migration between 
+                            schedulers; this option enables `procs' automatically.
 
-The options `running', `message', `migraion' and `{callgraph, Mods}' will enable the `procs' option 
-automatically if the option is not enabled.
+   -- `garbage_collection': enable the profiling of garbage collection. This 
+
+   -- `s_group'           : enable the profiling of s_group-related activities, including
+                            the creation/deletion of s_groups as well adding/removing nodes
+                            to/from a s_group. 
+
+   -- `all'               : enable all the previous options apart from `s_group'.
+
+   -- `{callgraph, Mods}' : enable the profiling of function activities 
+                            (`call' and `return_to') of functions defined in `Mods'.
+                            This option enables `procs_basic' automatically. Given the huge 
+                            amount of data that could possibly be produced when this 
+                            feature is on, we do not recommend profiling many modules 
+                            in one go at this stage. We are in the process of improving 
+                            the performance of this feature. This feature should not be 
+                            used when `s_group' is enabled, since the latter needs to 
+                            record the actual arguments of function calls.
 
 To illustrate how the tool works, let's take a <em>similar code detection </em>algorithm for Erlang programs as an example. The similar code detection program takes a list of directories/files and some threshold values as parameters, and returns the similar code fragments found in those Erlang files.
 
