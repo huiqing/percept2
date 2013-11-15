@@ -34,8 +34,10 @@
 %% </ul> 
 %% The following techniques have been used to improved the scalability of Percept. 
 %% <ul>
-%% <li> Compressed process tree/function call graph representation: an approach to reducing the number of processes/function call paths presented without losing important information.</li>
-%% <li> Parallelisation of Percept: the processing of profile data has been parallelised so that multiple data files can be processed at the same time </li>
+%% <li> Compressed process tree/function call graph representation: an approach to reducing the
+%%      number of processes/function call paths presented without losing important information.</li>
+%% <li> Parallelisation of Percept: the processing of profile data has been parallelised so that multiple
+%%      data files can be processed at the same time </li>
 %% </ul>
 %%
 %% This module provides the user interface for the application.
@@ -74,16 +76,22 @@
                   {file:filename(), wrap, Suffix::string(),
                    WrapSize::pos_integer(), WrapCnt::pos_integer()}.
 
--type trace_profile_option()::'procs' |                %% profile process concurrency.
-                              'ports' |                %% profile port concurreny.
+-type trace_profile_option()::'procs_basic'|           %% profile basic process activities including
+                                                       %% spawn, exit and register.
+                              'ports_basic'|           %% profile basic port activities: open, close.
+                              'procs' |                %% profile basic process activities and process runnability.
+                              'ports' |                %% profile basic port activities and port runnability.
                               'schedulers'|            %% profile scheduler concurrency.
-                              'running'|               %% distinguish process running state from runnable state.
-                              'message'|               %% profile message passing.
-                              'migration'|             %% profile process migration.
-                              'garbage_collection'|    %% profile garbage collection.
+                              'running'|               %% enable 'procs_basic' and 'running', but also 
+                                                       %% distinguish process running state from runnable state.
+                              'message'|               %% enable 'procs_basic', but also profile message send and receive.
+                              'migration'|             %% enable 'running' and 'scheduler_id'.
+                              'garbage_collection'|    %% enable 'procs_basic' and 'garbage_collection'.
                               's_group'|               %% profile s_group activities.
                               'all'      |             %% profile all the activities above.
-                              {'callgraph', [module_name()]}.  %%trace the call/return of functins defined the modules specified.
+                              {'callgraph', [module_name()]}. %% enable 'procs_basic', but also trace the call/return of 
+                                                              %% functions defined the modules specified. This feature
+                                                              %% should not be used when 's_group' is enabled.
 
 
 %%---------------------------------------------------------%%
@@ -141,36 +149,50 @@ profile(FileSpec, TraceProfileOptions) ->
 %%     the whole duration until the entry function returns and the profiling 
 %%     has concluded. The events to be traced/profiled depends on the options 
 %%     specified by `TraceProfileOptions'. The following options are available:
-%%   
-%%     -- `procs'             : enables the profiling of process concurrency. 
 %%
-%%     -- `ports'             : enables the profiling of port concurrecny.
+%%    -- `procs_basic'       : only profile basic process activities including
+%%                             spawn, exit, register. Other activiites including 
+%%                             unregister, link, unlink, getting_linked, and 
+%%                             getting_unlinked, are traced but not profiled.
 %%
-%%     -- `schedulers'        : enables the profiling of scheduler concurrency.
+%%    -- `procs'             : enable `'procs_baisc', but also profile the 
+%%                             runnablity of processes. 
 %%
-%%     -- `running'           : enables the feature to distinguish running from 
-%%                              runnable process states. If the `procs' option is 
-%%                              not given, this option enables the process concurrency
-%%                              automatically.
+%%    -- `ports_basic'       : only profile basic port activities: open and close.
 %%
-%%     -- `message'           : this enables the profiling of message passing between 
-%%                              processes; If the `procs' option is not given, this 
-%%                              option enables the process concurrency automatically.
+%%    -- `ports'             : enable `ports_basic', but also profile the 
+%%                             runnablity of ports.
+%%
+%%    -- `schedulers'        : enable the profiling of scheduler concurrency.
+%%
+%%    -- `running'           : enable the feature to distinguish running from 
+%%                             runnable process states. If the `procs' option is 
+%%                             not given, this option enables the process concurrency
+%%                             automatically.
+%%
+%%    -- `message'           : enable the profiling of message passing between 
+%%                             processes; This option enables `procs_basic' automically.
 %%         
-%%    -- `migration'          : this enables the profiling of process migration between 
-%%                              schedulers; If the `procs' option is not given, this 
-%%                              option enables the process concurrency automatically.
-%%    -- `garbage_collection' : this enables the profiling of garbage collection.
-%%    -- `s_group'            : this enables the profiling of s_group-related activities.
-%%    -- `all'                : this enable all the previous options.
+%%    -- `migration'         : enable the profiling of process migration between 
+%%                             schedulers; this option enables `procs' automatically.
 %%
-%%    -- `{callgraph, Mods}'  : This enables the profiling of function activities 
+%%    -- `garbage_collection': enable the profiling of garbage collection. This 
+%%
+%%    -- `s_group'           : enable the profiling of s_group-related activities, including
+%%                             the creation/deletion of s_groups as well adding/removing nodes
+%%                             to/from a s_group. 
+%%
+%%    -- `all'               : enable all the previous options apart from `s_group'.
+%%
+%%    -- `{callgraph, Mods}' : enable the profiling of function activities 
 %%                              (`call' and `return_to') of functions defined in `Mods'.
-%%                              If the `procs' option is not given, this option enables 
-%%                              the process concurrency automatically. Given the huge 
+%%                              This option enables `procs_basic' automatically. Given the huge 
 %%                              amount of data that could possibly be produced when this 
 %%                              feature is on, we do not recommend profiling many modules 
-%%                              in one go at this stage.
+%%                              in one go at this stage. We are in the process of improving 
+%%                              the performance of this feature. This feature should not be 
+%%                              used when `s_group' is enabled, since the latter needs to 
+%%                              record the actual arguments of function calls.
 %%
 %% See the <a href="overview-summary.html">Overview</a> page for examples.
 -spec profile(FileSpec :: filespec(),
@@ -195,38 +217,38 @@ process_trace_profile_opts([], Res) ->
     lists:usort(Res);
 process_trace_profile_opts([Opt|Opts], Acc) ->
     case Opt of 
-        port ->
+        ports_basic ->
+            process_trace_profile_opts(
+              Opts,[ports|Acc]);
+        ports ->
             process_trace_profile_opts(
               Opts,[runnable_ports, ports|Acc]);
+        procs_basic ->
+            process_trace_profile_opts(
+              Opts,[procs|Acc]);
         procs ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive|Acc]);
         schedulers ->
             process_trace_profile_opts(
-              Opts,[scheduler|Acc]);
+              Opts,[procs, scheduler|Acc]);
         running ->
             process_trace_profile_opts(
               Opts,[runnable_procs,procs,exclusive, 
                     running,exiting|Acc]);
         message ->
             process_trace_profile_opts(
-              Opts,[runnable_procs,exclusive,
-                    procs, 'send','receive'|Acc]);
+              Opts,[procs, 'send','receive'|Acc]);
         migration ->
             process_trace_profile_opts(
               Opts,[runnable_procs, procs, exclusive,
-                    running, scheduler_id|Acc]);
+                    running, exiting, scheduler_id|Acc]);
         garbage_collection ->
             process_trace_profile_opts(
-              Opts,[runnable_procs, procs, exclusive,
-                    garbage_collection|Acc]);
+              Opts,[procs,garbage_collection|Acc]);
         s_group ->
             process_trace_profile_opts(
-              Opts, [runnable_procs, procs, exclusive, 
-                     call, return_to, s_group|Acc]);
-        pure_procs->
-            process_trace_profile_opts(
-              Opts, [procs|Acc]);
+              Opts, [call,return_to, s_group|Acc]);
         all ->
             process_trace_profile_opts(
               Opts, [runnable_ports, ports,
@@ -236,8 +258,7 @@ process_trace_profile_opts([Opt|Opts], Acc) ->
                      'send','receive',scheduler_id|Acc]);
         {callgraph, Mods} when is_list(Mods) ->
             process_trace_profile_opts(
-              Opts,[runnable_procs, procs,exclusive, call, 
-                    return_to, arity, running, {callgraph, Mods}|Acc]);
+              Opts,[procs,call,return_to,arity,{callgraph, Mods}|Acc]);
         Other ->
             Msg = lists:flatten(
                     io_lib:format(
