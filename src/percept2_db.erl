@@ -452,10 +452,10 @@ select_query_message(Query) ->
                                to = {'$3', '_'},
                                _='_'},
             Constraints = [{'/=', '$1','$3'}],
-            Body =  [{{'$1', '$3'}}],
+            Body =  [['$1', '$3']],
             Recs=ets:select(inter_proc, [{Head, Constraints, Body}]),
-            sets:to_list(sets:from_list(Recs));
-        {inter_proc, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
+            sets:to_list(sets:from_list(lists:append(Recs)))--[nonode];
+        {inter_node, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
             FromNode = list_to_atom(FromNode1),
             ToNode = list_to_atom(ToNode1),
             Head = #inter_proc{timed_from={'$0', FromNode, '_'},
@@ -680,7 +680,7 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     InformativeMfa = mfarity(mfa2informative(Mfa)),
     update_information(ProcRegName,
-                       #information{id = pid2value(Pid), start = TS,
+                       #information{id = pid2value(Pid), node=node(Pid),start = TS,
                                     parent = pid2value(Parent), entry = InformativeMfa}),
     update_information_child(ProcRegName, pid2value(Parent), Pid).
 
@@ -689,12 +689,13 @@ trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pi
     FuncProcRegName ! {trace_exit, {Pid, TS}},
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     insert_profile_trace_1(SubDBIndex, Pid, inactive, undefined, TS, procs), 
-    update_information(ProcRegName, #information{id = pid2value(Pid), stop = TS}).
+    update_information(ProcRegName, #information{id = pid2value(Pid), node=node(Pid), stop = TS}).
 
 trace_register(SubDBIndex,_Trace={trace_ts, Pid, register, Name, _Ts}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     ets:insert(pdb_system, {{regname, Name}, pid2value(Pid)}),
-    update_information(ProcRegName, #information{id = pid2value(Pid), name = Name}).
+    update_information(ProcRegName, #information{id = pid2value(Pid), node=node(Pid),
+                                                 name = Name}).
  
 trace_unregister(_SubDBIndex, _Trace)->
     ok.  
@@ -849,7 +850,7 @@ trace_send_to_non_existing_process(SubDBIndex,
 trace_open(SubDBIndex, _Trace={trace_ts, Caller, open, Port, Driver, TS})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{
-                          id = Port, entry = Driver, start = TS,
+                         id = Port, entry = Driver, start = TS,
                          parent =  pid2value(Caller)}).
 
 trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
@@ -1011,17 +1012,20 @@ select_query_activity_1(SubDBIndex, Query) ->
             MS= [{#activity{timestamp ='$1', id=Pid, _='_'}, [], ['$1']}
                  ||Pid<-Pids],
             Tab = mk_proc_reg_name("pdb_activity", SubDBIndex),
-            {First, _Cont} = ets:select(Tab, MS, 1),
-            {Last, _Cont1} = ets:select_reverse(Tab, MS, 1),
-            case First of 
-                [] -> [];
-                [F] ->
-                    [Last1] = ets:lookup(Tab, hd(Last)),
-                    LastTS = case Last1#activity.in_out of 
-                              [] -> hd(Last);
-                              _ ->element(2, hd(Last1#activity.in_out))
-                           end,
-                    [{F, LastTS}]
+            case ets:select(Tab, MS, 1) of 
+                '$end_of_table'->[];
+                {First, _Cont}->
+                    {Last, _Cont1} = ets:select_reverse(Tab, MS, 1),
+                    case First of 
+                        [] -> [];
+                        [F] ->
+                            [Last1] = ets:lookup(Tab, hd(Last)),
+                            LastTS = case Last1#activity.in_out of 
+                                         [] -> hd(Last);
+                                         _ ->element(2, hd(Last1#activity.in_out))
+                                     end,
+                            [{F, LastTS}]
+                    end
             end;
         {activity, Options} when is_list(Options) ->
             case lists:member({ts_exact, true},Options) of
@@ -1446,7 +1450,8 @@ update_information_sent_1(From, MsgSize, To, Ts) ->
     case ets:lookup(pdb_info, InternalFrom) of
         [] -> 
             ets:insert(pdb_info, 
-                       #information{id=InternalFrom, 
+                       #information{id=InternalFrom,
+                                    node=node(From),
                                     msgs_sent={1, MsgSize}
                                    });            
         [I] ->
@@ -1477,6 +1482,7 @@ update_information_received_1(Pid, MsgSize) ->
         [] -> 
             ets:insert(pdb_info, #information{
                          id =Pid1,
+                         node = node(Pid),
                          msgs_received ={1, MsgSize}
                         });
         [I] ->
@@ -2364,16 +2370,16 @@ consolidate_db(FileNameSubDBPairs) ->
 
 get_start_time_ts() ->
     AMin = case ets:first(pdb_activity1) of 
-               T when is_tuple(T)-> T;
-               _ ->undefined
+               '$end_of_table' -> undefined;
+               T when is_tuple(T)-> element(1,T)
            end,
     SMin =case ets:first(pdb_scheduler1) of 
-              T1 when is_tuple(T1)-> T1;
-               _ -> undefined
+              '$end_of_table' -> undefined;
+              T1 when is_tuple(T1)-> element(1,T1)
           end,
     IMin =case ets:first(inter_proc) of 
-              {T2, _} when is_tuple(T2)-> T2;
-              _ -> undefined
+              '$end_of_table' -> undefined;
+              {T2, _, _} when is_tuple(T2)-> T2
           end,
     Ts = [T||T<-[AMin, SMin, IMin], T/=undefined],
     case Ts of
@@ -2394,7 +2400,7 @@ get_stop_time_ts(LastIndex) ->
                _ -> undefined
            end,
     IMax =case ets:last(inter_proc) of 
-              {T2, _} when is_tuple(T2)-> T2;
+              {T2, _,_} when is_tuple(T2)-> T2;
               _ -> undefined
           end,
     Ts = [T||T<-[AMax, SMax, IMax], T/=undefined],
