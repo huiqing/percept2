@@ -274,7 +274,6 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(s_group, [named_table, public, {keypos,#s_group.timed_node}, 
                       ordered_set, {read_concurrency, true},
                       {write_concurrency, true}]),                      
-    %% ets:new(msg_queue_len, [named_table, public, {keypos, #msg_queue_len.pid}, bag]),
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept2_db, started, FileNameSubDBPairs},
     loop_percept_db(FileNameSubDBPairs).
@@ -2414,7 +2413,7 @@ consolidate_runnability(LastSubDBIndex) ->
     Tab = mk_proc_reg_name("pdb_activity", 1),
     LastKey = ets:last(Tab),
     case LastKey of 
-        'end_of_table' -> 
+        '$end_of_table' -> 
             consolidate_runnability_1(2, {0, 0},LastSubDBIndex);
         _ ->
             [#activity{runnable_procs=RunnableProcs,
