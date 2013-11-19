@@ -52,6 +52,7 @@
 
 -record(information, {
           id			 :: pid_value() | port()|special_atom()|{pid, special_atom()},
+          node = nonode          :: atom(),
           name = undefined	 :: atom()| string()|'undefined'|special_atom(), 
           entry = undefined	 :: true_mfa()|'undefined'|'suspend'|'garbage_collect'|
                                     special_atom()|
