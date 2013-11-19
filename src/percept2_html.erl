@@ -920,12 +920,12 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
     if 
 	length(ProcsHtml) > 0 ->
             " <tr><td>
- 	   <table align=center width=1000 cellspacing=10 border=0>
+ 	   <table class=sortable align=center width=1000 cellspacing=10 border=0>
 		<tr>
 		<td align=middle width=40><b>Select</b></td>
                 <td align=middle width=40> <b>[+/-]</b></td>
 		<td align=middle width=80><b>Pid</b></td>
-		<td align=middle width=80><b>Lifetime</b></td>
+               	<td align=middle width=80><b>Lifetime</b></td>
 	        <td align=middle width=80><b>Name</b></td>
 		<td align=middle width=80><b>Parent</b></td>
                 <td align=middle width=80><b>#RQ_chgs</b></td>
@@ -1111,6 +1111,7 @@ process_info_content_1(_Env, Input) ->
     InfoTable = html_table
                   ([
                     [{th, "Pid"},        pid2html(I#information.id, CleanPid)],
+                    [{th, "Node"},       term2html(I#information.node)],
                     [{th, "Name"}, term2html(case is_dummy_pid(Pid) of
                                                  true -> dummy_process;
                                                  _ -> I#information.name
