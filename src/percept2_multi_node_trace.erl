@@ -2,7 +2,7 @@
 
 -compile(export_all).
 
--include_lib("percept2/include/percept2.hrl").
+-include("../include/percept2.hrl").
 
 -spec(start([node()]) -> ok).
 start(Nodes) ->
@@ -122,7 +122,7 @@ short_node_name(NodeName) ->
 %% In the same Erlang node:
 %% 1) go to the directory which contains the trace data.
 %% 2)run the command:
-%%   percept2_multi_node_trace:run_orbit_with_trace(N).
+%%   percept2_multi_node_trace:analyze_orbit_data(N).
 
 %% To see the profiling data:
 %% 1)in the Erlang node, run the command:  percept2:start_webserver(8080).
