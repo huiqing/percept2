@@ -271,7 +271,7 @@ init_percept_db(Parent, TraceFileNames) ->
                          {keypos,#inter_proc.timed_from}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
-    ets:new(s_group, [named_table, public, {keypos,#s_group.timed_node}, 
+    ets:new(s_group, [named_table, public, {keypos,#s_group_info.timed_node}, 
                       ordered_set, {read_concurrency, true},
                       {write_concurrency, true}]),                      
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
@@ -857,20 +857,21 @@ trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{id = Port, stop = Ts}).
 
+%% Dialyzer reports an error here, but I think Dialyzer thought the atom 
+%% s_group used in the pattern is a record tag.
 trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, new_s_group, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+    ets:insert(s_group, #s_group_info{timed_node={TS, get_node_name(Pid)}, 
                                  op={new_s_group, Args}});
-
 trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, delete_s_group, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+    ets:insert(s_group, #s_group_info{timed_node={TS, get_node_name(Pid)}, 
                                  op={delete_s_group, Args}});
 trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, add_nodes, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+    ets:insert(s_group, #s_group_info{timed_node={TS, get_node_name(Pid)}, 
                                  op={add_nodes, Args}});
 trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, remove_nodes, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
+    ets:insert(s_group, #s_group_info{timed_node={TS, get_node_name(Pid)}, 
                                  op={remove_nodes, Args}});
-trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
+trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA, {cp, CP}, TS}) ->
     trace_call(SubDBIndex, Pid, MFA, TS, CP).
 
 trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->

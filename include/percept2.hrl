@@ -124,7 +124,7 @@
 
 -type s_group_op()::new_s_group|delete_s_group|add_nodes|remove_nodes.
 
--record(s_group, 
+-record(s_group_info, 
         {timed_node:: {timestamp(),node()},
          op :: {s_group_op(), [term()]}
         }).
