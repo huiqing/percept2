@@ -2372,11 +2372,11 @@ consolidate_db(FileNameSubDBPairs) ->
 get_start_time_ts() ->
     AMin = case ets:first(pdb_activity1) of 
                '$end_of_table' -> undefined;
-               T when is_tuple(T)-> element(1,T)
+               T when is_tuple(T)-> T
            end,
     SMin =case ets:first(pdb_scheduler1) of 
               '$end_of_table' -> undefined;
-              T1 when is_tuple(T1)-> element(1,T1)
+              T1 when is_tuple(T1)-> T1
           end,
     IMin =case ets:first(inter_proc) of 
               '$end_of_table' -> undefined;
