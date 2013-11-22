@@ -609,16 +609,22 @@ insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, procs) ->
             ok;
         valid_state ->
             InternalPid =pid2value(Id),
-            if State==active->
+            case State of 
+                active->
                     erlang:put({active, Id}, {TS, []});
-               true ->  %% process changes to be inactive.
-                    {TS1, InOuts}=erlang:get({active, Id}),
-                    AccRunTime = calc_acc_runtime(TS1, lists:reverse(InOuts), TS),
-                    InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-                    update_information_acc_time(InfoProcRegName, {InternalPid,AccRunTime}),
-                    update_activity(ActProcRegName, {update_inouts, InternalPid, TS1, InOuts}),
-                    erlang:erase({in, Id}),
-                    erlang:erase({active, Id})
+                inactive ->  %% process changes to be inactive.
+                    case erlang:get({active, Id}) of 
+                        undefined ->
+                            erlang:erase({in, Id});
+                        {TS1, InOuts} ->
+                            {TS1, InOuts}=erlang:get({active, Id}),
+                            AccRunTime = calc_acc_runtime(TS1, lists:reverse(InOuts), TS),
+                            InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+                            update_information_acc_time(InfoProcRegName, {InternalPid,AccRunTime}),
+                            update_activity(ActProcRegName, {update_inouts, InternalPid, TS1, InOuts}),
+                            erlang:erase({in, Id}),
+                            erlang:erase({active, Id})
+                    end
             end,
             ProcRC = get_runnable_count(procs, State),
             PortRC = get({runnable, ports}),
@@ -1846,23 +1852,25 @@ trace_in_1(Pid, Func, TS, Stack) ->
             update_fun_related_info(Pid, suspend, TS0, TS, Func1, TS1),
             trace_return_to_2(Pid, Func1, TS, Stack);
         _ ->
-            throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, Func, TS, Stack]})
+            Stack
+            %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
+            %%        [Pid, Func, TS, Stack]})
     end.
 
 trace_gc_end_1(Pid, TS, Stack) ->
     ?dbg(0, "trace_gc_end(~p, ~p)~n~p~n", [Pid, TS, Stack]),
     case Stack of
 	[] ->
-	    ok;
+	    [];
 	[[{garbage_collect, _}]] ->
             trace_return_to_2(Pid, undefined, TS, Stack);
 	[[{garbage_collect, TS0}], [{Func1, TS1} | _] | _] ->
             update_fun_related_info(Pid, garbage_collect, TS0, TS, Func1, TS1),
             trace_return_to_2(Pid, Func1, TS, Stack);
 	_ ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, TS, Stack]})
+	    %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
+            %%        [Pid, TS, Stack]})
+            Stack
     end.
 
 
@@ -1903,7 +1911,7 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
         [[{suspend, _} | _] | _] ->
             throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
-	[[{garbage_collect, _} | _] | _] ->
+	[[{garbage_collect, _} | _] |_] ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
         [[{Func, _FirstInTS}]] ->
@@ -2023,7 +2031,7 @@ trace_return_to_0(SubDBIndex, Pid, Stack, PrevStack, Func, TS,
                                     {NewStack1, PrevStack1}
                             after 1000  %% what is the proper timeout value here?
                                       ->
-                                    io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
+                                   %% io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
                                     {[[{Func, TS}]], false}
                             end;
                         _ ->
@@ -2042,9 +2050,10 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
     ?dbg(-1, "trace_return_to(~p, ~p, ~p)~n~p~n",
 	 [Pid, Caller, TS, Stack]),
     case Stack of
-	[[{suspend, _} | _] | _] ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, Caller, TS, Stack]});
+	[[{suspend, _} | _] | Stack1] ->
+	    %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
+            %%        [Pid, Caller, TS, Stack]});
+            trace_return_to_1(Pid, Func, TS, Stack1);           
 	[[{garbage_collect, _} | _] | _] ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Caller, TS, Stack]});
@@ -2089,9 +2098,19 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
             case Level1 of 
                 [{Func1, TS2}|_] ->
                     {Caller, CallerStartTs}={Func1, TS2},
-                    {Level11, _Level12} = lists:splitwith(fun({Func2, _})-> Func2 =/= Func end,
+                    {Level11, _Level12} = lists:splitwith(fun(Entry)->
+                                                                  case Entry of 
+                                                                      {Func2, _}->Func2 =/= Func;
+                                                                      _ -> false
+                                                                  end
+                                                          end,
                                                      Level1),
-                    case lists:any(fun({Func2, _}) -> Func2 ==Func0 end, Level11) of 
+                    case lists:any(fun(Entry) -> 
+                                           case Entry of 
+                                               {Func2, _} ->Func2 ==Func0;
+                                               _ -> false
+                                           end
+                                   end, Level11) of 
                         false ->
                             update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
                         true ->
