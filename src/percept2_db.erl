@@ -746,11 +746,16 @@ process_trace_in(SubDBIndex, Pid, MFA, TS) ->
             NewState =[{Pid, active}|RunnableStates],
             put(runnable_states, NewState),
             ActProcRegName = mk_proc_reg_name("pdb_activity", SubDBIndex),
+            RC = if SubDBIndex == 1 ->
+                         get_runnable_count(procs, active);
+                    true ->
+                         get({runnable, procs})
+                 end,
             update_activity(ActProcRegName,
                             #activity{id = pid2value(Pid),
                                       state = active,
                                       timestamp = TS,
-                                      runnable_procs=get({runnable, ports}), 
+                                      runnable_procs=RC, 
                                       runnable_ports=get({runnable, ports})});                                  
         {TS1, InOuts} ->
             erlang:put({active, Pid}, {TS1, [{in, TS}|InOuts]})
