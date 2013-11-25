@@ -615,7 +615,8 @@ insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, procs) ->
                 inactive ->  %% process changes to be inactive.
                     case erlang:get({active, Id}) of 
                         undefined ->
-                            erlang:erase({in, Id});
+                            erlang:erase({in, Id}),
+                            erlang:erase({active, Id});
                         {TS1, InOuts} ->
                             {TS1, InOuts}=erlang:get({active, Id}),
                             AccRunTime = calc_acc_runtime(TS1, lists:reverse(InOuts), TS),
@@ -672,7 +673,7 @@ check_activity_consistency(SubDBIndex, Id, State) ->
             invalid_state;
         false when State == inactive andalso SubDBIndex==1 ->
              invalid_state;
-        false -> %% not 100% accurate here.
+        false ->
             NewState =[{Id, State}|RunnableStates],
             put(runnable_states, NewState),
             valid_state;
@@ -749,7 +750,7 @@ process_trace_in(SubDBIndex, Pid, MFA, TS) ->
                             #activity{id = pid2value(Pid),
                                       state = active,
                                       timestamp = TS,
-                                      runnable_procs=get_runnable_count(procs,active),
+                                      runnable_procs=get({runnable, ports}), 
                                       runnable_ports=get({runnable, ports})});                                  
         {TS1, InOuts} ->
             erlang:put({active, Pid}, {TS1, [{in, TS}|InOuts]})
@@ -1005,7 +1006,7 @@ get_runnable_count(Type, State) ->
             N - 1;
         Unhandled ->
 	    ?dbg(0, "get_runnable_count, unhandled ~p~n", [Unhandled]),
-	    Unhandled
+            Unhandled
     end.
 
 %%% select_query_activity
