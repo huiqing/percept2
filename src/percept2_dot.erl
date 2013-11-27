@@ -69,12 +69,16 @@ get_proc_life_time(Pid)->
 gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent) ->
     {ProcStartTs, ProcStopTs} = get_proc_life_time(Pid),
     if CallTree#fun_calltree.cnt==0 ->
+            StartTs = case CallTree#fun_calltree.start_ts of 
+                          undefined -> ProcStartTs;
+                          Ts -> Ts
+                      end,
             CallTree1=CallTree#fun_calltree{cnt=1, end_ts=ProcStopTs, 
                                             acc_time=timer:now_diff(
-                                                       ProcStopTs, CallTree#fun_calltree.start_ts)},
+                                                       ProcStopTs, StartTs)},
             gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree1, MinCallCount, MinTimePercent);
        true ->
-             gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinCallCount, MinTimePercent)
+            gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinCallCount, MinTimePercent)
     end.
 
 gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimePercent) ->
