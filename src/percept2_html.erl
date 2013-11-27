@@ -1397,10 +1397,8 @@ callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
-    MinCallCount = get_option_value("callcounts_min", Query),
     MinTimePercent = get_option_value("time_percent_min", Query),
-    ImgFileBaseName="callgraph" ++ pid2str(Pid)++"_"++integer_to_list(MinCallCount)
-        ++"_"++integer_to_list(MinTimePercent),
+    ImgFileBaseName="callgraph" ++ pid2str(Pid)++"_"++integer_to_list(MinTimePercent),
     ImgFileName=ImgFileBaseName++".svg",
     SvgDir = percept2:get_svg_alias_dir(),
     ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
@@ -1411,12 +1409,7 @@ callgraph_time_content(Env, Input) ->
            action=/cgi-bin/percept2_html/callgraph_visualisation_page>
         <input name=pid type=hidden value=" ++ pid2str(Pid) ++ ">
 	<center>
-        <br></br>
-        <table>
-           <tr><td align=left>Minimum number of callcounts:</td>
-               <td><input type=text name=callcounts_min  value=" 
-                 ++ term2html(MinCallCount) ++ "> </tr>
-           <tr><td align=left>Minimum time percentage:</td> 
+        <table> <tr><td align=left>Minimum time percentage:</td> 
                <td align=left><input type=text name=time_percent_min  value=" 
                  ++ term2html(MinTimePercent) ++"> </td></tr>
            <tr><td><input type=submit value=\"Update\" /> </td></tr>
@@ -1434,7 +1427,7 @@ callgraph_time_content(Env, Input) ->
         true -> Content;  %% file already generated.
         false -> 
             GenImgRes=percept2_dot:gen_callgraph_img(
-                        Pid, SvgDir, ImgFileBaseName, MinCallCount, MinTimePercent),
+                        Pid, SvgDir, ImgFileBaseName, MinTimePercent),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 

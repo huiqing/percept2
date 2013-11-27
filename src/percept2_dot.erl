@@ -1,6 +1,6 @@
 -module(percept2_dot).
 
--export([gen_callgraph_img/5,
+-export([gen_callgraph_img/4,
          gen_process_tree_img/1,
          gen_process_comm_img/4,
          gen_callgraph_slice_img/4]).
@@ -18,9 +18,9 @@
 %%% --------------------------------%%%
 -spec(gen_callgraph_img(Pid::pid_value(), DestDir::file:filename(),
                         ImgFileBaseName::file:filename(),
-                        MinCallCount::integer(), MinTimePercent::integer()) 
+                        MinTimePercent::integer()) 
       -> ok|no_image|dot_not_found|{gen_svg_failed, Cmd::string()}).
-gen_callgraph_img(Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent) ->
+gen_callgraph_img(Pid, DestDir, ImgFileBaseName, MinTimePercent) ->
     Res=ets:select(fun_calltree, 
                    [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
                      [],
@@ -30,21 +30,21 @@ gen_callgraph_img(Pid, DestDir, ImgFileBaseName, MinCallCount, MinTimePercent) -
         [] -> no_image;
         [Tree] -> 
             gen_callgraph_img_1(Pid, Tree, DestDir, ImgFileBaseName, 
-                                MinCallCount, MinTimePercent)
+                                MinTimePercent)
     end.
    
 gen_callgraph_img_1(Pid, CallTree, DestDir, ImgFileBaseName, 
-                    MinCallCount, MinTimePercent) ->
+                    MinTimePercent) ->
     DotFileName = ImgFileBaseName++".dot",
     SvgFileName =gen_svg_file_name(ImgFileBaseName, DestDir),
-    fun_callgraph_to_dot(Pid, CallTree,DotFileName, MinCallCount, MinTimePercent),
+    fun_callgraph_to_dot(Pid, CallTree,DotFileName, MinTimePercent),
     dot_to_svg(DotFileName, SvgFileName).
 
 gen_svg_file_name(BaseName, DestDir) ->
     filename:join([DestDir, BaseName++".svg"]).
     
-fun_callgraph_to_dot(Pid, CallTree, DotFileName, MinCallCount, MinTimePercent) ->
-    Edges=gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent),
+fun_callgraph_to_dot(Pid, CallTree, DotFileName, MinTimePercent) ->
+    Edges=gen_callgraph_edges(Pid, CallTree, MinTimePercent),
     MG = digraph:new(),
     digraph_add_edges(Edges, [], MG),
     to_dot(MG,DotFileName, Pid),
@@ -66,7 +66,7 @@ get_proc_life_time(Pid)->
     {ProcStartTs, ProcStopTs}.
 
 
-gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent) ->
+gen_callgraph_edges(Pid, CallTree, MinTimePercent) ->
     {ProcStartTs, ProcStopTs} = get_proc_life_time(Pid),
     if CallTree#fun_calltree.cnt==0 ->
             StartTs = case CallTree#fun_calltree.start_ts of 
@@ -76,12 +76,12 @@ gen_callgraph_edges(Pid, CallTree, MinCallCount, MinTimePercent) ->
             CallTree1=CallTree#fun_calltree{cnt=1, end_ts=ProcStopTs, 
                                             acc_time=timer:now_diff(
                                                        ProcStopTs, StartTs)},
-            gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree1, MinCallCount, MinTimePercent);
+            gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree1,MinTimePercent);
        true ->
-            gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinCallCount, MinTimePercent)
+            gen_callgraph_edges_1({ProcStartTs, ProcStopTs}, CallTree, MinTimePercent)
     end.
 
-gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimePercent) ->
+gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinTimePercent) ->
     {_, CurFunc, _} = CallTree#fun_calltree.id,
     ProcTime = timer:now_diff(ProcStopTs, ProcStartTs),
     CurFuncTime = CallTree#fun_calltree.acc_time, 
@@ -95,8 +95,7 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimeP
                       ToFuncEndTs = Tree#fun_calltree.end_ts,
                       CurTimePercent = CurFuncTime/ProcTime,
                       ToTimePercent = ToFuncTime/ProcTime,
-                      case CallCount >= MinCallCount andalso 
-                           CurTimePercent >= MinTimePercent/100 andalso
+                      case CurTimePercent >= MinTimePercent/100 andalso
                            ToTimePercent >= MinTimePercent/100 of 
                           true ->
                               NewEdge = {{CurFunc,CurTimePercent, CurFuncEndTs},
@@ -104,7 +103,7 @@ gen_callgraph_edges_1({ProcStartTs, ProcStopTs},CallTree, MinCallCount, MinTimeP
                                          CallCount},
                               [[NewEdge|gen_callgraph_edges_1(
                                           {ProcStartTs, ProcStopTs}, 
-                                          Tree, MinCallCount, MinTimePercent)]
+                                          Tree, MinTimePercent)]
                                |Acc];
                           false -> Acc
                       end
