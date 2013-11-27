@@ -2511,11 +2511,9 @@ consolidate_calltree_2(Pid) ->
                                [],
                                ['$_']
                               }]),
-    io:format("Length:~p\n", [{length(Trees), lists:map(fun(T) ->erlang:external_size(T) end, Trees)}]),
     [Tree|Others] = lists:sort(fun(T1, T2) ->
                                        erlang:external_size(T1)>= erlang:external_size(T2)
                                end, Trees),
-    io:format("Max:~p\n", [erlang:external_size(Tree)]),
     lists:foreach(fun(T)-> 
                           ets:delete_object(fun_calltree, T) 
                   end, Others),
