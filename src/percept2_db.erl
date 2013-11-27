@@ -260,7 +260,6 @@ init_percept_db(Parent, TraceFileNames) ->
     ets:new(pdb_info, [named_table, public, {keypos, #information.id}, set, 
                        {read_concurrency,true}, {write_concurrency,true}]),
     ets:new(pdb_system, [named_table, public, {keypos, 1}, set]),
-    %% Think about tis funcall_info table again!!!
     ets:new(funcall_info, [named_table, public, {keypos, #funcall_info.id}, 
                            ordered_set]),
     ets:new(fun_calltree, [named_table, public, {keypos, #fun_calltree.id}, 
@@ -1798,17 +1797,14 @@ pdb_func_loop_process_trace_1(ChildrenProcs, Trace) ->
 pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
     receive
         {trace_call, {Pid, Func, TS, CP}} ->
-            NewStack=trace_call_1(Pid, Func, TS, CP, Stack),
-            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
+            {NewStack, NewPrevStack}=trace_call_1(SubDBIndex, Pid, Func, TS, CP, Stack, PrevStack),
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, NewPrevStack});
         {trace_return_to, {Pid, Func, TS}} ->
-            PrevSubIndex = SubDBIndex-1,
-            {NewStack, NewPrevStack}=trace_return_to_0(SubDBIndex, Pid, Stack,
-                                                       PrevStack, Func, TS,
-                                                       PrevSubIndex),
+            {NewStack, NewPrevStack}=trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack,PrevStack),
             pdb_sub_func_loop({SubDBIndex, Pid, NewStack, NewPrevStack});
         {trace_in, {Pid, Func, TS}} ->
-            NewStack = trace_in_1(Pid, Func, TS, Stack),
-            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
+            {NewStack, NewPrevStack} = trace_in_1(SubDBIndex, Pid, Func, TS, Stack, PrevStack),
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, NewPrevStack});
         {trace_out, {Pid, Func, TS}} ->
             Stack1 = case Stack of 
                          [] -> case Func of undefined -> [];
@@ -1823,16 +1819,16 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
                 [] -> 
                     Parent ! {Pid, done};
                 [{Func0, _}|_] -> 
-                    Stack1=trace_return_to_2(Pid, Func0, TS, Stack),
-                    trace_return_to_2(Pid, undefined, TS, Stack1),
+                    {Stack1, NewPrevStack}=trace_return_to_2(SubDBIndex, Pid, Func0, TS, Stack, PrevStack),
+                    trace_return_to_2(SubDBIndex, Pid, undefined, TS, Stack1, NewPrevStack),
                     Parent ! {Pid, done}
             end;
         {trace_gc_start, {Pid,TS}} ->
             NewStack = [[{garbage_collect, TS}]|Stack],
             pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
         {trace_gc_end, {Pid,TS}} ->
-            NewStack=trace_gc_end_1(Pid, TS, Stack),
-            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, PrevStack});
+            {NewStack, NewPrevStack}=trace_gc_end_1(SubDBIndex, Pid, TS, Stack, PrevStack),
+            pdb_sub_func_loop({SubDBIndex, Pid, NewStack, NewPrevStack});
         {Parent, end_of_trace_file} ->
             NextFuncRegName = mk_proc_reg_name("pdb_func",SubDBIndex+1),
             case whereis(NextFuncRegName) of 
@@ -1844,39 +1840,39 @@ pdb_sub_func_loop({SubDBIndex,Pid, Stack, PrevStack}) ->
             end
     end.
 
-trace_in_1(Pid, Func, TS, Stack) ->
+trace_in_1(SubDBIndex, Pid, Func, TS, Stack, PrevStack) ->
     ?dbg(-1, "trace_in(~p, ~p, ~p)~n~p~n", [Pid, Func, TS, Stack]),
     case Stack of 
         [] ->
-            [[{Func,TS}]]; 
+            {[[{Func,TS}]], PrevStack}; 
         [[{suspend, _}]] ->
-            trace_return_to_2(Pid, undefined, TS, Stack);
+            trace_return_to_2(SubDBIndex, Pid, undefined, TS, Stack, PrevStack);
         [[{suspend,_}] | [[{suspend,_}] | _]=NewStack] ->
 	    %% No stats update for a suspend on suspend
-	    NewStack;
+            {NewStack, PrevStack};
         [[{suspend, TS0}] | [[{Func1, TS1} | _] | _]] ->
-            update_fun_related_info(Pid, suspend, TS0, TS, Func1, TS1),
-            trace_return_to_2(Pid, Func1, TS, Stack);
+            update_fun_related_info(Pid, suspend, TS0, TS, Func1, TS1,[]),
+            trace_return_to_2(SubDBIndex, Pid, Func1, TS, Stack, PrevStack);
         _ ->
-            Stack
+            {Stack, PrevStack}
             %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
             %%        [Pid, Func, TS, Stack]})
     end.
 
-trace_gc_end_1(Pid, TS, Stack) ->
+trace_gc_end_1(SubDBIndex, Pid, TS, Stack, PrevStack) ->
     ?dbg(0, "trace_gc_end(~p, ~p)~n~p~n", [Pid, TS, Stack]),
     case Stack of
 	[] ->
-	    [];
-	[[{garbage_collect, _}]] ->
-            trace_return_to_2(Pid, undefined, TS, Stack);
+	    {[], PrevStack};
+        [[{garbage_collect, _}]] ->
+            trace_return_to_2(SubDBIndex, Pid, undefined, TS, Stack, PrevStack);
 	[[{garbage_collect, TS0}], [{Func1, TS1} | _] | _] ->
-            update_fun_related_info(Pid, garbage_collect, TS0, TS, Func1, TS1),
-            trace_return_to_2(Pid, Func1, TS, Stack);
+            update_fun_related_info(Pid, garbage_collect, TS0, TS, Func1, TS1, []),
+            trace_return_to_2(SubDBIndex, Pid, Func1, TS, Stack, PrevStack);
 	_ ->
 	    %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
             %%        [Pid, TS, Stack]})
-            Stack
+            {Stack, PrevStack}
     end.
 
 
@@ -1885,7 +1881,7 @@ trace_gc_end_1(Pid, TS, Stack) ->
 %%             trace function call                  %%
 %%                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-trace_call_1(Pid, MFA, TS, CP, Stack) ->
+trace_call_1(SubDBIndex, Pid, MFA, TS, CP, Stack, PrevStack) ->
     Func = mfarity(MFA),
     ?dbg(-1, "trace_call(~p, ~p, ~p, ~p, ~p)~n", 
 	 [Pid, Stack, Func, TS, CP]),
@@ -1898,12 +1894,12 @@ trace_call_1(Pid, MFA, TS, CP, Stack) ->
                                                {Func1, TS1}
                                        end,
             update_calltree_info(Pid, {Func1, TS1, TS}, {Caller1, Caller1StartTs}),
-            trace_call_2(Pid, Func, TS, CP, Stack1);
+            trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack1, PrevStack);
         _ ->
-            trace_call_2(Pid, Func, TS, CP, Stack)
+            trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack, PrevStack)
     end.
-    
-trace_call_2(Pid, Func, TS, CP, Stack) ->
+
+trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack, PrevStack) ->
     case Stack of
 	[] ->
             ?dbg(-1, "empty stack\n", []),
@@ -1913,7 +1909,7 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
 		   true ->
 			[[{CP, TS}]]
 		end,
-            [[{Func, TS}] | OldStack];
+            {[[{Func, TS}] | OldStack], PrevStack};
         [[{suspend, _} | _] | _] ->
             throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
@@ -1921,28 +1917,29 @@ trace_call_2(Pid, Func, TS, CP, Stack) ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
         [[{Func, _FirstInTS}]] ->
-            Stack;
+            {Stack, PrevStack};
         [[{CP, _} | _], [{CP, _} | _] | _] ->
-            trace_call_shove(Pid,Func, TS, Stack);
+            {trace_call_shove(Pid,Func, TS, Stack), PrevStack};
         [[{CP, TS1} | _] | _] when Func==CP ->
             ?dbg(-1, "Current function becomes new stack top.\n", []),
             update_calltree_info(Pid, {Func, TS, undefined}, {Func, TS1}),
-            Stack;
+            {Stack, PrevStack};
 	[[{CP, _} | _] | _] ->
             ?dbg(-1, "Current function becomes new stack top.\n", []),
-            [[{Func, TS}] | Stack];
-        [[{Func, TS1} | _], [{CP, _TS1} | _] | _] ->
+            {[[{Func, TS}] | Stack], PrevStack};
+                [[{Func, TS1} | _], [{CP, _TS1} | _] | _] ->
             update_calltree_info(Pid, {Func, TS, undefined}, {Func, TS1}),
-             Stack;
+            {Stack, PrevStack};
         [_, [{CP, _} | _] | _] ->
             ?dbg(-1, "Stack top unchanged, no push.\n", []),
-            trace_call_shove(Pid, Func, TS, Stack); 
+            {trace_call_shove(Pid, Func, TS, Stack), PrevStack}; 
         [[{Func0, _} | _], [{Func0, _} | _], [{CP, _} | _] | _] ->
-            trace_call_shove(Pid, Func, TS,
-                              trace_return_to_2(Pid, Func0, TS,
-                                                Stack));
+            {NewStack, NewPrevStack} = trace_return_to_2(SubDBIndex,Pid, Func0, TS,
+                                                         Stack, PrevStack),
+            NewStack1=trace_call_shove(Pid, Func, TS, NewStack),
+            {NewStack1, NewPrevStack};
         [_|_] ->
-            [[{Func, TS}], [{CP, TS}, dummy]|Stack]
+            {[[{Func, TS}], [{CP, TS}, dummy]|Stack], PrevStack}
     end.
     
 %% Tail recursive stack push
@@ -2020,36 +2017,23 @@ trace_call_collapse_2(_Stack, [], _N) ->
 %%                                                  %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-trace_return_to_0(SubDBIndex, Pid, Stack, PrevStack, Func, TS,
-                  PrevSubIndex) ->
-    case trace_return_to_1(Pid, Func, TS, Stack) of
-     wait_for_prev_stack ->
-            case SubDBIndex of
-                1 ->
-                    Stack1=[[{Func, TS}]],
-                    {Stack1, PrevStack};
-                _ ->
-                    case PrevStack of
-                        false ->
-                            receive
-                                {end_of_trace_file, {PrevSubIndex, Pid, PrevStack1}} ->
-                                    NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack1),
-                                    {NewStack1, PrevStack1}
-                            after 1000  %% what is the proper timeout value here?
-                                      ->
-                                   %% io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
-                                    {[[{Func, TS}]], false}
-                            end;
-                        _ ->
-                            NewStack1=trace_return_to_1(Pid, Func, TS, PrevStack),
-                            {NewStack1, PrevStack}
-                    end
-            end;
-        NewStack1 ->
-            {NewStack1, PrevStack}
+wait_for_prev_stack(SubDBIndex, Pid, Func, TS)->
+    case SubDBIndex of
+        1 ->
+            [{Func, TS}];
+        _ ->
+            PrevSubIndex = SubDBIndex-1,
+            receive
+                {end_of_trace_file, {PrevSubIndex, Pid, PrevStack}} ->
+                    PrevStack
+                    %% after 1000  %% what is the proper timeout value here?
+                    %%           ->
+                    %%       %%  io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
+                    %%         {[[{Func, TS}]], false}
+            end
     end.
-
-trace_return_to_1(Pid, Func, TS, Stack) ->
+           
+trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack, PrevStack) ->
     Caller = if is_tuple(Func) -> mfarity(Func);
                 true -> Func
              end,
@@ -2059,12 +2043,12 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
 	[[{suspend, _} | _] | Stack1] ->
 	    %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
             %%        [Pid, Caller, TS, Stack]});
-            trace_return_to_1(Pid, Func, TS, Stack1);           
+            trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack1, PrevStack);           
 	[[{garbage_collect, _} | _] | _] ->
 	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, Caller, TS, Stack]});
+                   [Pid, Caller, TS, Stack]}); 
         [_, [{Caller, _}|_]|_] ->
-            trace_return_to_2(Pid, Caller, TS, Stack);
+            trace_return_to_2(SubDBIndex, Pid, Caller, TS, Stack, PrevStack);
         [[{Func1, TS1}, dummy]|Stack1=[_, [{Caller, _}|_]|_]] when Caller=/=Func1->
             {Caller1, Caller1StartTs}= 
                 case Stack1 of 
@@ -2073,57 +2057,71 @@ trace_return_to_1(Pid, Func, TS, Stack) ->
                     _ ->
                         {Func1, TS1}
                 end,
-            update_fun_related_info(Pid, Func1, TS1, TS, Caller1, Caller1StartTs),
-            trace_return_to_2(Pid, Caller, TS, Stack1);
+            update_fun_related_info(Pid, Func1, TS1, TS, Caller1, Caller1StartTs, Stack1),
+            trace_return_to_2(SubDBIndex, Pid, Caller, TS, Stack1, PrevStack);
         _ when Caller == undefined ->
-            trace_return_to_2(Pid, Caller, TS, Stack);
+            trace_return_to_2(SubDBIndex, Pid, Caller, TS, Stack, PrevStack);
         [] ->
-            wait_for_prev_stack;
+            case SubDBIndex of 
+                1 ->  {[[{Func, TS}]], PrevStack};
+                _ ->
+                    case PrevStack of 
+                        false ->
+                            case wait_for_prev_stack(SubDBIndex, Pid, Func, TS) of 
+                                false -> 
+                                    {[[{Func, TS}]], PrevStack};
+                                NewPrevStack ->
+                                   trace_return_to_1(SubDBIndex, Pid, Func, TS, NewPrevStack, NewPrevStack)
+                            end;
+                        _ ->
+                            {[[{Func, TS}]], PrevStack}
+                    end
+            end;
         _ ->
             {Callers,_} = lists:unzip([hd(S)||S<-Stack]),
             case lists:member(Caller, Callers) of
                 true ->
-                    trace_return_to_2(Pid, Caller, TS, Stack);
+                    trace_return_to_2(SubDBIndex, Pid, Caller, TS, Stack, PrevStack);
                 _ -> 
-                    [[{Caller, TS}, dummy]|Stack]
+                    {[[{Caller, TS}, dummy]|Stack], PrevStack}
             end
     end.
 
-trace_return_to_2(_, undefined, _, []) ->
-    [];
-trace_return_to_2(_Pid, _Func, _TS, []) ->
-    wait_for_prev_stack;
-    %%[[{Func, TS}]];
-trace_return_to_2(Pid, Func, TS, [[] | Stack1]) ->
-    trace_return_to_2(Pid, Func, TS, Stack1);
-trace_return_to_2(_Pid, Func, _TS, [[{Func, _}|_Level0]|_Stack1] = Stack) ->
-    Stack;
-trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
-    case Func0 of 
+trace_return_to_2(_, _, undefined, _, [], PrevStack) ->
+    {[], PrevStack};
+trace_return_to_2(SubDBIndex, Pid, Func, TS, [], PrevStack) ->
+    case SubDBIndex of 
+        1 ->  {[[{Func, TS}]], PrevStack};
+        _ ->
+            case PrevStack of 
+                false ->
+                    case wait_for_prev_stack(SubDBIndex, Pid, Func, TS) of 
+                        false -> 
+                            {[[{Func, TS}]], PrevStack};
+                        NewPrevStack ->
+                            trace_return_to_2(SubDBIndex, Pid, Func, TS, NewPrevStack, NewPrevStack)
+                    end;
+                _ ->
+                    {[[{Func, TS}]], PrevStack}
+            end
+    end;
+trace_return_to_2(SubDBIndex, Pid, Func, TS, [[] | Stack1], PrevStack) ->
+    trace_return_to_2(SubDBIndex, Pid, Func, TS, Stack1, PrevStack);
+trace_return_to_2(_, _Pid, Func, _TS, [[{Func, _}|_Level0]|[[{Func1,_}|_]|_Stack1]] = Stack, 
+                  PrevStack) when
+      Func/=Func1 -> {Stack, PrevStack};    
+trace_return_to_2(_, _Pid, Func, _TS, [[{Func, _}|_Level0]] = Stack, PrevStack) ->
+    {Stack, PrevStack};    
+trace_return_to_2(SubDBIndex, Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1], PrevStack) ->
+    case Func0 of
          {_, _, _} ->
-            case Level1 of 
+            case Level1 of
                 [{Func1, TS2}|_] ->
                     {Caller, CallerStartTs}={Func1, TS2},
-                    {Level11, _Level12} = lists:splitwith(fun(Entry)->
-                                                                  case Entry of 
-                                                                      {Func2, _}->Func2 =/= Func;
-                                                                      _ -> false
-                                                                  end
-                                                          end,
-                                                     Level1),
-                    case lists:any(fun(Entry) -> 
-                                           case Entry of 
-                                               {Func2, _} ->Func2 ==Func0;
-                                               _ -> false
-                                           end
-                                   end, Level11) of 
-                        false ->
-                            update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
-                        true ->
-                            update_calltree_info(Pid, {Func0,  Func0StartTS, TS}, {Caller, CallerStartTs})
-                    end;
-                _ -> 
-                    {Caller, CallerStartTs}=case Stack1 of 
+                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, 
+                                            Caller, CallerStartTs, [Level1|Stack1]);
+                _ ->
+                    {Caller, CallerStartTs}=case Stack1 of
                                                 [[{Func1, TS2}, dummy]|_] ->
                                                     {Func1, TS2};
                                                 [[{Func1, TS2}|_]|_]->
@@ -2131,36 +2129,35 @@ trace_return_to_2(Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] | Stack1]) ->
                                                 [] ->
                                                     {Func, Func0StartTS}
                                             end,
-                    case lists:any(fun({Func2, _}) -> Func2 ==Func0;
-                                       (_) -> false 
-                                  end, lists:append(Stack1)) of 
-                        false ->
-                            update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
-                        true ->
-                            update_calltree_info(Pid, {Func0, Func0StartTS, TS}, {Caller, CallerStartTs})
-                    end
+                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs,Stack1)
             end;
-        _ -> 
-            ok        
+        _ ->
+            ok
     end,
     if Level1 ==[dummy] ->
             case Stack1 of
                 [[{Func3, TS3} | _] | _]->
-                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Func3, TS3);
+                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Func3, TS3, Stack1);
                 _ -> ok
             end,
-            trace_return_to_2(Pid, Func, TS, Stack1);
+            trace_return_to_2(SubDBIndex, Pid, Func, TS, Stack1, PrevStack);
        true ->
-            trace_return_to_2(Pid, Func, TS, [Level1|Stack1])
+            trace_return_to_2(SubDBIndex, Pid, Func, TS, [Level1|Stack1], SubDBIndex)
     end.
 
-update_fun_related_info(Pid, Func0, StartTS, EndTS, Caller, CallerStartTs) ->
-    ?dbg(-1, "update fun related info:\n~p\n", [{Pid, Func0, StartTS, EndTS, Caller, CallerStartTs}]),
-    ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), StartTS, EndTS}, func=Func0}),
-    update_fun_call_time({Pid, Func0}, {StartTS, EndTS}),
-    update_calltree_info(Pid, {Func0, StartTS, EndTS}, {Caller, CallerStartTs}).
-   
-        
+update_fun_related_info(Pid, Func, StartTS, EndTS, Caller, CallerStartTs, Stack) ->
+    case lists:any(fun({Func1, _}) -> Func ==Func1;
+                      (_) -> false
+                   end, lists:append(Stack)) of 
+        true ->
+            ok;
+            %%    update_fun_call_time({Pid, Func}, {StartTS, EndTS});
+        false ->
+            ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), StartTS, EndTS}, func=Func}),
+            update_fun_call_time({Pid, Func}, {StartTS, EndTS})
+    end,
+    update_calltree_info(Pid, {Func, StartTS, EndTS}, {Caller, CallerStartTs}).
+            
 -spec(update_calltree_info(pid(), {true_mfa()|suspend|garbage_collect, timestamp(), timestamp()|undefined}, 
                            {true_mfa(), timestamp()}) ->true).       
 update_calltree_info(Pid, {Callee, _StartTS0, _}, {Caller,  CallerStartTS0}) when Caller==Callee ->
@@ -2509,19 +2506,31 @@ consolidate_calltree_1(Pids) ->
                           consolidate_calltree_2(Pid)
                   end, Pids).
 consolidate_calltree_2(Pid) ->
-    [Tree|Others]=ets:select(fun_calltree, 
+    Trees=ets:select(fun_calltree, 
                              [{#fun_calltree{id = {Pid, '_','_'}, _='_'},
                                [],
                                ['$_']
                               }]),
-    Key = Tree#fun_calltree.id,  %%TODO: how to decide which is the caller?
-    ets:update_element(fun_calltree, Key, {#fun_calltree.called, Others++Tree#fun_calltree.called}),
+    io:format("Length:~p\n", [{length(Trees), lists:map(fun(T) ->erlang:external_size(T) end, Trees)}]),
+    [Tree|Others] = lists:sort(fun(T1, T2) ->
+                                       erlang:external_size(T1)>= erlang:external_size(T2)
+                               end, Trees),
+    io:format("Max:~p\n", [erlang:external_size(Tree)]),
     lists:foreach(fun(T)-> 
                           ets:delete_object(fun_calltree, T) 
                   end, Others),
     ok.
 
 
+output_trees([]) ->
+    ok;
+output_trees([Tree]) ->
+    io:format("Tree:~p\n", [Tree]);
+output_trees([T|Trees]) ->
+    io:format("Tree:~p\n", [T]),
+    output_trees(Trees).
+
+    
 %%%------------------------------------------------------%%%
 %%%                                                      %%%
 %%%  Generate statistic information about each function. %%%
