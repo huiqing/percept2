@@ -1901,15 +1901,18 @@ trace_call_1(SubDBIndex, Pid, MFA, TS, CP, Stack, PrevStack) ->
 
 trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack, PrevStack) ->
     case Stack of
-	[] ->
+	[] when CP =:= undefined ->
             ?dbg(-1, "empty stack\n", []),
-            OldStack = 
-		if CP =:= undefined ->
-			Stack;
-		   true ->
-			[[{CP, TS}]]
-		end,
-            {[[{Func, TS}] | OldStack], PrevStack};
+            {[[{Func, TS}] | []], PrevStack};
+        [] ->
+            ?dbg(-1, "empty stack\n", []),
+            case wait_for_prev_stack(SubDBIndex, Pid, Func, TS) of 
+                [] ->
+                    {[[{Func, TS}] | [[{CP, TS}]]], PrevStack};
+                NewPrevStack ->
+                    trace_call_2(SubDBIndex, Pid, Func, TS, CP, 
+                                 NewPrevStack, NewPrevStack)
+            end;
         [[{suspend, _} | _] | _] ->
             throw({inconsistent_trace_data, ?MODULE, ?LINE,
                    [Pid, Func, TS, CP, Stack]});
@@ -2020,7 +2023,7 @@ trace_call_collapse_2(_Stack, [], _N) ->
 wait_for_prev_stack(SubDBIndex, Pid, Func, TS)->
     case SubDBIndex of
         1 ->
-            [{Func, TS}];
+            [[{Func, TS}]];
         _ ->
             PrevSubIndex = SubDBIndex-1,
             receive
@@ -2028,8 +2031,7 @@ wait_for_prev_stack(SubDBIndex, Pid, Func, TS)->
                     PrevStack
                     %% after 1000  %% what is the proper timeout value here?
                     %%           ->
-                    %%       %%  io:format("pdb_sub_func_loop, time out ~p~n", [{PrevSubIndex, Pid}]),
-                    %%         {[[{Func, TS}]], false}
+                    %%         [[{Func, TS}]].
             end
     end.
            
@@ -2067,12 +2069,8 @@ trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack, PrevStack) ->
                 _ ->
                     case PrevStack of 
                         false ->
-                            case wait_for_prev_stack(SubDBIndex, Pid, Func, TS) of 
-                                false -> 
-                                    {[[{Func, TS}]], PrevStack};
-                                NewPrevStack ->
-                                   trace_return_to_1(SubDBIndex, Pid, Func, TS, NewPrevStack, NewPrevStack)
-                            end;
+                            NewPrevStack=wait_for_prev_stack(SubDBIndex, Pid, Func, TS),
+                            trace_return_to_1(SubDBIndex, Pid, Func, TS, NewPrevStack, NewPrevStack);
                         _ ->
                             {[[{Func, TS}]], PrevStack}
                     end
@@ -2095,12 +2093,8 @@ trace_return_to_2(SubDBIndex, Pid, Func, TS, [], PrevStack) ->
         _ ->
             case PrevStack of 
                 false ->
-                    case wait_for_prev_stack(SubDBIndex, Pid, Func, TS) of 
-                        false -> 
-                            {[[{Func, TS}]], PrevStack};
-                        NewPrevStack ->
-                            trace_return_to_2(SubDBIndex, Pid, Func, TS, NewPrevStack, NewPrevStack)
-                    end;
+                    NewPrevStack=wait_for_prev_stack(SubDBIndex, Pid, Func, TS), 
+                    trace_return_to_2(SubDBIndex, Pid, Func, TS, NewPrevStack, NewPrevStack);
                 _ ->
                     {[[{Func, TS}]], PrevStack}
             end
@@ -2151,7 +2145,6 @@ update_fun_related_info(Pid, Func, StartTS, EndTS, Caller, CallerStartTs, Stack)
                    end, lists:append(Stack)) of 
         true ->
             ok;
-            %%    update_fun_call_time({Pid, Func}, {StartTS, EndTS});
         false ->
             ets:insert(funcall_info, #funcall_info{id={pid2value(Pid), StartTS, EndTS}, func=Func}),
             update_fun_call_time({Pid, Func}, {StartTS, EndTS})
@@ -2518,15 +2511,6 @@ consolidate_calltree_2(Pid) ->
                           ets:delete_object(fun_calltree, T) 
                   end, Others),
     ok.
-
-
-output_trees([]) ->
-    ok;
-output_trees([Tree]) ->
-    io:format("Tree:~p\n", [Tree]);
-output_trees([T|Trees]) ->
-    io:format("Tree:~p\n", [T]),
-    output_trees(Trees).
 
     
 %%%------------------------------------------------------%%%
