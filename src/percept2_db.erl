@@ -1854,9 +1854,8 @@ trace_in_1(SubDBIndex, Pid, Func, TS, Stack, PrevStack) ->
             update_fun_related_info(Pid, suspend, TS0, TS, Func1, TS1,[]),
             trace_return_to_2(SubDBIndex, Pid, Func1, TS, Stack, PrevStack);
         _ ->
-            {Stack, PrevStack}
-            %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
-            %%        [Pid, Func, TS, Stack]})
+            %%inconsistent trace data
+            {Stack, PrevStack}   
     end.
 
 trace_gc_end_1(SubDBIndex, Pid, TS, Stack, PrevStack) ->
@@ -1870,9 +1869,8 @@ trace_gc_end_1(SubDBIndex, Pid, TS, Stack, PrevStack) ->
             update_fun_related_info(Pid, garbage_collect, TS0, TS, Func1, TS1, []),
             trace_return_to_2(SubDBIndex, Pid, Func1, TS, Stack, PrevStack);
 	_ ->
-	    %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
-            %%        [Pid, TS, Stack]})
-            {Stack, PrevStack}
+            %%inconsistent trace data
+            {Stack, PrevStack} 
     end.
 
 
@@ -1913,12 +1911,12 @@ trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack, PrevStack) ->
                     trace_call_2(SubDBIndex, Pid, Func, TS, CP, 
                                  NewPrevStack, NewPrevStack)
             end;
-        [[{suspend, _} | _] | _] ->
-            throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, Func, TS, CP, Stack]});
-	[[{garbage_collect, _} | _] |_] ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, Func, TS, CP, Stack]});
+        [[{suspend, _} | _] |Stack1] ->
+            %% inconsistent trace data!
+            trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack1, PrevStack); 
+       	[[{garbage_collect, _} | _] |Stack1] ->
+            %% inconsistent trace data!
+            trace_call_2(SubDBIndex, Pid, Func, TS, CP, Stack1, PrevStack);
         [[{Func, _FirstInTS}]] ->
             {Stack, PrevStack};
         [[{CP, _} | _], [{CP, _} | _] | _] ->
@@ -2043,12 +2041,11 @@ trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack, PrevStack) ->
 	 [Pid, Caller, TS, Stack]),
     case Stack of
 	[[{suspend, _} | _] | Stack1] ->
-	    %% throw({inconsistent_trace_data, ?MODULE, ?LINE,
-            %%        [Pid, Caller, TS, Stack]});
+            %% inconsistent trace data!
             trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack1, PrevStack);           
-	[[{garbage_collect, _} | _] | _] ->
-	    throw({inconsistent_trace_data, ?MODULE, ?LINE,
-                   [Pid, Caller, TS, Stack]}); 
+	[[{garbage_collect, _} | _] | Stack1] ->
+            %% inconsistent trace data!
+            trace_return_to_1(SubDBIndex, Pid, Func, TS, Stack1, PrevStack);
         [_, [{Caller, _}|_]|_] ->
             trace_return_to_2(SubDBIndex, Pid, Caller, TS, Stack, PrevStack);
         [[{Func1, TS1}, dummy]|Stack1=[_, [{Caller, _}|_]|_]] when Caller=/=Func1->
@@ -2129,11 +2126,6 @@ trace_return_to_2(SubDBIndex, Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] |
             ok
     end,
     if Level1 ==[dummy] ->
-            case Stack1 of
-                [[{Func3, TS3} | _] | _]->
-                    update_fun_related_info(Pid, Func0, Func0StartTS, TS, Func3, TS3, Stack1);
-                _ -> ok
-            end,
             trace_return_to_2(SubDBIndex, Pid, Func, TS, Stack1, PrevStack);
        true ->
             trace_return_to_2(SubDBIndex, Pid, Func, TS, [Level1|Stack1], SubDBIndex)
@@ -2141,7 +2133,7 @@ trace_return_to_2(SubDBIndex, Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] |
 
 update_fun_related_info(Pid, Func, StartTS, EndTS, Caller, CallerStartTs, Stack) ->
     case lists:any(fun({Func1, _}) -> Func ==Func1;
-                      (_) -> false
+                     (_) -> false
                    end, lists:append(Stack)) of 
         true ->
             ok;
@@ -2504,7 +2496,7 @@ consolidate_calltree_2(Pid) ->
                                [],
                                ['$_']
                               }]),
-    [Tree|Others] = lists:sort(fun(T1, T2) ->
+    [_Tree|Others] = lists:sort(fun(T1, T2) ->
                                        erlang:external_size(T1)>= erlang:external_size(T2)
                                end, Trees),
     lists:foreach(fun(T)-> 
