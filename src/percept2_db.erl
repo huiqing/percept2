@@ -199,7 +199,6 @@ is_database_loaded() ->
 %% @doc Inserts a trace or profile message to the database.  
 -spec insert(pid()|atom(), tuple()) -> ok.
 insert(SubDB, Trace) -> 
-    io:format("Trace:~p\n", [Trace]),
     SubDB ! {insert, Trace},
     ok.
 
@@ -271,16 +270,9 @@ init_percept_db(Parent, TraceFileNames) ->
                          {keypos,#inter_proc.timed_from}, ordered_set]),
     ets:new(inter_sched, [named_table, public, 
                           {keypos, #inter_sched.from_sched_with_ts}, ordered_set]),
-<<<<<<< HEAD
-    ets:new(s_group, [named_table, public, {keypos,#s_group.timed_node}, 
-                      ordered_set, {read_concurrency, true},
-                      {write_concurrency, true}]),                      
-    %% ets:new(msg_queue_len, [named_table, public, {keypos, #msg_queue_len.pid}, bag]),
-=======
     ets:new(s_group, [named_table, public, {keypos,#s_group_info.timed_node}, 
                       ordered_set, {read_concurrency, true},
                       {write_concurrency, true}]),                      
->>>>>>> c498540b322b4364dc85b6230515a823b2bbc6b8
     FileNameSubDBPairs=start_percept_sub_dbs(TraceFileNames),
     Parent!{percept2_db, started, FileNameSubDBPairs},
     loop_percept_db(FileNameSubDBPairs).
@@ -876,22 +868,6 @@ trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{id = Port, stop = Ts}).
 
-<<<<<<< HEAD
-trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, new_s_group, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
-                                 op={new_s_group, Args}});
-
-trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, delete_s_group, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
-                                 op={delete_s_group, Args}});
-trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, add_nodes, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
-                                 op={add_nodes, Args}});
-trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, remove_nodes, Args}, _, TS}) ->
-    ets:insert(s_group, #s_group{timed_node={TS, get_node_name(Pid)}, 
-                                 op={remove_nodes, Args}});
-trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA,{cp, CP}, TS}) ->
-=======
 %% Dialyzer reports an error here, but I think Dialyzer thought the atom 
 %% s_group used in the pattern is a record tag.
 trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, new_s_group, Args}, _, TS}) ->
@@ -907,7 +883,6 @@ trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, remove_nodes, Arg
     ets:insert(s_group, #s_group_info{timed_node={TS, get_node_name(Pid)}, 
                                  op={remove_nodes, Args}});
 trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA, {cp, CP}, TS}) ->
->>>>>>> c498540b322b4364dc85b6230515a823b2bbc6b8
     trace_call(SubDBIndex, Pid, MFA, TS, CP).
 
 trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
@@ -2145,16 +2120,7 @@ trace_return_to_2(SubDBIndex, Pid, Func, TS, [[{Func0, Func0StartTS} | Level1] |
                                                 [] ->
                                                     {Func, Func0StartTS}
                                             end,
-<<<<<<< HEAD
-                    case lists:any(fun({Func2, _}) -> Func2 ==Func0 end, lists:append(Stack1)) of 
-                        false ->
-                            update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs);
-                        true ->
-                            update_calltree_info(Pid, {Func0, Func0StartTS, TS}, {Caller, CallerStartTs})
-                    end
-=======
                     update_fun_related_info(Pid, Func0, Func0StartTS, TS, Caller, CallerStartTs,Stack1)
->>>>>>> c498540b322b4364dc85b6230515a823b2bbc6b8
             end;
         _ ->
             ok
