@@ -42,7 +42,7 @@
    
 ### Documentation ###
 
- Percept2 online documentation is available from http://huiqing.github.com/percept2
+ Percept2 online documentation is available from http://RefactoringTools.github.com/percept2
 
 
 

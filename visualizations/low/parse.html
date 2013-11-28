@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8" />
+		<title>Visualization</title>
+		<script type="text/javascript">
+			var originalHeight = 620;
+			var originalWidth = 1000;
+			
+			//drawing related constants
+			var cx = 500;
+			var originalcx = cx;
+			var cy = 315;
+			var originalcy = cy;
+			var rx = 150;
+			var ry = 150;
+			var boxSize = 30;
+		
+		</script>
+		<script type="text/javascript" src="lib/d3.v2.js"></script>
+		<script type="text/javascript" src="lib/jquery-1.8.3.js"></script>
+		<script type="text/javascript" src="lib/jquery-ui.js"></script>
+		<script type="text/javascript" src="lib/detect-zoom-master/detect-zoom.js"></script>
+
+		<script type="text/javascript" src="slider.js"></script>
+		<script type="text/javascript" src="zoom.js"></script>
+		<link rel="stylesheet" type="text/css" href="style.css">
+		<link rel="stylesheet" type="text/css" href="slider.css">	
+
+	</head>
+	<body>
+
+		<script type="text/javascript" src="body.js"></script>
+		<div id="instructions">
+			<div class="header">Welcome to the Low Level Offline Visualization</div>
+			<br />
+			Please select a file containing the run queue sizes and a file containing the process migrations.<br />
+			Once both files have been uploaded, the visualization with start automatically.<br />
+			Use the Pause/Resume button and the slider to control the animation.<br />
+			To display a quantitative value for the run queues, check the appropriate box.<br />
+			Use your browser's zoom function to adjust the size of the visualization.<br />
+			<br />
+			<br />
+			Select the Run Queue Size File:<br />
+			<input type="file" id="queueUpload" onchange="readQueue()" /><span id="queueFeedback"></span><br />
+			<br />
+			Select the Migration File:<br />
+			<input type="file" id="migrationUpload" onchange="readMigration()" /><span id="migrationFeedback"></span><br />
+			
+		</div>
+		<div id="main">
+			<div class="block">
+				<div id="svgdiv" class="left">
+					<span id="loading"></span>
+				</div>
+				<div class="right">
+					<form id="options">
+						<div>
+							<span>View size on screen:&nbsp;</span><input type="checkbox" id="usage" /><br />
+							<input type="button" id="pause" value="Pause" onclick="pauseAnimation()" /><br />
+							<br />
+						</div>
+					</form>
+				</div>
+			</div>
+			<div id="slider" ></div>
+		</div>
+	</body>
+</html>

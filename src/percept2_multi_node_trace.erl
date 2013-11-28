@@ -7,36 +7,40 @@
 -spec(start([node()]) -> ok).
 start(Nodes) ->
     _Res=ttb:tracer(Nodes),
-    _Res1=ttb:p(all, [send, 'receive']), 
+    _Res1=ttb:p(new, [send, 'receive']), 
     ok.
 
+start(Nodes, {M, F, Args}, Opts) ->
+    _Res = ttb:tracer(Nodes),
+    _Res1=ttb:p(new, Opts),
+    Self=self(),
+    Pid=spawn(fun()->
+                      Res=erlang:apply(M, F, Args),
+                      Self!{self(),Res}
+              end),
+    receive
+        {Pid, _Val}->
+            ttb:stop()
+    end.
+  
 stop()->
     ttb:stop().
-   
-
+ 
 
 %% command to run the orbit-int benchmark and trace message sending.
-run_orbit_with_trace() ->
-    Nodes = ['node1@127.0.0.1', 'node2@127.0.0.1', 'node3@127.0.0.1',
-             'node4@127.0.0.1', 'node5@127.0.0.1', 'node6@127.0.0.1',
-             'node7@127.0.0.1', 'node8@127.0.0.1', 'node9@127.0.0.1',
-             'node10@127.0.0.1', 'node11@127.0.0.1', 'node12@127.0.0.1'],
-    _Res = ttb:tracer(Nodes),
-    _Res1=ttb:p(all, [send]),
-    bench:dist_seq(fun bench:g124/1, 1000000, 8,
-                   Nodes),
-    ttb:stop().
+run_orbit_with_trace(N) ->
+    Nodes=[list_to_atom("node"++integer_to_list(I)++"@127.0.0.1")
+           ||I<-lists:seq(1,N)],
+    start(Nodes, {init_bench, main, [Nodes]}, [send, 'receive']).
 
 
-analyze_orbit_data() ->
-    Files = ["node1@127.0.0.1-ttb","node2@127.0.0.1-ttb",
-             "node3@127.0.0.1-ttb","node4@127.0.0.1-ttb",
-             "node5@127.0.0.1-ttb","node6@127.0.0.1-ttb",
-             "node7@127.0.0.1-ttb","node8@127.0.0.1-ttb",
-             "node9@127.0.0.1-ttb","node10@127.0.0.1-ttb",
-             "node10@127.0.0.1-ttb","node12@127.0.0.1-ttb"],
+analyze_orbit_data(N) ->
+    Files=[list_to_atom("node"++integer_to_list(I)++"@127.0.0.1-ttb")
+           ||I<-lists:seq(1,N)],
     percept2:analyze(Files).
     
+
+
 %% timestamped event data.
 process_orbit_data()->
     {{Meg, Sec, Mic},_,_} = ets:first(inter_proc),
@@ -104,4 +108,24 @@ short_node_name(NodeName) ->
        true -> list_to_atom(string:substr(Str,1, Index-1))
     end.
 
-%% c("../../git_repos/percept2/src/percept2_multi_node_trace.erl").
+%% How to use: 
+%% N: number of nodes.
+%% Please modify the functions run_orbit_with_trace and 
+%% run_oribit_with_trace if the nodes are named in 
+%% a different way.
+
+%% To profile:
+%% In an Erlang node, run the command:
+%% percept2_multi_node_trace:run_orbit_with_trace(N).
+
+%% after profile.
+%% In the same Erlang node:
+%% 1) go to the directory which contains the trace data.
+%% 2)run the command:
+%%   percept2_multi_node_trace:analyze_orbit_data(N).
+
+%% To see the profiling data:
+%% 1)in the Erlang node, run the command:  percept2:start_webserver(8080).
+%% 2)goto page localhost:8080.
+%% 3)goto the 'processes' page to see the send/receive data.
+

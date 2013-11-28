@@ -1,0 +1,20 @@
+<html>
+
+<head>
+<script>z
+var conn = new WebSocket('ws://localhost:8081');
+//var conn = new WebSocket('ws://cs.kent.ac.uk/~rb440/:8081');
+conn.onopen = function(e) {
+    console.log("Connection established!");
+};
+
+conn.onmessage = function(e) {
+    console.log(e.data);
+};
+</script>
+</head>
+
+<body>
+
+</body>
+</html>

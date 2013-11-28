@@ -52,6 +52,7 @@
 
 -record(information, {
           id			 :: pid_value() | port()|special_atom()|{pid, special_atom()},
+          node = nonode          :: atom(),
           name = undefined	 :: atom()| string()|'undefined'|special_atom(), 
           entry = undefined	 :: true_mfa()|'undefined'|'suspend'|'garbage_collect'|
                                     special_atom()|
@@ -120,6 +121,13 @@
           timestamp   ::timestamp()|special_atom(),
           len =0      ::non_neg_integer()
          }).
+
+-type s_group_op()::new_s_group|delete_s_group|add_nodes|remove_nodes.
+
+-record(s_group_info, 
+        {timed_node:: {timestamp(),node()},
+         op :: {s_group_op(), [term()]}
+        }).
           
 -record(history_html, {
           id         ::string(),
