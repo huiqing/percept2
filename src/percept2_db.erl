@@ -33,6 +33,7 @@
         ]).
  
 -export([is_dummy_pid/1, pid2value/1,
+         pid2name/1,
         is_database_loaded/0, stop_sync/1]).
 
 %% internal export
@@ -579,10 +580,14 @@ insert_profile_trace(SubDBIndex,Trace) ->
         {profile_start, Ts} ->
             SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
             update_system_start_ts(SystemProcRegName,Ts);
+        {profile_opts, Opts} ->
+            SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
+            update_system_profile_opts(SystemProcRegName, Opts);
         {profile_stop, Ts} ->
             SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
             update_system_stop_ts(SystemProcRegName,Ts);
-        {profile, Id, State, Mfa, TS} when is_pid(Id) ->
+        %% sometimes Mfa is 0. 
+        {profile, Id, State, Mfa, TS} when is_pid(Id)  ->
             insert_profile_trace_1(SubDBIndex, Id, State,Mfa,TS,procs);
         {profile, Id, State, Mfa, TS} when is_port(Id) ->
             insert_profile_trace_1(SubDBIndex, Id, State, Mfa, TS, ports);
@@ -597,7 +602,8 @@ insert_profile_trace(SubDBIndex,Trace) ->
                                                     SubDBIndex),
             update_scheduler(SchedulerProcRegName, Act);
         _Unhandled ->
-            %%?dbg(0, "unhandled trace: ~p~n", [_Unhandled])
+            ?dbg(0, "unhandled trace: ~p~n", [_Unhandled]),
+            io:format("unhandled trace: ~p~n", [_Unhandled]),
             ok
     end.
 
@@ -754,6 +760,7 @@ process_trace_in(SubDBIndex, Pid, MFA, TS) ->
                             #activity{id = pid2value(Pid),
                                       state = active,
                                       timestamp = TS,
+                                      where = MFA,
                                       runnable_procs=RC, 
                                       runnable_ports=get({runnable, ports})});                                  
         {TS1, InOuts} ->
@@ -1587,6 +1594,9 @@ init_pdb_system(ProcRegName, Parent)->
 update_system_start_ts(SystemProcRegName, TS) ->
     SystemProcRegName ! {'update_system_start_ts', TS}.
 
+update_system_profile_opts(SystemProcRegName, Opts)->
+    SystemProcRegName ! {'update_system_profile_opts', Opts}.
+
 update_system_stop_ts(SystemProcRegName, TS) ->
     SystemProcRegName ! {'update_system_stop_ts', TS}.
 
@@ -1597,6 +1607,9 @@ pdb_system_loop() ->
     receive
         {'update_system_start_ts', TS}->
             update_system_start_ts_1(TS),
+            pdb_system_loop();
+        {'update_system_profile_opts', Opts}->
+            ets:insert(pdb_system, {{system, profile_opts}, Opts}),
             pdb_system_loop();
         {'update_system_stop_ts', TS} ->
             update_system_stop_ts_1(TS),
@@ -1654,6 +1667,11 @@ select_query_system(Query) ->
 	    	[] -> 1;
 		[{{system, nodes}, Num}] -> Num
 	    end;
+        {system, profile_opts} ->
+            case ets:lookup(pdb_system, {system, profile_opts}) of 
+                [] -> [];
+                [{{system, profile_opts}, Opts}] -> Opts
+            end;
 	Unhandled ->
 	    io:format("select_query_system, unhandled: ~p~n", [Unhandled]),
 	    []
@@ -2645,7 +2663,7 @@ gen_process_tree([_Item={Pid, _Start, Children}|Tail], Out) ->
                                end, Tail),
     {NewChildren, NewTail}=gen_process_tree_1(ChildrenElems, Tail1, []),
     [Parent] = ets:lookup(pdb_info, Pid),
-    gen_process_tree(NewTail, [{Parent, NewChildren}|Out]).
+     gen_process_tree(NewTail, [{Parent, NewChildren}|Out]).
 
 -spec gen_process_tree_1/3::([{pid_value(),any(), any()}],
                              [{pid_value(),any(), any()}],
@@ -2709,11 +2727,12 @@ compress_process_tree_2(Children) ->
                        1, 
                        [{mfarity(C1#information.entry), {C1,  C2}}
                         ||{C1,C2}<-Children]),
-    Res=[compress_process_tree_3(ChildrenGroup)||
-            ChildrenGroup<-GroupByEntryFuns],
-    lists:sort(fun({T1, _}, {T2, _}) -> 
-                       T1#information.start > T2#information.start 
-               end, lists:append(Res)).
+    TreeLists=[compress_process_tree_3(ChildrenGroup)||
+                  ChildrenGroup<-GroupByEntryFuns],
+    lists:append(lists:sort(
+                   fun([{T1, _}|_], [{T2, _}|_]) -> 
+                           T1#information.id> T2#information.id 
+                   end, TreeLists)).
 
 compress_process_tree_3(ChildrenGroup) ->
     {[EntryFun|_], Children=[C={C0,_}|Cs]} =
@@ -2731,9 +2750,10 @@ compress_process_tree_3(ChildrenGroup) ->
                     LastIndex = get(last_index),
                     put(last_index, LastIndex+1),
                     {pid, {NodeIndex, _, _}} =hd(UnNamedProcs),
+                    HiddenTrees = lists:reverse(Children-- [ChildWithMostRunTime]),
                     CompressedChildren=
                         Info=#information{id={pid, {NodeIndex,list_to_atom("*"++integer_to_list(LastIndex)++"*"),0}},
-                                          name=list_to_atom(integer_to_list(Num)++" procs omitted"),
+                                          name=list_to_atom(integer_to_list(Num)++" siblings omitted"),
                                           parent=C0#information.parent,
                                           entry = EntryFun,
                                           start =lists:min([C1#information.start||{C1,_}<-Cs]),
@@ -2750,7 +2770,8 @@ compress_process_tree_3(ChildrenGroup) ->
                                                                   end, {0,0}, Cs),
                                           %%Total;
                                           rq_history =lists:append([C1#information.rq_history||{C1,_}<-Cs]),
-                                          hidden_pids = UnNamedProcs--[Proc#information.id]
+                                          hidden_proc_trees=HiddenTrees,
+                                          hidden_pids =hidden_pids(HiddenTrees)
                                          },
                     update_information_1(Info),
                     [compress_process_tree_1(ChildWithMostRunTime), {CompressedChildren,[]}];   
@@ -2758,6 +2779,13 @@ compress_process_tree_3(ChildrenGroup) ->
                     compress_process_tree(Children)
             end
     end.
+
+hidden_pids(ProcTrees) ->
+    Pids=lists:append([hidden_pids_1(Tree)||Tree<-ProcTrees]),
+    lists:sort(Pids).
+
+hidden_pids_1({Parent, Children}) ->
+    [Parent#information.id|hidden_pids(Children)].
 
 get_proc_with_callgraph_and_most_runtime(Procs) ->
     Procs1=[Proc||Proc={P,_}<-Procs, has_callgraph(P#information.id)],
@@ -2855,3 +2883,10 @@ mk_proc_reg_name(RegNamePrefix,Index) ->
     list_to_atom(RegNamePrefix ++ integer_to_list(Index)).
 
 
+pid2name(Pid) ->
+    case ets:lookup(pdb_info, Pid) of 
+        [] -> 'undefined';
+        [Info] ->
+            Info#information.name
+    end.
+ 
