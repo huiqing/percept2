@@ -147,6 +147,7 @@ profile_to_file(FileSpec, Opts) ->
 	    Port =  (dbg:trace_port(file, FileSpec))(),
             % Send start time
 	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
+            erlang:port_command(Port, erlang:term_to_binary({profile_opts, Opts})),
 	    erlang:system_flag(multi_scheduling, unblock),
 		
 	    %% Register Port
