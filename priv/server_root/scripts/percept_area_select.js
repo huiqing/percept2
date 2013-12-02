@@ -100,7 +100,7 @@ function select_image() {
 	}
 }
 
-function select_down(event) {
+function select_down(event, margin) {
 	var Graf = document.getElementById("percept_graph");
         var Area = document.getElementById("percept_areaselect");
         var x =  event.offsetX?(event.offsetX):event.pageX-Graf.offsetLeft;
@@ -108,8 +108,7 @@ function select_down(event) {
         
         var width  = Graf.offsetWidth;
 	var height = Graf.offsetHeight;
-	var margin = 20;
-
+	
 	var Xmin   = document.form_area.data_min.value;
         var Xmax   = document.form_area.data_max.value;
 
@@ -139,7 +138,7 @@ function select_down(event) {
 	else document.form_area.range_min.value = RangeMin;
 }
 
- function select_move(event) {
+ function select_move(event, margin) {
         var Graf = document.getElementById("percept_graph");
         var Area = document.getElementById("percept_areaselect");
         var x =  event.offsetX?(event.offsetX):event.pageX-Graf.offsetLeft;
@@ -148,8 +147,7 @@ function select_down(event) {
 	    
 	    var width = Graf.offsetWidth;
 	    var height = Graf.offsetHeight;
-	    var margin = 20;
-            var Xmin = document.form_area.data_min.value;
+	    var Xmin = document.form_area.data_min.value;
             var Xmax = document.form_area.data_max.value;
 	    
 	    // Trim edges
@@ -178,7 +176,7 @@ function select_down(event) {
 	}
 }
 
-function select_up(event) {
+function select_up(event, margin) {
         var Graf = document.getElementById("percept_graph");
         var Area = document.getElementById("percept_areaselect");
         var x =  event.offsetX?(event.offsetX):event.pageX-Graf.offsetLeft;
@@ -186,11 +184,9 @@ function select_up(event) {
 	x = x - 60;
 	var width = Graf.offsetWidth;
 	var height = Graf.offsetHeight;
-	var margin = 20;
         var Xmin = document.form_area.data_min.value;
         var Xmax = document.form_area.data_max.value;
-	
-	// Trim edges
+  	// Trim edges
 	
 	if ( x < margin ) {
 	    x = margin;
