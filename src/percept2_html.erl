@@ -955,11 +955,11 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                                                                    {height, 10}]),
                                       proc_name_to_html(Id, I#information.name),
                                       pid2html(I#information.parent, CleanPid),
-                                      rq_change_to_html(max(0,length(I#information.rq_history)-1), RqProfiled),
-                                      msg_info_to_html(num_msgs_recv(I), MsgProfiled),
-                                      msg_info_to_html(avg_msg_size_recv(I), MsgProfiled), 
-                                      msg_info_to_html(num_msgs_sent(I), MsgProfiled),
-                                      msg_info_to_html(avg_msg_size_sent(I),MsgProfiled),
+                                      info_to_html(max(0,length(I#information.rq_history)-1), RqProfiled),
+                                      info_to_html(num_msgs_recv(I), MsgProfiled),
+                                      info_to_html(avg_msg_size_recv(I), MsgProfiled), 
+                                      info_to_html(num_msgs_sent(I), MsgProfiled),
+                                      info_to_html(avg_msg_size_sent(I),MsgProfiled),
                                       mfa2html(I#information.entry),
                                       visual_link({I#information.id, undefined, undefined}, 
                                                   I#information.children)]),
@@ -1074,14 +1074,9 @@ avg_msg_size_sent(I) ->
 info_msg_sent(I) ->
     {num_msgs_sent(I), avg_msg_size_sent(I)}.
 
-rq_change_to_html(_, false) ->
+info_to_html(_, false) ->
     "--";
-rq_change_to_html(Info, _) ->
-    term2html(Info).
-
-msg_info_to_html(_, false) ->
-    "--";
-msg_info_to_html(Info, _) ->
+info_to_html(Info, _) ->
     term2html(Info).
 
 expand_or_collapse(Children, Id) ->
@@ -1157,6 +1152,8 @@ process_info_content_1(_Env, Input) ->
         lists:member('message', ProfileOpts),
     RqProfiled = ProfileOpts==[] orelse 
         lists:member('scheduler_id', ProfileOpts),
+    GCProfiled =ProfileOpts==[] orelse 
+        lists:member('garbage_collectiond', ProfileOpts),
     ArgumentString = case I#information.entry of
                          {_, _, Arguments} when is_list(Arguments)-> 
                              lists:flatten(io_lib:write(Arguments, 10));
@@ -1194,16 +1191,18 @@ process_info_content_1(_Env, Input) ->
                           true ->
                               [];
                           false ->
-                              [[{th, "RQ_history"}, rq_change_to_html(
+                              [[{th, "RQ_history"}, info_to_html(
                                                       element(2,lists:unzip(
                                                                   lists:keysort(1, I#information.rq_history))),
                                                       RqProfiled)]]
                       end
                    ++
                     [[{th, "{#msg_received, <br>avg_msg_size}"},
-                     msg_info_to_html(info_msg_recv(I), MsgProfiled)],
+                     info_to_html(info_msg_recv(I), MsgProfiled)],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
-                     msg_info_to_html(info_msg_sent(I), MsgProfiled)]] 
+                     info_to_html(info_msg_sent(I), MsgProfiled)],
+                    [{th, "garbage collection time (is secs) <br>"},
+                     info_to_html(I#information.gc_time/?Million, GCProfiled)]]
                    ++
                        case is_dummy_pid(Pid) of 
                            true -> [];

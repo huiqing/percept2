@@ -897,13 +897,23 @@ trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
 
 trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, _Info, TS}) ->
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
+    erlang:put({gc_start, Pid}, TS),
     FuncProcRegName ! {trace_gc_start, {Pid, TS}},
     ok.
 
 trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}) ->
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_gc_end, {Pid, TS}},
-    ok.
+    case erlang:get({gc_start, Pid}) of 
+        undefined -> ok;
+        TS1 -> 
+            Time = now_diff(TS, TS1),
+            InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
+            update_information_gc_time(InfoProcRegName, {pid2value(Pid), Time}),
+            erlang:erase({gc_start, Pid}),
+            ok
+    end.
+                
 
 trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName =mk_proc_reg_name("pdb_func", SubDBIndex),
@@ -1373,6 +1383,10 @@ update_information_element(ProcRegName, Key, {Pos, Value}) ->
 update_information_acc_time(ProcRegName, {Key, Elapsed}) ->
     ProcRegName ! {update_information_acc_time, {Key, Elapsed}}.
 
+update_information_gc_time(ProcRegName, {Pid, Time})->
+    ProcRegName ! {update_information_gc_time, {Pid, Time}}.
+
+
 pdb_info_loop()->
     receive
         {update_information, #information{id=_Id}=NewInfo} ->
@@ -1396,6 +1410,9 @@ pdb_info_loop()->
         {update_information_acc_time, {Key, Value}} ->
             update_information_acc_time_1(Key, Value),
             pdb_info_loop();
+        {update_information_gc_time, {Pid, Time}} ->
+            update_information_gc_time_1(Pid, Time),
+            pdb_info_loop();
         {action,stop, From} ->
             From ! {self(), stopped},
             ok
@@ -1407,6 +1424,14 @@ update_information_acc_time_1(Key, Value) ->
             ets:insert(pdb_info, #information{id=Key, accu_runtime=Value});
         [_Info] ->
             ets:update_counter(pdb_info, Key, {#information.accu_runtime, Value})
+    end.
+
+update_information_gc_time_1(Pid, Time) ->
+    case ets:lookup(pdb_info, Pid) of 
+        [] ->
+            ets:insert(pdb_info, #information{id=Pid, gc_time=Time});
+        [_Info] ->
+            ets:update_counter(pdb_info, Pid, {#information.gc_time, Time})
     end.
 
 update_information_1(#information{id = Id} = NewInfo) ->
