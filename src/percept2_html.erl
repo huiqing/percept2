@@ -634,7 +634,7 @@ get_pids_to_compare(Input) ->
                         false ->
                             AllPids=lists:append([process_tree_pids(Pid)                                                  
                                                   ||Pid<-Pids,not is_dummy_pid(Pid)]),
-                            lists:usort(AllPids) --hidden_pids()
+                            (lists:usort(AllPids) --hidden_pids())++Pids                           
                     end;
                 false ->
                     case lists:member({"include_unshown_procs","on"}, Query) of
@@ -1204,9 +1204,15 @@ process_info_content_1(_Env, Input) ->
                     [[{th, "{#msg_received, <br>avg_msg_size}"},
                      info_to_html(info_msg_recv(I), MsgRecvProfiled)],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
-                     info_to_html(info_msg_sent(I), MsgSendProfiled)],
-                    [{th, "garbage collection time (is secs) <br>"},
-                     info_to_html(I#information.gc_time/?Million, GCProfiled)]]
+                     info_to_html(info_msg_sent(I), MsgSendProfiled)]]
+                   ++
+                       case is_dummy_pid(Pid) of 
+                           true ->
+                               [];
+                           false ->
+                               [[{th, "garbage collection time (in secs) <br>"},
+                                info_to_html(I#information.gc_time/?Million, GCProfiled)]]
+                       end
                    ++
                        case is_dummy_pid(Pid) of 
                            true -> [];
