@@ -650,7 +650,8 @@ get_pids_to_compare(Input) ->
                         false ->
                             AllPids=lists:append([process_tree_pids(Pid)                                                  
                                                   ||Pid<-Pids,not is_dummy_pid(Pid)]),
-                            (lists:usort(AllPids) --hidden_pids())++Pids                           
+                            TickedRealPids = [Pid||Pid<-Pids, not is_dummy_pid(Pid)],
+                            (lists:usort(AllPids) --hidden_pids())++TickedRealPids                  
                     end;
                 false ->
                     case lists:member({"include_unshown_procs","on"}, Query) of
