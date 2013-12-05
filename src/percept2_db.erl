@@ -448,13 +448,12 @@ select_query_inter_sched(Query) ->
 select_query_message(Query) ->
     case Query of
         {inter_node, all} ->
-            Head = #inter_proc{timed_from={'$0', '$1', '$2'},
-                               to = {'$3', '_'},
-                               _='_'},
-            Constraints = [{'/=', '$1','$3'}],
-            Body =  [['$1', '$3']],
-            Recs=ets:select(inter_proc, [{Head, Constraints, Body}]),
-            sets:to_list(sets:from_list(lists:append(Recs)))--[nonode];
+            Head = #information{node='$0',
+                                _='_'},
+            Constraints = [{'/=', '$0','nonode'}],
+            Body =  ['$0'],
+            Res=ets:select(pdb_info, [{Head, Constraints, Body}]),
+            lists:usort(Res);
         {inter_node, {message_acts, {FromNode1, ToNode1, MinTs, MaxTs}}} ->
             FromNode = list_to_atom(FromNode1),
             ToNode = list_to_atom(ToNode1),
