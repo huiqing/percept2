@@ -31,6 +31,7 @@
          function_info_page/3,
          inter_node_message_page/3,
          inter_node_message_graph_page/3,
+         inter_node_comm_graph_page/3,
          summary_report_page/3,
          process_tree_visualisation_page/3,
          process_comm_graph_page/3,
@@ -241,6 +242,21 @@ process_comm_graph_page(SessionID, Env, Input) ->
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
+
+-spec(inter_node_comm_graph_page(pid(), list(), string()) -> 
+             ok | {error, term()}).
+inter_node_comm_graph_page(SessionID, Env, Input) ->
+    try
+        mod_esi:deliver(SessionID, header()),
+        mod_esi:deliver(SessionID, menu(Input)), 
+        
+        mod_esi:deliver(SessionID, inter_node_comm_graph_content(Env, Input)),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
 -spec(process_info_page(pid(), list(), string()) -> ok | {error, term()}).
 process_info_page(SessionID, Env, Input) ->
     try
@@ -1317,6 +1333,31 @@ process_comm_graph_content(_Env, Input) ->
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 
+
+
+inter_node_comm_graph_content(_Env, _Input) ->
+    SvgDir = percept2:get_svg_alias_dir(),
+    ImgFileBaseName="inter_node_comm_graph",
+    ImgFileName = ImgFileBaseName++".svg",
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
+    Content = "<div style=\"text-align:center; align:center\">" ++
+        "<h3 style=\"text-align:center;\">Inter-node Communication Graph</h3>"++ 
+        "<object data=\"/svgs/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
+        "</div>",
+    case filelib:is_regular(ImgFullFilePath) of 
+        true -> 
+            %% file already generated, so reuse.
+            Content;  
+        false -> 
+           %%TODO: Add a timeout here in case it takes 'dot' too long 
+           %%      generate the svg file.
+            GenImgRes=percept2_dot:gen_node_comm_img( 
+                        SvgDir, ImgFileBaseName),
+            process_gen_graph_img_result(Content, GenImgRes)
+    end.
+
 %%% function callgraph content
 func_callgraph_content(_SessionID, Env, Input) ->
     CacheKey = "func_callpath"++integer_to_list(erlang:crc32(Input)),
@@ -1607,14 +1648,17 @@ inter_node_message_content_1(_Env, Nodes) ->
 	<form name=inter_node_message method=POST action=/cgi-bin/percept2_html/inter_node_message_graph_page>
 	<center>
          <table>
-	    <tr><td width=200>From node:</td>
-                <td width=200>To node:</td></tr>
+	    <tr>
+                 <td width=200>Sender node:</td>
+                <td width=200>Receiver node:</td></tr>
 	    <tr><td><select name=\"node1\">"++NodeList ++
             "</select></td>
             <td><select name=\"node2\">"++NodeList++
         "</select></td>
-         <td width=200><input type=submit value=\"Generate Graph\" /></td></tr>
-	</table>
+         <td width=200><input type=submit value=\"Generate Node-to-Node \n Message sends Graph\" /></td>"++
+        "<td align=right width=400> <a href=\"/cgi-bin/percept2_html/inter_node_comm_graph_page\">"++
+        "<b>Overall Inter-node Communication Graph</b>"++"</a></td></tr>" ++
+	"</table>
 	</center>
 	</form>
 	</div>". 
