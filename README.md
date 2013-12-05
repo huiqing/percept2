@@ -44,6 +44,20 @@
 
  Percept2 online documentation is available from http://RefactoringTools.github.com/percept2
 
+### Papers ###
+
+H. Li and S. Thompson.
+[Multicore Profiling for Erlang Programs Using Percept2](http://kar.kent.ac.uk/34875/).
+In _Proceedings of the Twelfth ACM SIGPLAN Workshop on Erlang_,
+pages 33-42, September 2013. ACM Press.
+
+
+P. Rodgers, R. Baker, S. Thompson and H. Li.
+[Multi-level Visualization of Concurrent and Distributed Computation in Erlang](
+http://kar.kent.ac.uk/34968/).
+In _Visual Languages and Computing_ (VLC) in The 19th International Conference o
+n Distributed Multimedia Systems (DMS 2013), August 2013.
+
 
 
 
