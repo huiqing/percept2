@@ -9,17 +9,14 @@ LIB_DIR      = @ERLANG_INSTALL_LIB_DIR@/$(APPNAME)-$(VERSION)
 ERL          = "@ERL@"
 ERLC         = "@ERLC@"
 
-YRL = src/percept2_parse.yrl
 
-YRL_ERL =  $(patsubst src/%.yrl,src/%.erl, $(YRL)))
 
 ERL_SRC = $(wildcard src/*.erl)
 
-BUILD_FIRST = $(patsubst src/%.yrl,ebin/%.beam, $(YRL))
 
 ERL_LAST = $(patsubst src/%.erl,ebin/%.beam,$(ERL_SRC))
 
-ERL_OBJ = $(BUILD_FIRST) $(ERL_LAST)
+ERL_OBJ = $(ERL_LAST)
 
 .PHONY: default all conf erl 
 
@@ -41,7 +38,7 @@ ebin/%.beam: src/%.erl
 
 ebin/%.beam: include/percept2.hrl 
 
-src/%.erl: src/%.yrl
+src/%.erl: 
 	$(ERLC) -o src $<
 
 ########################################

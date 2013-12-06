@@ -1,7 +1,6 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2007-2009. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -26,20 +25,21 @@
                          egd_primitives,
                          egd_render,
                          gen_plt_script,
-                         percept2_multi_node_trace,
                          percept2,
                          percept2_analyzer,
                          percept2_data_gen,
                          percept2_db,
+                         percept2_dist,
                          percept2_dot,
                          percept2_graph,
                          percept2_html,
-                         percept2_image, 
+                         percept2_image,        
+                         percept2_orbit,
                          percept2_profile,
                          percept2_sampling,
                          percept2_utils]},
          {registered,	[percept2_db,percept2_port]},
-	 {applications,	[kernel,stdlib]},
+	 {applications,	[kernel,stdlib, inets]},
 	 {env,		[]}
 	]}.
 

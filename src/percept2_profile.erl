@@ -66,7 +66,7 @@
 
 -spec start(FileSpec::file:filename()|
                       {file:filename(), wrap, Suffix::string(),
-                       WrapSize::pos_integer(), WrapCnt::pos_integer()}, 
+                       WrapSize::pos_integer()}, 
             Options::[trace_flags()|profile_flags()]) ->
                    {'ok', port()} | {'already_started', port()}.
 start(FileSpec, Options) ->
@@ -77,9 +77,9 @@ start(FileSpec, Options) ->
 %%	No explicit call to stop/0 is needed, the profiling stops when
 %%	the entry function returns.
 -spec start(FileSpec::file:filename()|
-                                {file:filename(), wrap, Suffix::string(),
-                                 WrapSize::pos_integer(), WrapCnt::pos_integer()},
-	    Entry :: {atom(), atom(), list()},
+                      {file:filename(), wrap, Suffix::string(),
+                       WrapSize::pos_integer()},
+            Entry :: {atom(), atom(), list()},
             Options :: [trace_flags()|profile_flags()|{callgraph, [module_name()]}]) ->
                    'ok' | {'already_started', port()} |
                    {'error', 'not_started'}.
@@ -135,7 +135,7 @@ stop() ->
 %%==========================================================================
 -spec profile_to_file(FileSpec::file:filename()|
                                 {file:filename(), wrap, Suffix::string(),
-                                 WrapSize::pos_integer(), WrapCnt::pos_integer()},
+                                 WrapSize::pos_integer()},
                       Opts::[percept_option()])->
                              {'ok', port()} | {'already_started', port()}.
 profile_to_file(FileSpec, Opts) ->
@@ -144,9 +144,17 @@ profile_to_file(FileSpec, Opts) ->
 	    io:format("Starting profiling.~n", []),
             
 	    erlang:system_flag(multi_scheduling, block),
-	    Port =  (dbg:trace_port(file, FileSpec))(),
-            % Send start time
+            FileSpec1 = case FileSpec of 
+                            {FileName, wrap, Suffix, Size} ->
+                                {FileName, wrap, Suffix, Size, 49};
+                            {FileName, wrap, Suffix, Size, MaxFileCnt} ->
+                                {FileName, wrap, Suffix, Size, MaxFileCnt-1};
+                            _ -> FileSpec
+                        end,
+	    Port =  (dbg:trace_port(file, FileSpec1))(),
+                                                % Send start time
 	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
+            erlang:port_command(Port, erlang:term_to_binary({profile_opts, Opts})),
 	    erlang:system_flag(multi_scheduling, unblock),
 		
 	    %% Register Port

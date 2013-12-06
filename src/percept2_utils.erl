@@ -29,9 +29,9 @@
 
 -module(percept2_utils).
 
--export([pmap/2, pforeach/2]).
+-export([pmap/2, pmap/3, pforeach/2]).
 
--export([pmap_0/3, pmap_1/3,
+-export([pmap_0/3, pmap_1/3, pmap_0/4, pmap_2/3,
          pforeach_0/3, pforeach_1/3,
          pforeach_wait/2]).
 
@@ -51,6 +51,13 @@ pmap(Fun, List) ->
         {Pid, Res}-> Res
     end.
 
+pmap(Fun, List, Size) ->
+    Parent = self(),
+    Pid = erlang:spawn_link(?MODULE, pmap_0, [Parent, Fun, List, Size]),
+    receive
+        {Pid, Res}-> Res
+    end.
+
 pmap_0(Parent, Fun, List) ->
     Self = self(),
     Pids=lists:map(fun(X) ->
@@ -60,11 +67,36 @@ pmap_0(Parent, Fun, List) ->
              Result end|| Pid<-Pids],
     Parent!{Self, Res}.
 
+pmap_0(Parent, Fun, List,Size) when Size=<1->
+    Self = self(),
+    Pids=[erlang:spawn_link(?MODULE, pmap_1, [Fun, Self, X])
+             ||X<-List],
+    Res=[receive {Pid, Result} ->
+             Result end|| Pid<-Pids],
+    Parent!{Self, Res};
+pmap_0(Parent, Fun, List, Size) ->
+    Self = self(),
+    ChoppedList = chop_a_list(List, Size),
+    Pids=[erlang:spawn_link(?MODULE, pmap_2, [Fun, Self, SubList])
+          ||SubList<-ChoppedList],
+    Res=[receive {Pid, Result} ->
+             Result end|| Pid<-Pids],
+    Parent!{Self, lists:append(Res)}.
+
 pmap_1(Fun, Parent, X) ->
     Res = (catch Fun(X)),
     Parent!{self(), Res}.
 
+pmap_2(Fun, Parent, SubList) ->
+    Res = (catch lists:map(fun(X) ->
+                                   Fun(X)
+                           end, SubList)),
+    Parent!{self(), Res}.
 
+
+%%-------------------------------%%
+%%      parallel foreach         %%
+%%-------------------------------%%
 pforeach(Fun, List) ->
     Self = self(),
     Pid = erlang:spawn_link(?MODULE, pforeach_0, [Self, Fun, List]),
@@ -172,3 +204,33 @@ get_slient_value(Entry) ->
                     end
             end
     end.
+
+
+%%-----------------------------------------%%
+%%      Utility Functions                  %%
+%%-----------------------------------------%%
+chop_a_list(List, 1) -> List;
+chop_a_list(List, Size) ->
+    Len = length(List),
+    Chops0 = Len/Size, 
+    Chops= case Chops0 =< round(Chops0) of 
+               true ->
+                   round(Chops0)-1;
+               _ -> round(Chops0)
+           end,
+    chop_a_list(List, 0, Chops, Size, []).
+
+chop_a_list([], _, _, _, Acc) ->
+    lists:reverse(Acc);
+chop_a_list(List, Count, Chops, _Size, Acc) 
+  when Count==Chops -> 
+    lists:reverse([List|Acc]);
+chop_a_list(List, Count, Chops, Size, Acc) -> 
+    {List1, List2}=lists:split(Size, List),
+    chop_a_list(List2, Count+1, Chops, 
+                Size, [List1|Acc]).
+        
+
+                                                   
+    
+     

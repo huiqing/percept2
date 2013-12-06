@@ -74,7 +74,9 @@
  
 -type filespec()::file:filename()|
                   {file:filename(), wrap, Suffix::string(),
-                   WrapSize::pos_integer(), WrapCnt::pos_integer()}.
+                   WrapSize::pos_integer()} |
+                  {file:filename(), wrap, Suffix::string(),
+                   WrapSize::pos_integer(), MaxFileCnt::pos_integer()}.
 
 -type trace_profile_option()::'procs_basic'|           %% profile basic process activities including
                                                        %% spawn, exit and register.
@@ -670,3 +672,4 @@ writeable(F) ->
             end;
         _ -> false
     end.
+

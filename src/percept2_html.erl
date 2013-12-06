@@ -25,11 +25,13 @@
          databases_page/3, 
          load_database_page/3, 
          process_tree_page/3,
+         sub_process_tree_page/3,
          ports_page/3,
          process_info_page/3,
          function_info_page/3,
          inter_node_message_page/3,
          inter_node_message_graph_page/3,
+         inter_node_comm_graph_page/3,
          summary_report_page/3,
          process_tree_visualisation_page/3,
          process_comm_graph_page/3,
@@ -172,6 +174,28 @@ process_tree_page(SessionID, Env, Input) ->
             error_page(SessionID, Env, Input)
     end.
 
+
+-spec(sub_process_tree_page(pid(), list(), string()) -> ok | {error, term()}).
+sub_process_tree_page(SessionID, Env, Input) ->
+    try
+        case percept2_db:is_database_loaded() of 
+            false ->
+                deliver_page(SessionID, menu_1(0, 0), 
+                             blink_msg("No data has been analyzed!"));
+            _ ->
+                Menu = menu(Input),
+                {Header, Content} = sub_process_page_header_content(Env, Input),
+                mod_esi:deliver(SessionID, header(Header)),
+                mod_esi:deliver(SessionID, Menu),
+                mod_esi:deliver(SessionID, Content),
+                mod_esi:deliver(SessionID, footer())
+        end
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
+
 -spec(ports_page(pid(), list(), string()) -> ok | {error, term()}).
 ports_page(SessionID, Env, Input) ->
     try
@@ -218,6 +242,21 @@ process_comm_graph_page(SessionID, Env, Input) ->
         _E1:_E2 ->
             error_page(SessionID, Env, Input)
     end.
+
+-spec(inter_node_comm_graph_page(pid(), list(), string()) -> 
+             ok | {error, term()}).
+inter_node_comm_graph_page(SessionID, Env, Input) ->
+    try
+        mod_esi:deliver(SessionID, header()),
+        mod_esi:deliver(SessionID, menu(Input)), 
+        
+        mod_esi:deliver(SessionID, inter_node_comm_graph_content(Env, Input)),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
 -spec(process_info_page(pid(), list(), string()) -> ok | {error, term()}).
 process_info_page(SessionID, Env, Input) ->
     try
@@ -405,32 +444,33 @@ overview_content_1(_Env, Input) ->
     	"</table>",
     MainTable = 
 	"<table>" ++
-	table_line([div_tag_graph("percept_graph")]) ++
+	table_line([div_tag_graph("percept_graph", 20)]) ++
 	table_line([RangeTable]) ++
 	"</table>",
     Footer = "</div></form>",
     Header ++ MainTable ++ Footer.
     
--spec(div_tag_graph(string()) -> string()).
-div_tag_graph(Name) ->
+-spec(div_tag_graph(string(), integer()) -> string()).
+div_tag_graph(Name, Margin) ->
+    MarginStr=integer_to_list(Margin),
    %background:url('/images/loader.gif') no-repeat center;
     "<div id=\""++Name++"\" 
-	onMouseDown=\"select_down(event)\" 
-	onMouseMove=\"select_move(event)\" 
-	onMouseUp=\"select_up(event)\"
+	onMouseDown=\"select_down(event,"++MarginStr++")\" 
+	onMouseMove=\"select_move(event,"++MarginStr++")\" 
+	onMouseUp=\"select_up(event,"++MarginStr++")\"
 
 	style=\"
 	background-size: 100%;
 	background-origin: content;
 	width: 100%;
 	position:relative; 
-	\">
+	\">     
 	
 	<div id=\"percept_areaselect\"
 	style=\"background-color:#ef0909;
 	position:relative;
 	visibility:hidden;
-      	border-left: 1px solid #101010;
+        border-left: 1px solid #101010;
 	border-right: 1px solid #101010;
 	z-index:2;
 	width:40px;
@@ -542,6 +582,11 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
                                                 {range_min, T0},
                                                 {range_max, T1},
                                                 {height, 10}], []),
+                               %% RegName = percept2_db:pid2name(Pid),
+                               %% PidOrName = case RegName of 
+                               %%                 undefined -> pid2html(Pid, CleanPid);
+                               %%                 _ -> term2html(RegName)
+                               %%             end,
                                "<tr><td><input type=checkbox name="++pid2str(Pid)++"></td>"++
                                  case has_callgraph(Pid) of 
                                      true ->
@@ -579,7 +624,7 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
         ++"</table>",
     MainTable = 
          "<table cellspacing=0 cellpadding=0 border=0>" ++ 
-         table_line([div_tag_graph("percept_graph")])
+         table_line([div_tag_graph("percept_graph", 120)])
          ++
          table_line([FuncActs]) ++ "</table>\n",
     MainTable1 =
@@ -603,9 +648,10 @@ get_pids_to_compare(Input) ->
                                               false ->process_tree_pids(Pid)
                                           end||Pid<-Pids]);
                         false ->
-                            AllPids=lists:append([process_tree_pids(Pid)
+                            AllPids=lists:append([process_tree_pids(Pid)                                                  
                                                   ||Pid<-Pids,not is_dummy_pid(Pid)]),
-                            AllPids --hidden_pids()
+                            TickedRealPids = [Pid||Pid<-Pids, not is_dummy_pid(Pid)],
+                            (lists:usort(AllPids) --hidden_pids())++TickedRealPids                  
                     end;
                 false ->
                     case lists:member({"include_unshown_procs","on"}, Query) of
@@ -788,7 +834,7 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
     
     MainTable = 
 	"<table>" ++
-	table_line([div_tag_graph("percept_graph")]) ++
+	table_line([div_tag_graph("percept_graph", 120)]) ++
      	table_line([RangeTable]) ++
 	"</table>",
     Footer = "</div></form>",
@@ -842,7 +888,25 @@ load_database_content(SessionId, _Env, Input) ->
 process_page_header_content(Env, Input) ->
     CacheKey = "process_tree_page"++integer_to_list(erlang:crc32(Input)),
     gen_content(Env, Input, CacheKey, fun process_page_header_content_1/2).
-  
+ 
+
+sub_process_page_header_content(Env, Input) ->
+    CacheKey = "sub_process_tree_page"++integer_to_list(erlang:crc32(Input)),
+    gen_content(Env, Input, CacheKey, fun sub_process_page_header_content_1/2).
+ 
+
+sub_process_page_header_content_1(_Env, Input) ->
+    Query   = httpd:parse_query(Input),
+    Pid     = get_option_value("pid", Query),
+    %% StartTs = percept2_db:select({system, start_ts}),
+    [I] = percept2_db:select({information, Pid}),
+    ChildrenTrees = I#information.hidden_proc_trees,
+    ProcessTreeHeader = mk_display_style(ChildrenTrees),
+    %% TsMin and TsMax are not used yet.
+    Content = processes_content(ChildrenTrees, {0, 0}),  
+    {ProcessTreeHeader, Content}.
+
+
 process_page_header_content_1(_Env, Input) ->
     Query   = httpd:parse_query(Input),
     Min     = get_option_value("range_min", Query),
@@ -885,6 +949,13 @@ processes_content(ProcessTree, {_TsMin, _TsMax}) ->
       
 mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
     CleanPid = percept2_db:select({system, nodes})==1,
+    ProfileOpts = percept2_db:select({system, profile_opts}),
+    MsgSendProfiled = ProfileOpts==[] orelse 
+        lists:member('send', ProfileOpts),
+    MsgRecvProfiled = ProfileOpts==[] orelse 
+        lists:member('receive', ProfileOpts),
+    RqProfiled = ProfileOpts==[] orelse 
+        lists:member('scheduler_id', ProfileOpts),
     ProcsHtml=lists:foldl(
               fun ({I, Children},Out) ->
                       Id=I#information.id,
@@ -894,23 +965,20 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
                           table_line([
                                       "<input type=checkbox name=" ++ pid2str(I#information.id) ++ ">",
                                       expand_or_collapse(Children, Id),
-                                      %% case lists:member(I, ActiveProcsInfo) orelse
-                                      %%     is_parent(Id, ActiveProcsInfo) of 
-                                      %%     true ->pid2html_with_color(I#information.id);
-                                      %%     false ->
-                                      pid2html(I#information.id, CleanPid),
-                                      %% end,
+                                      pid2html(Id, CleanPid),
                                       image_string(proc_lifetime, [
                                                            {profiletime, ProfileTime},
                                                            {start, StartTime},
                                                            {"end", term2html(float(EndTime))},
                                                            {width, 100},
                                                                    {height, 10}]),
-                                      term2html(I#information.name),
+                                      proc_name_to_html(Id, I#information.name),
                                       pid2html(I#information.parent, CleanPid),
-                                      integer_to_list(max(0,length(I#information.rq_history)-1)),
-                                      msg2html(info_msg_received(I)),
-                                      msg2html(info_msg_sent(I)),
+                                      info_to_html(max(0,length(I#information.rq_history)-1), RqProfiled),
+                                      info_to_html(num_msgs_recv(I), MsgRecvProfiled),
+                                      info_to_html(avg_msg_size_recv(I), MsgRecvProfiled), 
+                                      info_to_html(num_msgs_sent(I), MsgSendProfiled),
+                                      info_to_html(avg_msg_size_sent(I),MsgSendProfiled),
                                       mfa2html(I#information.entry),
                                       visual_link({I#information.id, undefined, undefined}, 
                                                   I#information.children)]),
@@ -920,19 +988,22 @@ mk_procs_html(ProcessTree, ProfileTime, ActiveProcsInfo) ->
     if 
 	length(ProcsHtml) > 0 ->
             " <tr><td>
- 	   <table class=sortable align=center width=1000 cellspacing=10 border=0>
-		<tr>
-		<td align=middle width=40><b>Select</b></td>
-                <td align=middle width=40> <b>[+/-]</b></td>
-		<td align=middle width=80><b>Pid</b></td>
-               	<td align=middle width=80><b>Lifetime</b></td>
-	        <td align=middle width=80><b>Name</b></td>
-		<td align=middle width=80><b>Parent</b></td>
-                <td align=middle width=80><b>#RQ_chgs</b></td>
-                <td align=middle width=80><b>#msgs_received</b></td>
-                <td align=middle width=80><b>#msgs_sent</b></td>
-                <td align=middle width=100><b>Entrypoint</b></td>
-                <td align=middle width=140><b> Callgraph </b></td>    
+ 	   <table class=sortable align=center width=1100 cellspacing=10 border=0>"
+                ++
+                "<tr>
+		<td width=40><b>Select</b></td>
+                <td width=40> <b>[+/-]</b></td>
+		<td width=80><b>Pid</b></td>
+               	<td width=80><b>Lifetime</b></td>
+	        <td width=80><b>Name</b></td>
+		<td width=80><b>Parent</b></td>
+                <td width=80><b>#RQ_chgs</b></td>
+                <td width=100><b>#msgs<br />_recv</b></td>
+                <td width=100><b>avg_size<br />msg_recv</b></td>
+                <td width=100><b>#msgs <br /> _sent</b></td>
+                <td width=100><b>avg_size<br />msg_sent  </b></td>
+                <td width=120><b>Entrypoint</b></td>
+                <td width=120><b> Callgraph </b></td>    
 		</tr>" ++
 		lists:flatten(ProcsHtml) ++ 
 	    "</table>
@@ -996,31 +1067,36 @@ mk_ports_html(Ports, ProfileTime) ->
           ""
     end.
  
-info_msg_received(I) ->
+num_msgs_recv(I) ->
+    element(1,I#information.msgs_received).
+ 
+avg_msg_size_recv(I) ->
     {No, Size} = I#information.msgs_received,
-    AvgSize = case No of 
-                  0 -> 0;
-                  _ -> Size div No
-              end,
-    {No, AvgSize}.
+    case No of 
+        0 -> 0;
+        _ -> Size div No
+    end.
+ 
+info_msg_recv(I)->
+    {num_msgs_recv(I), avg_msg_size_recv(I)}.
 
+num_msgs_sent(I) ->
+    element(1,I#information.msgs_sent).
 
-%% info_msg_sent(I) ->
-%%     {No, SameRq, OtherRqs, Size} = I#information.msgs_sent,
-%%     AvgSize = case No of 
-%%                   0 -> 0;
-%%                   _ -> Size div No
-%%               end,
-%%     {No, SameRq, OtherRqs, AvgSize}.
+avg_msg_size_sent(I) ->
+    {No, Size} = I#information.msgs_sent,
+    case No of 
+        0 -> 0;
+        _ -> Size div No
+    end.
 
 info_msg_sent(I) ->
-    {No, Size} = I#information.msgs_sent,
-    AvgSize = case No of 
-                  0 -> 0;
-                  _ -> Size div No
-              end,
-    {No, AvgSize}.
+    {num_msgs_sent(I), avg_msg_size_sent(I)}.
 
+info_to_html(_, false) ->
+    "--";
+info_to_html(Info, _) ->
+    term2html(Info).
 
 expand_or_collapse(Children, Id) ->
     case Children of 
@@ -1039,7 +1115,7 @@ sub_table(_Id, [], _ProfileTime, _) ->
     "";
 sub_table(Id, Children, ProfileTime, ActivePids) ->
     SubHtml=mk_procs_html(Children, ProfileTime, ActivePids),
-    "<tr><td colspan=\"10\"> <table width=950 cellspacing=10  cellpadding=2 border=1 "
+    "<tr><td colspan=\"10\"> <table width=1000 cellspacing=10  cellpadding=2 border=1 "
         "id=\""++mk_table_id(Id)++"\", style=\"margin-left:60px;\">" ++
         SubHtml ++ "</table></td></tr>".
 
@@ -1090,6 +1166,15 @@ process_info_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
     [I] = percept2_db:select({information, Pid}),
+    ProfileOpts = percept2_db:select({system, profile_opts}),
+    MsgSendProfiled = ProfileOpts==[] orelse 
+        lists:member('send', ProfileOpts),
+    MsgRecvProfiled = ProfileOpts==[] orelse 
+        lists:member('receive', ProfileOpts),
+    RqProfiled = ProfileOpts==[] orelse 
+        lists:member('scheduler_id', ProfileOpts),
+    GCProfiled =ProfileOpts==[] orelse 
+        lists:member('garbage_collection', ProfileOpts),
     ArgumentString = case I#information.entry of
                          {_, _, Arguments} when is_list(Arguments)-> 
                              lists:flatten(io_lib:write(Arguments, 10));
@@ -1127,15 +1212,24 @@ process_info_content_1(_Env, Input) ->
                           true ->
                               [];
                           false ->
-                              [[{th, "RQ_history"}, term2html(
+                              [[{th, "RQ_history"}, info_to_html(
                                                       element(2,lists:unzip(
-                                                                  lists:keysort(1, I#information.rq_history))))]]
+                                                                  lists:keysort(1, I#information.rq_history))),
+                                                      RqProfiled)]]
                       end
                    ++
                     [[{th, "{#msg_received, <br>avg_msg_size}"},
-                     term2html(info_msg_received(I))],
+                     info_to_html(info_msg_recv(I), MsgRecvProfiled)],
                     [{th, "{#msg_sent,<br>avg_msg_size}"}, 
-                     term2html(info_msg_sent(I))]] 
+                     info_to_html(info_msg_sent(I), MsgSendProfiled)]]
+                   ++
+                       case is_dummy_pid(Pid) of 
+                           true ->
+                               [];
+                           false ->
+                               [[{th, "garbage collection time (in secs) <br>"},
+                                info_to_html(I#information.gc_time/?Million, GCProfiled)]]
+                       end
                    ++
                        case is_dummy_pid(Pid) of 
                            true -> [];
@@ -1237,6 +1331,31 @@ process_comm_graph_content(_Env, Input) ->
            %%      generate the svg file.
             GenImgRes=percept2_dot:gen_process_comm_img( 
                         SvgDir, ImgFileBaseName, MinSends, MinSize),
+            process_gen_graph_img_result(Content, GenImgRes)
+    end.
+
+
+
+inter_node_comm_graph_content(_Env, _Input) ->
+    SvgDir = percept2:get_svg_alias_dir(),
+    ImgFileBaseName="inter_node_comm_graph",
+    ImgFileName = ImgFileBaseName++".svg",
+    ImgFullFilePath = filename:join([SvgDir, ImgFileName]),
+    Content = "<div style=\"text-align:center; align:center\">" ++
+        "<h3 style=\"text-align:center;\">Inter-node Communication Graph</h3>"++ 
+        "<object data=\"/svgs/"++ImgFileName++"\" type=\"image/svg+xml\"" ++
+        " overflow=\"visible\"  scrolling=\"yes\" "++
+        "></object>"++
+        "</div>",
+    case filelib:is_regular(ImgFullFilePath) of 
+        true -> 
+            %% file already generated, so reuse.
+            Content;  
+        false -> 
+           %%TODO: Add a timeout here in case it takes 'dot' too long 
+           %%      generate the svg file.
+            GenImgRes=percept2_dot:gen_node_comm_img( 
+                        SvgDir, ImgFileBaseName),
             process_gen_graph_img_result(Content, GenImgRes)
     end.
 
@@ -1530,14 +1649,17 @@ inter_node_message_content_1(_Env, Nodes) ->
 	<form name=inter_node_message method=POST action=/cgi-bin/percept2_html/inter_node_message_graph_page>
 	<center>
          <table>
-	    <tr><td width=200>From node:</td>
-                <td width=200>To node:</td></tr>
+	    <tr>
+                 <td width=200>Sender node:</td>
+                <td width=200>Receiver node:</td></tr>
 	    <tr><td><select name=\"node1\">"++NodeList ++
             "</select></td>
             <td><select name=\"node2\">"++NodeList++
         "</select></td>
-         <td width=200><input type=submit value=\"Generate Graph\" /></td></tr>
-	</table>
+         <td width=200><input type=submit value=\"Generate Node-to-Node \n Message sends Graph\" /></td>"++
+        "<td align=right width=400> <a href=\"/cgi-bin/percept2_html/inter_node_comm_graph_page\">"++
+        "<b>Overall Inter-node Communication Graph</b>"++"</a></td></tr>" ++
+	"</table>
 	</center>
 	</form>
 	</div>". 
@@ -1584,9 +1706,9 @@ html_table_data([Data|Row])       -> "<td>" ++ Data ++ "</td>" ++ html_table_dat
 table_line(List) -> table_line(List, ["<tr>"]).
 table_line([], Out) -> lists:flatten(lists:reverse(["</tr>\n"|Out]));
 table_line([Element | Elements], Out) when is_list(Element) ->
-    table_line(Elements, ["<td>" ++ Element ++ "</td>" |Out]);
+    table_line(Elements, ["<td align=left>" ++ Element ++ "</td>" |Out]);
 table_line([Element | Elements], Out) ->
-    table_line(Elements, ["<td>" ++ term2html(Element) ++ "</td>"|Out]).
+    table_line(Elements, ["<td align=left>" ++ term2html(Element) ++ "</td>"|Out]).
 
 -spec term2html(any()) -> string().
 
@@ -1601,7 +1723,9 @@ mfa2html({Module, Function, Arguments}) when is_list(Arguments) ->
 mfa2html({Module, Function, Arity}) when is_atom(Module), is_integer(Arity) ->
     lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity]));
 mfa2html(V) when is_atom(V)->
-    atom_to_list(V).
+    atom_to_list(V);
+mfa2html(_V) -> "undefined".
+
     
 
 %% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
@@ -1692,21 +1816,18 @@ pid2html_1(Pid, PidString, PidValue) ->
                 PidValue++"\">"++PidString++"</a>"
     end.
 
-%% pid2html_with_color(Pid)
-%%   when is_pid(Pid); is_tuple(Pid) andalso element(1, Pid)==pid ->
-%%     PidString = term2html(Pid),
-%%     PidValue = pid2str(Pid),
-%%     "<a href=\"/cgi-bin/percept2_html/process_info_page?pid="++PidValue++"\">"
-%%                   ++"<font color=\"#FF0000\">"++PidString++"</font></a>";
-%% pid2html_with_color(Pid) when is_port(Pid) ->
-%%     term2html(Pid);
-%% pid2html_with_color(_) ->
-%%     "undefined".
+proc_name_to_html(Pid, Name) ->
+    case is_dummy_pid(Pid) of 
+        true ->
+            "<a href=\"/cgi-bin/percept2_html/sub_process_tree_page?pid="++pid2str(Pid)++"\">"
+                ++"<font color=\"#FF0000\">"++term2html(Name)++"</font></a>";
+        _ -> term2html(Name)
+    end.
 
 msg2html(Msg) ->
     AvgMsgSize = lists:last(tuple_to_list(Msg)),
     %% TODO: generalise this function!
-    case AvgMsgSize < 1000 of   
+    case AvgMsgSize < 1000000 of   
         true ->
             term2html(Msg);
         false ->
