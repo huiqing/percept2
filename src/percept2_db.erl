@@ -667,8 +667,18 @@ calc_acc_runtime(_ActiveST, InOuts, InActiveST) ->
 calc_acc_runtime_1([],_InActiveST, Acc) -> Acc;
 calc_acc_runtime_1([{in, TS1}, {out, TS2}|InOuts],InActiveST, Acc) ->
     calc_acc_runtime_1(InOuts, InActiveST, Acc+elapsed(TS1, TS2));
+%% inconsistent data
+calc_acc_runtime_1([_, {in, TS2}|InOuts],InActiveST, Acc) ->
+    calc_acc_runtime_1([{in, TS2}|InOuts], InActiveST, Acc);
+%% inconsistent data
+calc_acc_runtime_1([{out, _TS1}, {out, _TS2}|InOuts],InActiveST, Acc) ->
+    calc_acc_runtime_1(InOuts, InActiveST, Acc) ;
 calc_acc_runtime_1([{in, TS1}], InActiveST, Acc) ->
-    elapsed(TS1, InActiveST)+Acc.
+    elapsed(TS1, InActiveST)+Acc;
+%%this should not happen.
+calc_acc_runtime_1([_], _InActiveST, Acc) -> 
+    Acc.
+
 
 check_activity_consistency(SubDBIndex, Id, State) ->
     RunnableStates = erlang:get(runnable_states),
