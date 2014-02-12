@@ -125,7 +125,7 @@ summary_report_page(SessionID, Env, Input) ->
                              blink_msg("No data has been analyzed!"));
             _ ->
                 Menu = menu(Input),
-                deliver_page(SessionID, Menu, summary_report_content())
+                deliver_page(SessionID, Menu, summary_report_content(Env, Input))
         end
     catch
         _E1:_E2 ->
@@ -273,7 +273,7 @@ process_info_page(SessionID, Env, Input) ->
 process_info_page_without_menu(SessionID, Env, Input) ->
     try
         Content = process_info_content(Env, Input),
-        mod_esi:deliver(SessionID,  common_header([])),
+        mod_esi:deliver(SessionID, common_header([])),
         mod_esi:deliver(SessionID, Content),
         mod_esi:deliver(SessionID, footer())
     catch
@@ -297,7 +297,7 @@ function_info_page(SessionID, Env, Input) ->
 function_info_page_without_menu(SessionID, Env, Input) ->
     try
         Content = function_info_content(Env, Input),
-        mod_esi:deliver(SessionID,  common_header([])),
+        mod_esi:deliver(SessionID,  common_header([])), 
         mod_esi:deliver(SessionID, Content),
         mod_esi:deliver(SessionID, footer())
     catch
@@ -408,7 +408,7 @@ overview_content_1(_Env, Input) ->
 	table_line(["Profile time:", TotalProfileTime]) ++
         %% This needs to be fixed. What about if profiling was done
         %% on another machine with different number of cores?
-        table_line(["Schedulers:", erlang:system_info(schedulers)]) ++  
+        table_line(["Schedulers:", percept2_db:select({system, schedulers})]) ++  
 
 	table_line(["Processes:", Procs]) ++
         table_line(["Ports:", Ports]) ++
@@ -571,34 +571,7 @@ concurrency_content_1(_Env, Input) ->
 
 concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
     {T0, T1} = {?seconds(MinTs, StartTs), ?seconds(MaxTs, StartTs)},
-    CleanPid = percept2_db:select({system, nodes})==1,
-    ActivityBarTable =
-        lists:append(lists:map(
-                       fun(Pid) ->
-                               ValueString = pid2str(Pid),
-                               ActivityBar = image_string_head(
-                                               "activity", 
-                                               [{"pid", ValueString},
-                                                {range_min, T0},
-                                                {range_max, T1},
-                                                {height, 10}], []),
-                               %% RegName = percept2_db:pid2name(Pid),
-                               %% PidOrName = case RegName of 
-                               %%                 undefined -> pid2html(Pid, CleanPid);
-                               %%                 _ -> term2html(RegName)
-                               %%             end,
-                               "<tr><td><input type=checkbox name="++pid2str(Pid)++"></td>"++
-                                 case has_callgraph(Pid) of 
-                                     true ->
-                                         "<td width=100; bgcolor=#E0FFFF>"++
-                                             pid2html(Pid, CleanPid)++"</td>";
-                                     false ->
-                                         "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"
-                                 end ++
-                                   "<td>" ++ "<img onload=\"size_image(this, '" ++
-                                   ActivityBar ++
-                                   "')\" src=/images/white.png border=0 />" ++ "</td>\n"
-                       end, IDs)),
+    ActivityBarTable =mk_activity_bars(IDs, T0, T1, true),
     PidsRequest = pids2request(IDs),
     Header = "
      <div id=\"content\">
@@ -634,6 +607,34 @@ concurrency_content_2(IDs, StartTs, MinTs, MaxTs) ->
         [ActivityBarTable]++"</table>",
     Footer = "</div></form>",
     Header++ MainTable++ Footer ++ Header1 ++ MainTable1++Footer.
+
+mk_activity_bars(IDs, StartTime, StopTime, CheckBox) ->
+    CleanPid = percept2_db:select({system, nodes})==1,
+    lists:append(lists:map(
+                   fun(Pid) ->
+                           ValueString = pid2str(Pid),
+                           ActivityBar = image_string_head(
+                                           "activity",
+                                           [{"pid", ValueString},
+                                            {range_min, StartTime},
+                                            {range_max, StopTime},
+                                            {height, 10}], []),
+                           Check = if CheckBox->
+                                           "<td><input type=checkbox name=" ++ pid2str(Pid) ++ "></td>";
+                                      true -> ""
+                                   end,
+                           "<tr>"++Check ++
+                                 case has_callgraph(Pid) of 
+                                     true ->
+                                         "<td width=100; bgcolor=#E0FFFF>"++
+                                             pid2html(Pid, CleanPid)++"</td>";
+                                     false ->
+                                         "<td width=100>"++pid2html(Pid, CleanPid)++"</td>"
+                                 end ++
+                                   "<td>" ++ "<img onload=\"size_image(this, '" ++
+                                   ActivityBar ++
+                                   "')\" src=/images/white.png border=0 />" ++ "</td>\n"
+                   end, IDs)).
 
 -spec(get_pids_to_compare(string()) ->[pid()]).
 get_pids_to_compare(Input) ->
@@ -840,9 +841,53 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
     Footer = "</div></form>",
     Header ++ MainTable ++ Footer.
     
--spec(summary_report_content() -> string()).
-summary_report_content() ->
-    blink_msg("Sorry, this functionality is not supported yet.").
+%%-spec(summary_report_content(Env, Input) -> string()).
+summary_report_content(Env, Input) ->
+    CacheKey = "summary_report_content"++
+        integer_to_list(erlang:crc32(Input)),
+    %% gen_content(Env, Input, CacheKey, fun summary_report_content_1/2).
+    summary_report_content_1(Env, Input).
+
+summary_report_content_1(_Env, _Input) ->
+    Data = percept2_report:scheduler_utilisation(),
+    TableRows=[[{td, T}]||T<-Data],
+    SchedTable = html_table([
+                             [{th, "Scheduler Utilisation:   "}]]
+                            ++ TableRows
+                           ),
+    RunningContent = sub_proc_report_table("Processes with the most runntime:",10,running),
+    BlockContent=sub_proc_report_table("Processes with the most blockingtime:",10,block),
+    RunnableContent=sub_proc_report_table("Processes with the most wating to run time:",10, runnable),
+    GCContent=sub_proc_report_table("Processes with the most garbage collection time:",10,gc),
+    MsgRecvContent=sub_proc_report_table("Processes with the most message receives:",10,msg_receive),
+    MsgSendContent=sub_proc_report_table("Processes with the most message sends:",10,msg_send),
+    MsgRecvSizeContent=sub_proc_report_table("Processes that receive large messages:",10,msg_receive_size),
+    MsgSendSizeContent=sub_proc_report_table("Processes that send large messages:",10,msg_send_size),
+    "<div id=\"content\">" ++
+        SchedTable ++ "<br><br>" ++
+        RunningContent ++"<br><br>"++
+        BlockContent ++"<br><br>"++
+        RunnableContent ++"<br><br>"++
+        GCContent++"<br><br>"++
+        MsgRecvContent++"<br><br>"++
+        MsgSendContent++"<br><br>"++
+        MsgRecvSizeContent++"<br><br>"++
+        MsgSendSizeContent++"<br><br>"++
+        "</div>".
+
+sub_proc_report_table(Title,Num,Type) ->
+    IDs=[element(1, P)||P <- percept2_report:process_report(Type, Num)],
+    StartTs = percept2_db:select({system, start_ts}),
+    StopTs = percept2_db:select({system, stop_ts}),
+    {T0, T1} = {?seconds(StartTs, StartTs), ?seconds(StopTs, StartTs)},
+    ActBars=mk_activity_bars(IDs, T0, T1, false),
+    Header = html_table([
+                         [{th, Title}]]
+                       ),
+    Content= "<table  cellspacing=0 cellpadding=0 border=0>" ++
+        [ActBars] ++ "</table>",
+    Header ++ Content.
+
 
 %%% databases content page.
 databases_content() ->
@@ -1234,8 +1279,8 @@ process_info_content_1(_Env, Input) ->
                        case is_dummy_pid(Pid) of 
                            true -> [];
                            false->
-                             [[{th, "accumulated runtime (in secs) <br>"},
-                              term2html(I#information.accu_runtime/?Million)]]
+                               [[{th, "accumulated runtime (in secs) <br>"},
+                              term2html(I#information.acc_runtime/?Million)]]
                       end
                  ++
                    [[{th, "Callgraph/time"}, visual_link({Pid, I#information.entry, undefined}, [])]]
@@ -1246,8 +1291,7 @@ process_info_content_1(_Env, Input) ->
                                                                         I#information.hidden_pids))]];
                         false -> []
                     end),
-    PidActivities = percept2_db:select({activity, [{id, Pid}]}),
-    WaitingMfas   = percept2_analyzer:waiting_activities(PidActivities),
+    WaitingMfas   = percept2_analyzer:waiting_activities(Pid),
     TotalWaitTime = lists:sum( [T || {T, _, _} <- WaitingMfas] ),
     MfaTable = html_table([
         [{th, "percentage of <br>total waiting time"},
@@ -1501,16 +1545,14 @@ function_info_content_1(_Env, Input) ->
     InfoTable = html_table([
                             [{th, "Pid"},         pid2html(Pid, CleanPid)],
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
-                            [{th, "M:F/A"},       mfa2html_with_link({Pid, MFA})],
+                            [{th, "M:F/A"},       mfa2html_with_modal_link({Pid, MFA})],
                             [{th, "Call count"}, term2html(F#fun_info.call_count)],
                             [{th, "Accumulated time <br>(in secs)"}, term2html((F#fun_info.acc_time/?Million))],
                             [{th, "Callers"},     CallersTable], 
                             [{th, "Called"},      CalledTable]
                            ]),
-    "<div id=\"content\">" ++
-     InfoTable ++ "<br>" ++
-         "</div>".
-
+    "<body>\n"++"<div id=\"content\">" ++
+        InfoTable ++ modal_content(MFA).
 
 callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
@@ -1748,6 +1790,32 @@ mfa2html_with_link({_Pid, V}) when is_atom(V) ->
     atom_to_list(V).
 
 
+%% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
+
+mfa2html_with_modal_link({Pid, MFA, _Caller}) ->
+    mfa2html_with_modal_link({Pid, MFA});
+mfa2html_with_modal_link({_Pid, {Module, Function, Arguments}}) when is_list(Arguments) ->
+    MFAString=lists:flatten(io_lib:format("~p:~p/~p", 
+                                          [Module, Function, length(Arguments)])),
+    _MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", 
+                                         [Module, Function, length(Arguments)])),
+    
+    OpenModalHref="<a href=\"#openModal"
+      %%  ++MFAString
+        ++"\">" 
+        ++ MFAString ++ "</a>",
+    OpenModalHref; %%++OpenModalDiv;
+
+mfa2html_with_modal_link({_Pid, {Module, Function, Arity}}) when is_atom(Module), is_integer(Arity) ->
+    MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
+    _MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
+    OpenModalHref="<a href=\"#openModal"
+        ++"\">" ++ MFAString ++ "</a>",
+    OpenModalHref; 
+
+
+mfa2html_with_modal_link({_Pid, V}) when is_atom(V) ->
+    atom_to_list(V).
 
 visual_link({Pid,_, _}, ChildrenPids)->
     case has_callgraph(Pid) of 
@@ -1984,7 +2052,7 @@ concurrency_header() ->
 
 common_header(HeaderData)->
     "Content-Type: text/html\r\n\r\n" ++
-    "<html>
+     "<html>
     <head>
     <meta http-equiv=\"Content-Type\" content=\"text/html; charset=iso-8859-1\">
     <title>percept2</title>
@@ -2021,7 +2089,8 @@ menu(Input) ->
 menu_1(Min, Max) ->
     "<div id=\"menu\" class=\"menu_tabs\">
 	<ul>
-     	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
+        <li><a href=/cgi-bin/percept2_html/summary_report_page>report</a></li>
+	<li><a href=/cgi-bin/percept2_html/databases_page>databases</a></li>
         <li><a href=/cgi-bin/percept2_html/visualise_sampling_data_page>visualise sampling data</a></li>
         <li><a href=/cgi-bin/percept2_html/inter_node_message_page?range_min=" ++
         term2html(Min) ++ "&range_max=" ++ term2html(Max) ++ ">inter-node messaging</a></li>
@@ -2344,52 +2413,77 @@ is_dummy_pid({pid, {_, P2, _}}) ->
     is_atom(P2);
 is_dummy_pid(_) -> false.
 
+modal_content(MFA) ->
+    "<div id=\"openModal\" class=\"modalDialog\">
+	<div>
+		<a href=\"#close\" title=\"Close\" class=\"close\">X</a>
+		<h2>Modal Box</h2>"++
+        get_code(MFA)++
+        "</div></div>".
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
-%% only for experiments.
+	%% <p>This is a sample modal box that can be created using the powers of CSS3.</p>
+	%% 	<p>You could do a lot of things here like have a pop-up ad that shows when your website loads, or create a login/register form for users.</p>
 
-get_live_data(SessionID, _Env, _Input) ->
-    live_data_proc ! {get_next, self()},
-    receive
-        {live_data_proc, Data} ->
-            mod_esi:deliver(SessionID, Data)
-    end.
+get_code({M, F, A}) when is_list(A) ->
+    get_code({M, F, length(A)}).
 
-get_live_data()->
-    live_data_proc ! {get_next, self()},
-    receive
-        {live_data_proc, Data} ->
-            Data
-    end.
-start_live_data_proc(File) ->
-    spawn(?MODULE, init_live_data_proc, [File]).
+get_code({M, F, A}) ->
+    
 
-init_live_data_proc(File) ->
-    register(live_data_proc, self()),
-    {ok, FD} =file:open(File, [read]),
-    live_data_loop(FD).
+%% /**
+%% * Grab the content of a Erlang file and store as an array.
+%% * @param {[string]} module [The name of the module.]
+%% * @return {[array]} [Array containing each line of Erlang file.]
+%% */
+%%   function getFile(module) {
+%%     var filePath = '/cgi-bin/percept2_html/module_content?mod=' + module;
 
-stop_live_data_proc() ->
-    live_data_proc!stop.
+%%     //Grab contents of the file.
+%%     xmlhttp = new XMLHttpRequest();
+%%     xmlhttp.open("GET",filePath,false);
+%%     xmlhttp.send(null);
+%%     var fileContent = xmlhttp.responseText;
 
-live_data_loop(FD)->
-    receive
-        {get_next, Pid} ->
-            {ok, Data} = file:read_line(FD),
-            Pid!{live_data_proc, Data},
-            live_data_loop(FD);
-        stop ->
-            ok
-    end.
+%%     //Add each line of file to array.
+%%     var fileArray = fileContent.split('\n');
 
-%%percept2:start_webserver(8888).
-%%percept2_html:start_live_data_proc("rq_migration.txt").
-%% http://localhost:8888/cgi-bin/percept2_html/get_live_data
-%%  {{pid,{0,1578,0}},[{1.129399,13},{1.130775,12}]}. 
-%% http://localhost:8888/cgi-bin/percept2_html/get_live_data
-%%  {{pid,{0,2743,0}},[{13.596175,1}]}. 
-%%  ....
-%%  ....
-%%percept2_html:stop_live_data_proc().
-%%percept2:stop_webserver().
+%%     return fileArray;
+%%   }
+
+%%   /**
+%% * Calls getFile to get the code array, empties the modal of any previous content,
+%% * then adds the new code to it.
+%% * @param {[string]} text [The starting line, end line and module name seperated by spaces.]
+%% * @var values [Seperates the values in 'text' by the space and stores in array.]
+%% * @var title [The title of the modal.]
+%% * @var start [The start line of method.]
+%% * @var end [The end line of method.]
+%% * @var fileArray [Array of lines from file.]
+%% */
+%%   function getCode(text) {
+%%     var values = text.getAttribute('href').split(' ');
+%%     var title = text.firstChild.data;
+%%     var start = values[0]-1;
+%%     var end = values[1];
+%%     var fileArray = getFile(values[2]);
+
+%%     //Empty the modal and then add new contents.
+%%     $('#myModal pre').empty();
+%%     $('#myModal h3').empty();
+%%     $('#myModal h3').append(title);
+
+%%     if (start == -1) {
+%%       $('#myModal h3').append(" - Source Unavailable");
+%%       $('#myModal pre').append("The Erlang source for this function is not available :(.");
+%%     }
+%%     else{
+%%       for(var i=start; i<end; i++) {
+%%         $('#myModal pre').append(fileArray[i] +'<br/>');
+%%       }
+%%     }
+
+%%     //Show the modal.
+%%     $('#myModal').modal('toggle');
+%%   }
+
