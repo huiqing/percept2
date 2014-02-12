@@ -585,6 +585,9 @@ insert_profile_trace(SubDBIndex,Trace) ->
         {profile_stop, Ts} ->
             SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
             update_system_stop_ts(SystemProcRegName,Ts);
+        {schedulers, Num} ->
+            SystemProcRegName =mk_proc_reg_name("pdb_system", SubDBIndex),
+            update_system_scheduler_num(SystemProcRegName,Num);
         %% sometimes Mfa is 0. 
         {profile, Id, State, Mfa, TS} when is_pid(Id)  ->
             insert_profile_trace_1(SubDBIndex, Id, State,Mfa,TS,procs);
@@ -613,19 +616,27 @@ insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, procs) ->
             ok;
         valid_state ->
             InternalPid =pid2value(Id),
+            InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
             case State of 
                 active->
+                    case erlang:get({inactive, Id}) of
+                        undefined ->
+                            ok;
+                        TS1 ->
+                            update_information_acc_waiting_time(
+                              InfoProcRegName, {InternalPid, elapsed(TS1, TS)})
+                    end,
                     erlang:put({active, Id}, {TS, []});
                 inactive ->  %% process changes to be inactive.
+                    erlang:put({inactive, Id}, TS),
                     case erlang:get({active, Id}) of 
                         undefined ->
-                            erlang:erase({in, Id}),
-                            erlang:erase({active, Id});
+                            erlang:erase({in, Id});
                         {TS1, InOuts} ->
                             {TS1, InOuts}=erlang:get({active, Id}),
-                            AccRunTime = calc_acc_runtime(TS1, lists:reverse(InOuts), TS),
-                            InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-                            update_information_acc_time(InfoProcRegName, {InternalPid,AccRunTime}),
+                            {AccRunTime, _} = calc_acc_runtime(TS1, lists:reverse(InOuts), TS),
+                            AccWaitingTime = elapsed(TS1, TS) - AccRunTime,
+                            update_information_acc_time(InfoProcRegName, {InternalPid,{AccRunTime,AccWaitingTime}}),
                             update_activity(ActProcRegName, {update_inouts, InternalPid, TS1, InOuts}),
                             erlang:erase({in, Id}),
                             erlang:erase({active, Id})
@@ -658,27 +669,28 @@ insert_profile_trace_1(SubDBIndex, Id,State,Mfa,TS, ports) ->
                                       where = Mfa})
     end.
 
-calc_acc_runtime(ActiveST, [], InActiveST) -> elapsed(ActiveST, InActiveST);
+calc_acc_runtime(ActiveST, [], InActiveST) -> {elapsed(ActiveST, InActiveST), 0};
 calc_acc_runtime(ActiveST, [{out, TS}|InOuts], InActiveST) -> 
-    calc_acc_runtime_1([{in, ActiveST},{out,TS}|InOuts], InActiveST,0);
+    calc_acc_runtime_1([{in, ActiveST},{out,TS}|InOuts], InActiveST,{0,0});
 calc_acc_runtime(_ActiveST, InOuts, InActiveST) ->
-    calc_acc_runtime_1(InOuts, InActiveST,0).
+    calc_acc_runtime_1(InOuts, InActiveST,{0,0}).
 
 calc_acc_runtime_1([],_InActiveST, Acc) -> Acc;
-calc_acc_runtime_1([{in, TS1}, {out, TS2}|InOuts],InActiveST, Acc) ->
-    calc_acc_runtime_1(InOuts, InActiveST, Acc+elapsed(TS1, TS2));
+calc_acc_runtime_1([{in, TS1}, {out, TS2}|InOuts],InActiveST, {RunTime, WaitingTime}) ->
+    calc_acc_runtime_1([{out,TS2}|InOuts], InActiveST, 
+                       {RunTime+elapsed(TS1, TS2), WaitingTime});
 %% inconsistent data
-calc_acc_runtime_1([_, {in, TS2}|InOuts],InActiveST, Acc) ->
-    calc_acc_runtime_1([{in, TS2}|InOuts], InActiveST, Acc);
+calc_acc_runtime_1([{out, TS1}, {in, TS2}|InOuts],InActiveST, {RunTime, WaitingTime}) ->
+    calc_acc_runtime_1([{in, TS2}|InOuts], InActiveST, 
+                       {RunTime, WaitingTime+elapsed(TS1, TS2)});
 %% inconsistent data
 calc_acc_runtime_1([{out, _TS1}, {out, _TS2}|InOuts],InActiveST, Acc) ->
     calc_acc_runtime_1(InOuts, InActiveST, Acc) ;
-calc_acc_runtime_1([{in, TS1}], InActiveST, Acc) ->
-    elapsed(TS1, InActiveST)+Acc;
+calc_acc_runtime_1([{in, TS1}], InActiveST, {RunTime, WaitingTime}) ->
+    {elapsed(TS1, InActiveST)+RunTime, WaitingTime};
 %%this should not happen.
-calc_acc_runtime_1([_], _InActiveST, Acc) -> 
-    Acc.
-
+calc_acc_runtime_1([{out, TS1}], InActiveST, {RunTime, WaitingTime}) -> 
+    {RunTime, WaitingTime+elapsed(TS1, InActiveST)}.
 
 check_activity_consistency(SubDBIndex, Id, State) ->
     RunnableStates = erlang:get(runnable_states),
@@ -806,11 +818,9 @@ process_trace_out(SubDBIndex, Pid, MFA, TS) ->
             end
     end.
 
-elapsed({Me1, S1, Mi1}, {Me2, S2, Mi2}) ->
-    Me = (Me2 - Me1) * 1000000,  
-    S  = (S2 - S1 + Me) * 1000000,
-    Mi2 - Mi1 + S.
-
+elapsed(TS1, TS2) ->
+    timer:now_diff(TS2, TS1).
+  
 %%{trace_ts, _Pid, out_exited, _, _, _Ts}
 trace_out_exited(_SubDBIndex, _Trace)-> 
     ok.
@@ -931,8 +941,8 @@ trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     Data = erase(),
     [begin
          InfoProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
-         AccRunTime = calc_acc_runtime(TS, lists:reverse(InOuts), element(2, hd(InOuts))),
-         update_information_acc_time(InfoProcRegName, {pid2value(Pid),AccRunTime}),
+         {AccRunTime, AccWaitingTime} = calc_acc_runtime(TS, lists:reverse(InOuts), element(2, hd(InOuts))),
+         update_information_acc_time(InfoProcRegName, {pid2value(Pid), {AccRunTime, AccWaitingTime}}),
          update_activity(ActRegName, {update_inouts, pid2value(Pid), TS, InOuts})
      end
      ||{{active, Pid}, {TS,InOuts}}<-Data, InOuts/=[]],
@@ -1392,6 +1402,9 @@ update_information_element(ProcRegName, Key, {Pos, Value}) ->
 update_information_acc_time(ProcRegName, {Key, Elapsed}) ->
     ProcRegName ! {update_information_acc_time, {Key, Elapsed}}.
 
+update_information_acc_waiting_time(ProcRegName, {Key, Time}) ->
+    ProcRegName ! {update_information_acc_waiting_time, {Key, Time}}.
+                      
 update_information_gc_time(ProcRegName, {Pid, Time})->
     ProcRegName ! {update_information_gc_time, {Pid, Time}}.
 
@@ -1419,6 +1432,9 @@ pdb_info_loop()->
         {update_information_acc_time, {Key, Value}} ->
             update_information_acc_time_1(Key, Value),
             pdb_info_loop();
+        {update_information_acc_waiting_time, {Key, Value}} ->
+            update_information_acc_waiting_time_1(Key, Value),
+            pdb_info_loop();
         {update_information_gc_time, {Pid, Time}} ->
             update_information_gc_time_1(Pid, Time),
             pdb_info_loop();
@@ -1427,12 +1443,24 @@ pdb_info_loop()->
             ok
     end.
 
-update_information_acc_time_1(Key, Value) ->
+update_information_acc_time_1(Key, {RunTime, WaitTime}) ->
     case ets:lookup(pdb_info, Key) of 
         [] ->
-            ets:insert(pdb_info, #information{id=Key, accu_runtime=Value});
+            ets:insert(pdb_info, #information{id=Key, acc_runtime=RunTime, 
+                                              acc_runnable_time=WaitTime});
         [_Info] ->
-            ets:update_counter(pdb_info, Key, {#information.accu_runtime, Value})
+            ets:update_counter(pdb_info, Key, [{#information.acc_runtime, RunTime},
+                                               {#information.acc_runnable_time, WaitTime}])
+    end.
+
+update_information_acc_waiting_time_1(Key, Time) ->
+    case ets:lookup(pdb_info, Key) of 
+        [] ->
+            ets:insert(pdb_info, 
+                       #information{id=Key, acc_waiting_time=Time}); 
+        [_Info] ->
+            ets:update_counter(pdb_info, Key, 
+                               [{#information.acc_waiting_time, Time}])
     end.
 
 update_information_gc_time_1(Pid, Time) ->
@@ -1637,6 +1665,9 @@ update_system_stop_ts(SystemProcRegName, TS) ->
 update_system_nodes_num(SystemProcRegName, Num) ->
     SystemProcRegName ! {'update_system_nodes_num', Num}.
 
+update_system_scheduler_num(SystemProcRegName, Num) ->
+    SystemProcRegName ! {'update_system_scheduler_num', Num}.
+
 pdb_system_loop() ->
     receive
         {'update_system_start_ts', TS}->
@@ -1649,7 +1680,11 @@ pdb_system_loop() ->
             update_system_stop_ts_1(TS),
             pdb_system_loop();
         {'update_system_nodes_num', Num} ->
-            ets:insert(pdb_system, {{system, nodes}, Num});
+            ets:insert(pdb_system, {{system, nodes}, Num}),
+            pdb_system_loop();
+        {'update_system_scheduler_num', Num} ->
+            ets:insert(pdb_system, {{system, schedulers}, Num}),
+            pdb_system_loop();
         {action, stop, From} ->
             From ! {self(), stopped},
             ok
@@ -1706,6 +1741,10 @@ select_query_system(Query) ->
                 [] -> [];
                 [{{system, profile_opts}, Opts}] -> Opts
             end;
+        {system, schedulers} ->
+            [{{system, schedulers}, Num}]=
+                ets:lookup(pdb_system, {system, schedulers}),
+            Num;
 	Unhandled ->
 	    io:format("select_query_system, unhandled: ~p~n", [Unhandled]),
 	    []
@@ -2833,8 +2872,9 @@ get_proc_with_most_runtime([Proc|Procs]) ->
 get_proc_with_most_runtime([], Proc) ->
     Proc;
 get_proc_with_most_runtime([CurP={Proc, _}|Procs], P={Proc1,_}) ->
-    Time = Proc#information.accu_runtime,
-    case Proc1#information.accu_runtime < Time of 
+    RunTime = Proc#information.acc_runtime,
+    RunTime1 = Proc1#information.acc_runtime,
+    case RunTime1 < RunTime of 
         true ->
             get_proc_with_most_runtime(Procs,CurP);
         false ->
