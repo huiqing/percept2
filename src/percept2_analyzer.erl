@@ -173,7 +173,7 @@ activities2count_loop(
 	    activities2count_loop(Acts, {StartTs, {ProcsRc, Ports}}, summated, [Entry | Out])
     end.
 
-%% @spec waiting_activities([#activity{}]) -> FunctionList
+%% @spec waiting_activities(pid_value()) -> FunctionList
 %%	FunctionList = [{Seconds, Mfa, {Mean, StdDev, N}}]
 %%	Seconds = float()
 %%	Mfa = mfa()
@@ -184,7 +184,8 @@ activities2count_loop(
 %%	in a receive state at specific function. However, if there are multiple receives
 %%	in a function it cannot differentiate between them.
 
-waiting_activities(Activities) ->
+waiting_activities(PidValue) ->
+    Activities = percept2_db:select({activity, [{id, PidValue}]}),
     ListedMfas = waiting_activities_mfa_list(Activities, []),
     Unsorted = lists:foldl(
     	fun (Mfa, MfaList) ->
@@ -193,15 +194,21 @@ waiting_activities(Activities) ->
                 erlang:erase({waiting_mfa, Mfa}),
                 % statistics of receive waiting places
                 {Total, Mean, StdDev, N} = mean(WaitingTimes),
-                [{Total, Mfa, {Mean, StdDev, N}} | MfaList]
+                [{to_seconds(Total), 
+                  Mfa, 
+                  {to_seconds(Mean), to_seconds(StdDev),N}}| MfaList]
 	end, [], ListedMfas),
+    io:format("DDD:~p\n", [Unsorted]),
     lists:sort(fun ({A,_,_},{B,_,_}) ->
-                       if 
-                           A > B -> true;
-                           true -> false 
-                       end
-               end, Unsorted).
+                           if 
+                               A > B -> true;
+                               true -> false 
+                           end
+                   end, Unsorted).
+    
 
+to_seconds(Mi) ->
+    Mi/1000000.
 
 %% Generate lists of receive waiting times per mfa
 %% Out:
@@ -210,7 +217,6 @@ waiting_activities(Activities) ->
 %%	get({waiting, mfa()}) ->
 %%	[{waiting, mfa()}, {Total, [WaitingTime]})
 %%	WaitingTime = float()
-
 waiting_activities_mfa_list([], ListedMfas) -> ListedMfas;
 waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
     #activity{id = Pid, state = Act, timestamp = Time, where = MFA, in_out=_InOut} = Activity,
@@ -229,9 +235,10 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
                             case Info#information.stop of
                                 undefined ->
                                                 % get profile end time
-                                    Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
+                                    %%Waited = ?seconds((percept2_db:select({system,stop_ts})),Time);
+                                    Waited = timer:now_diff((percept2_db:select({system,stop_ts})),Time);
                                 Time2 ->
-                                    Waited = ?seconds(Time2, Time)
+                                    Waited = timer:now_diff(Time2, Time)
                             end,
                             case get({waiting_mfa, MFA}) of
                                 undefined ->
@@ -243,7 +250,7 @@ waiting_activities_mfa_list([Activity|Activities], ListedMfas) ->
                             end;
                         [#activity{timestamp=Time2, id = Pid, state =active} | _ ] ->
                                                 % Calculate waiting time
-                            Waited = ?seconds(Time2, Time),
+                            Waited = timer:now_diff(Time2, Time),
                                                 % Get previous entry
                             case get({waiting_mfa, MFA}) of
                                 undefined ->
