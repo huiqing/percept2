@@ -66,9 +66,11 @@
           msgs_received ={0, 0}  :: {non_neg_integer(), non_neg_integer()}|special_atom(),
           msgs_sent     ={0, 0}  :: {non_neg_integer(), non_neg_integer()}|special_atom(),
           gc_time      = 0       :: non_neg_integer()|special_atom(),
-          accu_runtime = 0       :: non_neg_integer()|special_atom(),
+          acc_runtime = 0        :: non_neg_integer()|special_atom(),
+          acc_runnable_time= 0   :: non_neg_integer()|special_atom(),
           hidden_pids = []       :: [pid_value()]|special_atom(),
-          hidden_proc_trees=[]    :: [term()]|special_atom()
+          hidden_proc_trees=[]   :: [term()]|special_atom(),
+          acc_waiting_time=0     :: non_neg_integer()
 	}).
  
 -record(inter_proc, {
