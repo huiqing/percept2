@@ -46,7 +46,7 @@ scheduler_utilisation()->
         {Id, Value}<-lists:keysort(1, Result)].
    %% output_scheduler_utilisation(lists:keysort(1, Result)).
 
-output_scheduler_utilisation([{Id, Value}|Res]) ->
+output_scheduler_utilisation([{_Id, _Value}|Res]) ->
     output_scheduler_utilisation(Res).
 
 process_scheduler_data([], Acc) ->

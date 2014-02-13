@@ -843,8 +843,8 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
     
 %%-spec(summary_report_content(Env, Input) -> string()).
 summary_report_content(Env, Input) ->
-    CacheKey = "summary_report_content"++
-        integer_to_list(erlang:crc32(Input)),
+    %%CacheKey = "summary_report_content"++
+     %%   integer_to_list(erlang:crc32(Input)),
     %% gen_content(Env, Input, CacheKey, fun summary_report_content_1/2).
     summary_report_content_1(Env, Input).
 
@@ -1246,7 +1246,7 @@ process_info_content_1(_Env, Input) ->
                                                  true -> dummy_process;
                                                  _ -> I#information.name
                                              end)],
-                    [{th, "Entrypoint"}, mfa2html(I#information.entry)],
+                    [{th, "Entrypoint"}, mfa2html_with_modal_link(I#information.entry)],
                     [{th, "Arguments"},  ArgumentString],
                     [{th, "Timetable"},  TimeTable],
                     [{th, "Parent"},     pid2html(I#information.parent, CleanPid)],
@@ -1306,13 +1306,15 @@ process_info_content_1(_Env, Input) ->
                                {td, term2html(Mean)},
                                {td, term2html(StdDev)},
                                {td, term2html(N)},
-                               {td, mfa2html(MFA)}] || 
+                               {td, mfa2html_with_modal_link(MFA)}] || 
                                  {Time, MFA, {Mean, StdDev, N}} <- WaitingMfas]),
-    
+    MFAs = [MFA||{_, MFA, _}<-WaitingMfas],
     "<div id=\"content\" scrolling=\"no\">" ++
         InfoTable ++ "<br>" ++
         MfaTable ++
-        "</div>".
+        "</div>" ++ modal_content(I#information.entry)++
+        modal_contents(MFAs).
+    
 
 
 %%% process tree content.
@@ -1545,7 +1547,7 @@ function_info_content_1(_Env, Input) ->
     InfoTable = html_table([
                             [{th, "Pid"},         pid2html(Pid, CleanPid)],
                             [{th, "Entrypoint"},  mfa2html(I#information.entry)],
-                            [{th, "M:F/A"},       mfa2html_with_modal_link({Pid, MFA})],
+                            [{th, "M:F/A"},       mfa2html_with_modal_link(MFA)],
                             [{th, "Call count"}, term2html(F#fun_info.call_count)],
                             [{th, "Accumulated time <br>(in secs)"}, term2html((F#fun_info.acc_time/?Million))],
                             [{th, "Callers"},     CallersTable], 
@@ -1553,6 +1555,43 @@ function_info_content_1(_Env, Input) ->
                            ]),
     "<body>\n"++"<div id=\"content\">" ++
         InfoTable ++ modal_content(MFA).
+
+
+
+
+is_dummy_pid({pid, {_, P2, _}}) ->
+    is_atom(P2);
+is_dummy_pid(_) -> false.
+
+modal_contents(MFAs)->
+    lists:append([modal_content(MFA)||MFA<-MFAs]).
+
+modal_content(undefined)->
+    "";
+modal_content(_MFA={M, F, A}) when is_list(A) ->
+    modal_content({M, F, length(A)});
+modal_content(MFA={M,F,A}) ->
+    MFAString=lists:flatten(io_lib:format("~p:~p/~p", [M, F, A])),
+    "<div id=\"openModal"++MFAString++"\" class=\"modalDialog\">
+	<div>
+		<a href=\"#close\" title=\"Close\" class=\"close\">X</a>
+		<h2>Source Code</h2>"++
+        get_code(MFA)++
+        "</div></div><br>".
+
+get_code({M, F, A}) when is_list(A) ->
+    get_code({M, F, length(A)});
+get_code({M, F, A}) ->
+    FunContent = percept2_code_server:get_func_code({M, F, A}),
+    case FunContent of 
+        "" -> "<p> Source unavailable.</p>";
+        _ -> "<pre class='brush: erlang'>"
+                 ++"%%\n"
+                 ++FunContent++
+                 "%%\n</pre>" ++
+             "<script type=\"text/javascript\">  SyntaxHighlighter.all()</script>"
+    end.
+            
 
 callgraph_time_content(Env, Input) ->
     CleanPid = percept2_db:select({system, nodes})==1,
@@ -1792,30 +1831,26 @@ mfa2html_with_link({_Pid, V}) when is_atom(V) ->
 
 %% -spec mfa2html_with_link({Pid::pid(),MFA :: {atom(), atom(), list() | integer()}}) -> string().
 
-mfa2html_with_modal_link({Pid, MFA, _Caller}) ->
-    mfa2html_with_modal_link({Pid, MFA});
-mfa2html_with_modal_link({_Pid, {Module, Function, Arguments}}) when is_list(Arguments) ->
+mfa2html_with_modal_link({Module, Function, Arguments}) when is_list(Arguments) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", 
                                           [Module, Function, length(Arguments)])),
     _MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", 
                                          [Module, Function, length(Arguments)])),
     
-    OpenModalHref="<a href=\"#openModal"
-      %%  ++MFAString
+    OpenModalHref="<a href=\"#openModal"++MFAString++"\""
         ++"\">" 
         ++ MFAString ++ "</a>",
-    OpenModalHref; %%++OpenModalDiv;
+    OpenModalHref; 
 
-mfa2html_with_modal_link({_Pid, {Module, Function, Arity}}) when is_atom(Module), is_integer(Arity) ->
+mfa2html_with_modal_link({Module, Function, Arity}) when is_atom(Module), is_integer(Arity) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
     _MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
-    OpenModalHref="<a href=\"#openModal"
+    OpenModalHref="<a href=\"#openModal"++MFAString++"\""
         ++"\">" ++ MFAString ++ "</a>",
     OpenModalHref; 
 
-
-mfa2html_with_modal_link({_Pid, V}) when is_atom(V) ->
-    atom_to_list(V).
+mfa2html_with_modal_link(V)  -> mfa2html(V).
+    
 
 visual_link({Pid,_, _}, ChildrenPids)->
     case has_callgraph(Pid) of 
@@ -2061,6 +2096,10 @@ common_header(HeaderData)->
     <script type=\"text/javascript\" src=\"/javascript/percept_select_all.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/percept_area_select.js\"></script>
     <script type=\"text/javascript\" src=\"/javascript/sorttable.js\"></script>
+    <script type=\"text/javascript\" src=\"/javascript/shCore.js\"></script>
+    <script type=\"text/javascript\" src=\"/javascript/shBrushErlang.js\"></script>
+    <link href=\"/css/shCore.css\" rel=\"stylesheet\" type=\"text/css\"/>
+    <link href=\"/css/shThemeDefault.css\" rel=\"stylesheet\" type=\"text/css\"/>
     <script type=\"text/javascript\">
            function toggle(lnkid, tbid)
            {
@@ -2226,32 +2265,6 @@ procs_ports_count(SessionID, _Env, Input) ->
     Str= io_lib:format("~p", [Counts]),
     mod_esi:deliver(SessionID, Str).
    
--spec(callgraph(pid(), list(), string()) -> 
-             ok | {error, term()}).
-callgraph(SessionID, _Env, Input) ->
-    Query = httpd:parse_query(Input),
-    Pid = get_option_value("pid", Query),
-    Str=percept2_callgraph:gen_callgraph_txt_data(Pid),
-    mod_esi:deliver(SessionID, Str).
-   
--spec(module_content(pid(), list(), string()) -> 
-             ok | {error, term()}).
-module_content(SessionID, _Env, Input) ->
-    Query = httpd:parse_query(Input),
-    ModName = get_option_value("mod", Query),
-    Str =case percept2_callgraph:get_file(list_to_atom(ModName)) of 
-             file_non_existing -> 
-                 "";
-             FileName ->
-                 case file:read_file(FileName) of 
-                     {ok, Binary} -> binary_to_list(Binary);
-                     _ -> ""
-                 end
-         end,
-    mod_esi:deliver(SessionID, Str).
-
-
-   
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%                                                       %%
 %% For sample based profiling.                           %%
@@ -2408,82 +2421,4 @@ compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile) ->
     "gnuplot -e \"n=" ++ integer_to_list(Cols) ++ "; " ++
           "filename='" ++ DataFile ++ "'\" " ++
               ScriptFile ++ " > " ++ OutputFile.
-
-is_dummy_pid({pid, {_, P2, _}}) ->
-    is_atom(P2);
-is_dummy_pid(_) -> false.
-
-modal_content(MFA) ->
-    "<div id=\"openModal\" class=\"modalDialog\">
-	<div>
-		<a href=\"#close\" title=\"Close\" class=\"close\">X</a>
-		<h2>Modal Box</h2>"++
-        get_code(MFA)++
-        "</div></div>".
-
-
-	%% <p>This is a sample modal box that can be created using the powers of CSS3.</p>
-	%% 	<p>You could do a lot of things here like have a pop-up ad that shows when your website loads, or create a login/register form for users.</p>
-
-get_code({M, F, A}) when is_list(A) ->
-    get_code({M, F, length(A)}).
-
-get_code({M, F, A}) ->
-    
-
-%% /**
-%% * Grab the content of a Erlang file and store as an array.
-%% * @param {[string]} module [The name of the module.]
-%% * @return {[array]} [Array containing each line of Erlang file.]
-%% */
-%%   function getFile(module) {
-%%     var filePath = '/cgi-bin/percept2_html/module_content?mod=' + module;
-
-%%     //Grab contents of the file.
-%%     xmlhttp = new XMLHttpRequest();
-%%     xmlhttp.open("GET",filePath,false);
-%%     xmlhttp.send(null);
-%%     var fileContent = xmlhttp.responseText;
-
-%%     //Add each line of file to array.
-%%     var fileArray = fileContent.split('\n');
-
-%%     return fileArray;
-%%   }
-
-%%   /**
-%% * Calls getFile to get the code array, empties the modal of any previous content,
-%% * then adds the new code to it.
-%% * @param {[string]} text [The starting line, end line and module name seperated by spaces.]
-%% * @var values [Seperates the values in 'text' by the space and stores in array.]
-%% * @var title [The title of the modal.]
-%% * @var start [The start line of method.]
-%% * @var end [The end line of method.]
-%% * @var fileArray [Array of lines from file.]
-%% */
-%%   function getCode(text) {
-%%     var values = text.getAttribute('href').split(' ');
-%%     var title = text.firstChild.data;
-%%     var start = values[0]-1;
-%%     var end = values[1];
-%%     var fileArray = getFile(values[2]);
-
-%%     //Empty the modal and then add new contents.
-%%     $('#myModal pre').empty();
-%%     $('#myModal h3').empty();
-%%     $('#myModal h3').append(title);
-
-%%     if (start == -1) {
-%%       $('#myModal h3').append(" - Source Unavailable");
-%%       $('#myModal pre').append("The Erlang source for this function is not available :(.");
-%%     }
-%%     else{
-%%       for(var i=start; i<end; i++) {
-%%         $('#myModal pre').append(fileArray[i] +'<br/>');
-%%       }
-%%     }
-
-%%     //Show the modal.
-%%     $('#myModal').modal('toggle');
-%%   }
 

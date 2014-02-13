@@ -198,7 +198,6 @@ waiting_activities(PidValue) ->
                   Mfa, 
                   {to_seconds(Mean), to_seconds(StdDev),N}}| MfaList]
 	end, [], ListedMfas),
-    io:format("DDD:~p\n", [Unsorted]),
     lists:sort(fun ({A,_,_},{B,_,_}) ->
                            if 
                                A > B -> true;
