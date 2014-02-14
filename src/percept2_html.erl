@@ -261,7 +261,7 @@ inter_node_comm_graph_page(SessionID, Env, Input) ->
 process_info_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
-        Content = process_info_content(Env, Input),
+        Content = process_info_content_1(Env, Input),
         deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2 ->
@@ -272,7 +272,7 @@ process_info_page(SessionID, Env, Input) ->
         pid(), list(), string()) -> ok | {error, term()}).
 process_info_page_without_menu(SessionID, Env, Input) ->
     try
-        Content = process_info_content(Env, Input),
+        Content = process_info_content_1(Env, Input),
         mod_esi:deliver(SessionID, common_header([])),
         mod_esi:deliver(SessionID, Content),
         mod_esi:deliver(SessionID, footer())
@@ -285,7 +285,7 @@ process_info_page_without_menu(SessionID, Env, Input) ->
 function_info_page(SessionID, Env, Input) ->
     try
         Menu = menu(Input),
-        Content = function_info_content(Env, Input),
+        Content = function_info_content_1(Env, Input),
         deliver_page(SessionID, Menu, Content)
     catch
         _E1:_E2 ->
@@ -296,7 +296,7 @@ function_info_page(SessionID, Env, Input) ->
         pid(), list(), string()) -> ok | {error, term()}).
 function_info_page_without_menu(SessionID, Env, Input) ->
     try
-        Content = function_info_content(Env, Input),
+        Content = function_info_content_1(Env, Input),
         mod_esi:deliver(SessionID,  common_header([])), 
         mod_esi:deliver(SessionID, Content),
         mod_esi:deliver(SessionID, footer())
@@ -1528,9 +1528,9 @@ mfa_to_list(V) when is_atom(V)-> atom_to_list(V).
 
     
 %%%function information
-function_info_content(Env, Input) ->
-    CacheKey = "function_info"++integer_to_list(erlang:crc32(Input)),
-    gen_content(Env, Input, CacheKey, fun function_info_content_1/2).
+%% function_info_content(Env, Input) ->
+%%     CacheKey = "function_info"++integer_to_list(erlang:crc32(Input)),
+%%     gen_content(Env, Input, CacheKey, fun function_info_content_1/2).
 function_info_content_1(_Env, Input) ->
     Query = httpd:parse_query(Input),
     Pid = get_option_value("pid", Query),
@@ -1546,7 +1546,7 @@ function_info_content_1(_Env, Input) ->
                                     {C, Count}<-F#fun_info.called]),
     InfoTable = html_table([
                             [{th, "Pid"},         pid2html(Pid, CleanPid)],
-                            [{th, "Entrypoint"},  mfa2html(I#information.entry)],
+                            [{th, "Entrypoint"},  mfa2html_with_modal_link(I#information.entry)],
                             [{th, "M:F/A"},       mfa2html_with_modal_link(MFA)],
                             [{th, "Call count"}, term2html(F#fun_info.call_count)],
                             [{th, "Accumulated time <br>(in secs)"}, term2html((F#fun_info.acc_time/?Million))],

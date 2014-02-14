@@ -31,21 +31,28 @@
 
 -compile(export_all).
 
-start(Dirs) ->
-    Files = expand_files(Dirs, ".erl"),
-    start_percept2_code_server(),
-    add_files(Files),
-    ok.
-
+-spec(stop()->ok).
 stop() ->    
     percept2_code_server!stop,
     ok.
 
-start_percept2_code_server() ->
+-spec(start()->ok).
+start() ->
+    case whereis(percept2_code_server) of
+        undefined -> ok;
+        _ -> percept2_code_server!stop
+    end,
     register(percept2_code_server, 
              spawn_link(fun()-> 
                                 code_server_loop([]) 
                         end)).
+
+-spec(load(DirsOrFiles::[filelib:dirname()|file:filename()]) -> ok).
+load(DirOrFiles) ->
+    Files = expand_files(DirOrFiles, ".erl"),
+    add_files(Files),
+    ok.
+
 get_func_code(MFA) ->
     MFA1 = normalise_fun_name(MFA),
     Pid = whereis(percept2_code_server),

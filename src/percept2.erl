@@ -389,6 +389,7 @@ start_webserver(Port) when is_integer(Port) ->
                     end,
                     Filename = filename:join([code:priv_dir(percept2),"fonts", "6x11_latin1.wingsfont"]),
                     egd_font:load(Filename),
+                    true=percept2_code_server:start(),
                     {started, Host, AssignedPort};
 		{error, Reason} ->
 		    {error, {inets, Reason}}
@@ -434,7 +435,8 @@ do_stop(Port, Pid)->
                 undefined -> ok;
                 _  ->ets:delete(egd_font_table)
             end,
-            inets:stop(httpd, Pid2)
+            inets:stop(httpd, Pid2),
+            percept2_code_server:stop()
     end.
 
 %% @doc Stops webserver of the given port.
