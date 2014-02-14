@@ -124,8 +124,15 @@ summary_report_page(SessionID, Env, Input) ->
                 deliver_page(SessionID, menu_1(0, 0), 
                              blink_msg("No data has been analyzed!"));
             _ ->
+                Header= common_header([])++ 
+                    "<body onLoad=\"load_ratio_image()\">
+                    <div id=\"header\"><a href=/index.html>percept2</a></div>\n",
+                Content=summary_report_content(Env, Input),
                 Menu = menu(Input),
-                deliver_page(SessionID, Menu, summary_report_content(Env, Input))
+                mod_esi:deliver(SessionID, Header),
+                mod_esi:deliver(SessionID, Menu),
+                mod_esi:deliver(SessionID, Content),
+                mod_esi:deliver(SessionID, footer())
         end
     catch
         _E1:_E2 ->
@@ -848,13 +855,17 @@ summary_report_content(Env, Input) ->
     %% gen_content(Env, Input, CacheKey, fun summary_report_content_1/2).
     summary_report_content_1(Env, Input).
 
-summary_report_content_1(_Env, _Input) ->
+summary_report_content_1(Env,Input) ->
     Data = percept2_report:scheduler_utilisation(),
     TableRows=[[{td, T}]||T<-Data],
     SchedTable = html_table([
-                             [{th, "Scheduler Utilisation:   "}]]
+                             [{th, "Scheduler utilisation:   "}]]
                             ++ TableRows
                            ),
+    RatioTableHeader=html_table([
+                             [{th, "Ratio between the number of runnable processes and the number of available schedulers:   "}]]
+                               ),
+    RatioTable=ratio_content(Env, Input),
     RunningContent = sub_proc_report_table("Processes with the most runntime:",10,running),
     BlockContent=sub_proc_report_table("Processes with the most blockingtime:",10,block),
     RunnableContent=sub_proc_report_table("Processes with the most wating to run time:",10, runnable),
@@ -865,6 +876,8 @@ summary_report_content_1(_Env, _Input) ->
     MsgSendSizeContent=sub_proc_report_table("Processes that send large messages:",10,msg_send_size),
     "<div id=\"content\">" ++
         SchedTable ++ "<br><br>" ++
+        RatioTableHeader++"<br><br>"++
+        RatioTable ++ "<br><br>" ++
         RunningContent ++"<br><br>"++
         BlockContent ++"<br><br>"++
         RunnableContent ++"<br><br>"++
@@ -2043,6 +2056,7 @@ get_default_option_value(Option) ->
         "size_min" -> 100;
         "callcounts_min" -> 1;
         "time_percent_min" -> 0;
+        "scheds" -> 1;
         _ -> {error, {undefined_default_option, Option}}
     end.
 -spec get_number_value(string()) -> number() | {'error', 'illegal_number'}.
@@ -2422,3 +2436,36 @@ compose_gnuplot_cmd_1(DataFile, Cols, ScriptFile, OutputFile) ->
           "filename='" ++ DataFile ++ "'\" " ++
               ScriptFile ++ " > " ++ OutputFile.
 
+
+
+-spec(ratio_content(list(), string()) -> string()).
+ratio_content(_Env, Input) ->
+    Query = httpd:parse_query(Input),
+    Min = get_option_value("range_min", Query),
+    Max = get_option_value("range_max", Query),
+    Header = "
+    <div id=\"content\">
+    <form name=form_area method=POST action=/cgi-bin/percept2_html/summary_report_page>
+    <input name=data_min type=hidden value=" ++ term2html(float(Min)) ++ ">
+    <input name=data_max type=hidden value=" ++ term2html(float(Max)) ++ ">
+    <input name=scheds type=hidden value="++term2html(erlang:system_info(schedulers))++">\n",
+    RangeTable = 
+	"<table>"++
+	table_line([
+	    "Min:", 
+	    "<input name=range_min value=" ++ term2html(float(Min)) ++">",
+	    "<input type=submit value=Update>"
+                   ]) ++
+	table_line([
+                    "Max:", 
+                    "<input name=range_max value=" ++ term2html(float(Max)) ++">"
+                   ]) ++
+    	"</table>",
+    MainTable = 
+	"<table>" ++
+	table_line([div_tag_graph("percept_graph", 20)]) ++
+	table_line([RangeTable]) ++
+	"</table>",
+    Footer = "</div></form>",
+    Header ++ MainTable ++ Footer.
+    

@@ -127,7 +127,7 @@ graph_2(_Env, Input, Type) ->
     Pids     = percept2_html:get_option_value("pids", Query),
     Width    = percept2_html:get_option_value("width", Query),
     Height   = percept2_html:get_option_value("height", Query),
-    
+    Scheds   = percept2_html:get_option_value("scheds", Query),
     StartTs  = percept2_db:select({system, start_ts}),
     TsMin    = percept2_html:seconds2ts(lists:max([RangeMin-0.1,0]), StartTs),
     TsMax    = percept2_html:seconds2ts(RangeMax+0.1, StartTs),
@@ -145,7 +145,7 @@ graph_2(_Env, Input, Type) ->
             Options  = [{ts_min, TsMin},{ts_max, TsMax} | IDs],
             Acts     = percept2_db:select({activity, Options}),
             Counts=percept2_analyzer:activities2count2(Acts, StartTs),
-            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts,120);
+            percept2_image:graph(Width, Height,{RangeMin, 0, RangeMax, 0},Counts, Scheds, 120);
         false ->                
             Options  = TypeOpt++ [{ts_min, TsMin},{ts_max, TsMax}],
             Counts = case Type of 
@@ -167,15 +167,15 @@ graph_2(_Env, Input, Type) ->
                          schedulers ->
                              Acts = percept2_db:select({scheduler, Options}),
                              Schedulers = erlang:system_info(schedulers), %% not needed if the trace info is correct!
-                             [{?seconds(Ts, StartTs), lists:min([Scheds,Schedulers]), 0} ||
+                             [{?seconds(Ts, StartTs), lists:min([S,Schedulers]), 0} ||
                                  #scheduler{timestamp = Ts, 
-                                            active_scheds=Scheds} <- Acts]
+                                            active_scheds=S} <- Acts]
                      end,
             case Counts of 
                 [] -> 
                     percept2_image:error_graph(Width,Height, "No trace data recorded.");
                 _ ->
-                    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts,20)
+                    percept2_image:graph(Width, Height, {RangeMin, 0, RangeMax, 0}, Counts, Scheds, 20)
             end
     end.
 
