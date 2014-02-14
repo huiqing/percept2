@@ -17,9 +17,11 @@
 
  * dynamic calling-context-aware function call graph;
  
- * active functions: the functions that are active during a specific time interval, and
+ * active functions: the functions that are active during a specific time interval
 
- * inter-node message passing: the sending of messages from one node to another.
+ * inter-node message passing: the sending of messages from one node to another, and
+
+ * the view of soure code.
 
  ### How to build Percept2 ###
  
