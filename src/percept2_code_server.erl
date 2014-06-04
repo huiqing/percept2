@@ -50,6 +50,7 @@ start() ->
 -spec(load(DirsOrFiles::[filelib:dirname()|file:filename()]) -> ok).
 load(DirOrFiles) ->
     Files = expand_files(DirOrFiles, ".erl"),
+    io:format("File:~p\n", [Files]),
     add_files(Files),
     ok.
 
@@ -216,7 +217,7 @@ tokenize(File) ->
     case file:read_file(File) of
 	{ok, Bin} ->
 	    S = erlang:binary_to_list(Bin),
-	    {ok, Ts, _}= percept2_scan:string(S),
+	    {ok, Ts, _}= wrangler_scan:string(S),
             {ok, Ts};
 	{error, Reason} ->
             {error, Reason}
