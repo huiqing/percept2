@@ -1742,10 +1742,12 @@ select_query_system(Query) ->
                 [{{system, profile_opts}, Opts}] -> Opts
             end;
         {system, schedulers} ->
-            [{{system, schedulers}, Num}]=
-                ets:lookup(pdb_system, {system, schedulers}),
-            Num;
-	Unhandled ->
+            case ets:lookup(pdb_system, {system, schedulers}) of
+                [{{system, schedulers}, Num}]->
+                    Num;
+                _ -> 0
+            end;
+      	Unhandled ->
 	    io:format("select_query_system, unhandled: ~p~n", [Unhandled]),
 	    []
     end.
