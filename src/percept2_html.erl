@@ -39,7 +39,8 @@
          callgraph_slice_visualisation_page/3,
          func_callgraph_content/3,
          visualise_sampling_data_page/3,
-         process_info_page_without_menu/3
+         process_info_page_without_menu/3,
+         load_summary_report_page/3
         ]).
 
 -export([get_option_value/2,
@@ -124,10 +125,8 @@ summary_report_page(SessionID, Env, Input) ->
                 deliver_page(SessionID, menu_1(0, 0), 
                              blink_msg("No data has been analyzed!"));
             _ ->
-                Header= common_header([])++ 
-                    "<body onLoad=\"load_ratio_image()\">
-                    <div id=\"header\"><a href=/index.html>percept2</a></div>\n",
-                Content=summary_report_content(Env, Input),
+                Header= common_header([]),
+                Content=summary_report_content(),
                 Menu = menu(Input),
                 mod_esi:deliver(SessionID, Header),
                 mod_esi:deliver(SessionID, Menu),
@@ -848,14 +847,42 @@ inter_node_msg_graph_content_1(Node1, Node2, Min, Max) ->
     Footer = "</div></form>",
     Header ++ MainTable ++ Footer.
     
-%%-spec(summary_report_content(Env, Input) -> string()).
-summary_report_content(Env, Input) ->
-    %%CacheKey = "summary_report_content"++
-     %%   integer_to_list(erlang:crc32(Input)),
-    %% gen_content(Env, Input, CacheKey, fun summary_report_content_1/2).
-    summary_report_content_1(Env, Input).
+-spec(summary_report_content() -> string()).
+summary_report_content() ->
+    "<div id=\"content\">
+	<form name=gen_summary_report_content method=post 
+            action=/cgi-bin/percept2_html/load_summary_report_page>
+	<center>
+        <br></br>
+        <table>
+            <tr><td align=left>Number of processes to report in each category: </td> 
+            <td width=20; align=left><input type=number name=top_n value=\"10\"> </td></tr>
+           <tr><td><input type=submit value=\"Generate Report\" /> </td></tr>
+        </table>
+  	</center>
+	</form>
+	</div>". 
 
-summary_report_content_1(Env,Input) ->
+  
+load_summary_report_page(SessionID, Env,Input) ->
+    try 
+        Header= common_header([])++ 
+            "<body onLoad=\"load_ratio_image()\">
+                    <div id=\"header\"><a href=/index.html>percept2</a></div>\n",
+        Content=summary_report_content_1(Env, Input),
+        Menu = menu(Input),
+        mod_esi:deliver(SessionID, Header),
+        mod_esi:deliver(SessionID, Menu),
+        mod_esi:deliver(SessionID, Content),
+        mod_esi:deliver(SessionID, footer())
+    catch
+        _E1:_E2 ->
+            error_page(SessionID, Env, Input)
+    end.
+
+summary_report_content_1(Env,  Input)->
+    Query = httpd:parse_query(Input),
+    TopN = get_option_value("top_n", Query),
     Data = percept2_report:scheduler_utilisation(),
     TableRows=[[{td, T}]||T<-Data],
     SchedTable = html_table([
@@ -863,17 +890,27 @@ summary_report_content_1(Env,Input) ->
                             ++ TableRows
                            ),
     RatioTableHeader=html_table([
-                             [{th, "Ratio between the number of runnable processes and the number of available schedulers:   "}]]
+                             [{th, "Ratio between the number of runnable processes "
+                               "and the number of available schedulers:   "}]]
                                ),
     RatioTable=ratio_content(Env, Input),
-    RunningContent = sub_proc_report_table("Processes with the most runntime:",10,running),
-    BlockContent=sub_proc_report_table("Processes with the most blockingtime:",10,block),
-    RunnableContent=sub_proc_report_table("Processes with the most wating to run time:",10, runnable),
-    GCContent=sub_proc_report_table("Processes with the most garbage collection time:",10,gc),
-    MsgRecvContent=sub_proc_report_table("Processes with the most message receives:",10,msg_receive),
-    MsgSendContent=sub_proc_report_table("Processes with the most message sends:",10,msg_send),
-    MsgRecvSizeContent=sub_proc_report_table("Processes that receive large messages:",10,msg_receive_size),
-    MsgSendSizeContent=sub_proc_report_table("Processes that send large messages:",10,msg_send_size),
+    TopNStr = "Top " ++ integer_to_list(TopN)++ " ",
+    RunningContent = sub_proc_report_table(
+                       TopNStr++"processes with the most runtime:", TopN, running),
+    BlockContent=sub_proc_report_table(
+                   TopNStr++"processes with the most blocking time:",TopN,block),
+    RunnableContent=sub_proc_report_table(
+                      TopNStr++"processes with the most waiting-to-run time:",TopN, runnable),
+    GCContent=sub_proc_report_table(
+                TopNStr++"processes with the most garbage collection time:",TopN,gc),
+    MsgRecvContent=sub_proc_report_table(
+                     TopNStr++"processes with the most message receives:",TopN,msg_receive),
+    MsgSendContent=sub_proc_report_table(
+                     TopNStr++"processes with the most message sends:",TopN,msg_send),
+    MsgRecvSizeContent=sub_proc_report_table(
+                         TopNStr++"processes that receive the largest messages:",TopN,msg_receive_size),
+    MsgSendSizeContent=sub_proc_report_table(
+                         TopNStr++"processes that send the largest messages:",TopN,msg_send_size),
     "<div id=\"content\">" ++
         SchedTable ++ "<br><br>" ++
         RatioTableHeader++"<br><br>"++
@@ -890,16 +927,20 @@ summary_report_content_1(Env,Input) ->
 
 sub_proc_report_table(Title,Num,Type) ->
     IDs=[element(1, P)||P <- percept2_report:process_report(Type, Num)],
-    StartTs = percept2_db:select({system, start_ts}),
-    StopTs = percept2_db:select({system, stop_ts}),
-    {T0, T1} = {?seconds(StartTs, StartTs), ?seconds(StopTs, StartTs)},
-    ActBars=mk_activity_bars(IDs, T0, T1, false),
-    Header = html_table([
-                         [{th, Title}]]
-                       ),
-    Content= "<table  cellspacing=0 cellpadding=0 border=0>" ++
-        [ActBars] ++ "</table>",
-    Header ++ Content.
+    Header = html_table([[{th, Title}]]),
+    case IDs of 
+        [] -> 
+            Content=blink_msg("In information available."),
+            Header ++ Content;
+        _ ->
+            StartTs = percept2_db:select({system, start_ts}),
+            StopTs = percept2_db:select({system, stop_ts}),
+            {T0, T1} = {?seconds(StartTs, StartTs), ?seconds(StopTs, StartTs)},
+            ActBars=mk_activity_bars(IDs, T0, T1, false),
+            Content= "<table  cellspacing=0 cellpadding=0 border=0>" ++
+                [ActBars] ++ "</table>",
+            Header ++ Content
+    end.
 
 
 %%% databases content page.
@@ -1832,12 +1873,12 @@ mfa2html_with_link({Pid, {Module, Function, Arguments}}) when is_list(Arguments)
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", 
                                          [Module, Function, length(Arguments)])),
     "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++
-        "&mfa=" ++ MFAValue ++ "\">" ++ MFAString ++ "</a>";
+        "&amp;mfa=" ++ MFAValue ++ "\"target=\"_blank\">" ++ MFAString ++ "</a>";
 mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_integer(Arity) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
     "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++
-        "&mfa=" ++ MFAValue ++ "\">" ++ MFAString ++ "</a>";
+        "&amp;mfa=" ++ MFAValue ++ "\" target=\"_blank\">" ++ MFAString ++ "</a>";
 mfa2html_with_link({_Pid, V}) when is_atom(V) ->
     atom_to_list(V).
 
@@ -2004,7 +2045,6 @@ str_to_internal_pid(PidStr) ->
            list_to_integer(P3)}}.
 
 string2mfa(String) ->
-    
     Str=lists:sublist(String, 2, erlang:length(String)-2),
     case string:tokens(Str, ",") of 
         [M, F, A] ->
@@ -2021,7 +2061,7 @@ string2mfa(String) ->
 %%% 	get value       	%%%
 %%% --------------------------- %%%
 -spec get_option_value(Option :: string(), Options :: [{string(),any()}]) ->
-                              {'error', any()} | boolean() | pid_value() | [pid_value()] | number().
+       any().
 get_option_value(Option, Options) ->
     case lists:keysearch(Option, 1, Options) of
         false -> get_default_option_value(Option);
@@ -2445,7 +2485,7 @@ ratio_content(_Env, Input) ->
     Max = get_option_value("range_max", Query),
     Header = "
     <div id=\"content\">
-    <form name=form_area method=POST action=/cgi-bin/percept2_html/summary_report_page>
+    <form name=form_area method=POST action=/cgi-bin/percept2_html/load_summary_report_page>
     <input name=data_min type=hidden value=" ++ term2html(float(Min)) ++ ">
     <input name=data_max type=hidden value=" ++ term2html(float(Max)) ++ ">
     <input name=scheds type=hidden value="++term2html(erlang:system_info(schedulers))++">\n",
