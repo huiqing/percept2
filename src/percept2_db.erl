@@ -2810,7 +2810,7 @@ compress_process_tree_2(Children) ->
                    end, TreeLists)).
 
 compress_process_tree_3(ChildrenGroup) ->
-    {[EntryFun|_], Children=[C={C0,_}|Cs]} =
+    {[EntryFun|_], Children=[_C={C0,_}|Cs]} =
         lists:unzip(ChildrenGroup),
     case length(Children) <3 of 
         true -> 
@@ -2820,7 +2820,8 @@ compress_process_tree_3(ChildrenGroup) ->
                              {C1, _}<-Children, C1#information.name==undefined],
             case length(UnNamedProcs) == length(Children) of
                 true ->
-                    ChildWithMostRunTime = {Proc, _}=get_proc_with_callgraph_and_most_runtime(Children),
+                    ChildWithMostRunTime = 
+                        {_Proc, _}=get_proc_with_callgraph_and_most_runtime(Children),
                     Num = length(Cs),
                     LastIndex = get(last_index),
                     put(last_index, LastIndex+1),
