@@ -70,7 +70,7 @@
           acc_runnable_time= 0   :: non_neg_integer()|special_atom(),
           hidden_pids = []       :: [pid_value()]|special_atom(),
           hidden_proc_trees=[]   :: [term()]|special_atom(),
-          acc_waiting_time=0     :: non_neg_integer()
+          acc_waiting_time=0     :: non_neg_integer()|special_atom()
 	}).
  
 -record(inter_proc, {
