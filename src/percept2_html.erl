@@ -856,7 +856,7 @@ summary_report_content() ->
         <br></br>
         <table>
             <tr><td align=left>Number of processes to report in each category: </td> 
-            <td width=20; align=left><input type=number name=top_n value=\"10\"> </td></tr>
+            <td width=20; align=left><input type=number name=top_n value=\"10\" min=\"1\"> </td></tr>
            <tr><td><input type=submit value=\"Generate Report\" /> </td></tr>
         </table>
   	</center>
@@ -1363,7 +1363,7 @@ process_info_content_1(_Env, Input) ->
                                {td, mfa2html_with_modal_link(MFA)}] || 
                                  {Time, MFA, {Mean, StdDev, N}} <- WaitingMfas]),
     MFAs = [MFA||{_, MFA, _}<-WaitingMfas],
-    "<div id=\"content\" scrolling=\"no\">" ++
+    "<div id=\"content\" scrolling=\"yes\">" ++
         InfoTable ++ "<br>" ++
         MfaTable ++
         "</div>" ++ modal_content(I#information.entry)++
@@ -1608,7 +1608,8 @@ function_info_content_1(_Env, Input) ->
                             [{th, "Called"},      CalledTable]
                            ]),
     "<body>\n"++"<div id=\"content\">" ++
-        InfoTable ++ modal_content(MFA).
+        InfoTable ++ modal_content(I#information.entry)++
+        modal_content(MFA).
 
 
 
@@ -1626,9 +1627,9 @@ modal_content(_MFA={M, F, A}) when is_list(A) ->
     modal_content({M, F, length(A)});
 modal_content(MFA={M,F,A}) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [M, F, A])),
+    %%	<a href=\"close\" title=\"Close\" class=\"close\">X</a>
     "<div id=\"openModal"++MFAString++"\" class=\"modalDialog\">
 	<div>
-		<a href=\"#close\" title=\"Close\" class=\"close\">X</a>
 		<h2>Source Code</h2>"++
         get_code(MFA)++
         "</div></div><br>".
@@ -1872,12 +1873,12 @@ mfa2html_with_link({Pid, {Module, Function, Arguments}}) when is_list(Arguments)
                                           [Module, Function, length(Arguments)])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", 
                                          [Module, Function, length(Arguments)])),
-    "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++
+    "<a href=\"/cgi-bin/percept2_html/function_info_page_without_menu?pid=" ++ pid2str(Pid) ++
         "&amp;mfa=" ++ MFAValue ++ "\"target=\"_blank\">" ++ MFAString ++ "</a>";
 mfa2html_with_link({Pid, {Module, Function, Arity}}) when is_atom(Module), is_integer(Arity) ->
     MFAString=lists:flatten(io_lib:format("~p:~p/~p", [Module, Function, Arity])),
     MFAValue=lists:flatten(io_lib:format("{~p,~p,~p}", [Module, Function, Arity])),
-    "<a href=\"/cgi-bin/percept2_html/function_info_page?pid=" ++ pid2str(Pid) ++
+    "<a href=\"/cgi-bin/percept2_html/function_info_page_without_menu?pid=" ++ pid2str(Pid) ++
         "&amp;mfa=" ++ MFAValue ++ "\" target=\"_blank\">" ++ MFAString ++ "</a>";
 mfa2html_with_link({_Pid, V}) when is_atom(V) ->
     atom_to_list(V).
