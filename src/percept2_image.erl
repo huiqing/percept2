@@ -21,8 +21,8 @@
          percentage/3,
          calltime_percentage/4,
          query_fun_time/4,
-         graph/4, 
          graph/5, 
+         graph/6, 
          activities/3, 
          activities/4,
          inter_node_message_image/5]).
@@ -40,15 +40,23 @@
 
 %% graph(Widht, Height, Range, Data)
 
-graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data,HO) ->
+graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data, Scheds, HO) ->
      case Data of
          [] -> <<>>;
          _ ->
              {_, Proc, Port}=lists:last(Data),
              Last = {RXmax, Proc, Port},
-             Data2=[{X, Y1 + Y2}||{X, Y1, Y2} <- [Last|Data]],
-             Data3 =lists:reverse([Last|lists:reverse(Data)]),
-             MinMax = minmax(Data2),
+             case Scheds of 
+                 1->
+                     Data2=[{X, Y1 + Y2}||{X, Y1, Y2} <- [Last|Data]],
+                     Data3 =lists:reverse([Last|lists:reverse(Data)]),
+                     MinMax = minmax(Data2);
+                 N ->
+                     Data3 =lists:reverse([{X, Y1 div Scheds, 0}||
+                                             {X, Y1, _}<-[Last|lists:reverse(Data)]]),
+                     {Xs, Ys, _}=lists:unzip3(Data3),
+                     MinMax={lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}
+             end,
              {Xmin, Ymin, Xmax, Ymax} = MinMax,
              graf1(Width, Height,{	lists:min([RXmin, Xmin]),
                                         lists:min([RYmin, Ymin]),
@@ -67,10 +75,10 @@ graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data,HO) ->
 %%	Ports = integer()
 %% Out:
 %%	Image = binary()
-graph(Width, Height, [], _) ->
+graph(Width, Height, [], _Scheds, _) ->
     error_graph(Width, Height,"No trace data recorded.");
-graph(Width,Height,Data,HO) ->
-    Data2 = [{X, Y1 + Y2} || {X, Y1, Y2} <- Data],
+graph(Width,Height,Data,Scheds, HO) ->
+    Data2 = [{X, (Y1 + Y2) div Scheds} || {X, Y1, Y2} <- Data],
     Bounds = minmax(Data2),
     graf1(Width,Height,Bounds,Data,HO).
 
@@ -533,8 +541,7 @@ draw_cross_graf1(_Im, [], _, _) -> ok.
 %%	MaxY = number()
 %% @doc Returns the min and max of a set of 2-dimensional numbers.
 minmax(Data) ->
-    Xs = [ X || {X,_Y} <- Data],
-    Ys = [ Y || {_X, Y} <- Data],
+    {Xs, Ys}=lists:unzip(Data),
     {lists:min(Xs), lists:min(Ys), lists:max(Xs), lists:max(Ys)}.
 
 %% NOT for general-purpose.

@@ -220,8 +220,8 @@ edge_list_to_dot(Pid, Edges, OutFileName, GraphName) ->
                                         atom_to_list(F)
                                 end,
                       
-                      URL ="/cgi-bin/percept2_html/function_info_page_without_menu?pid="++pid2str(Pid)++
-                          "&mfa=" ++ MFAValue,
+                      URL ="/cgi-bin/percept2_html/function_info_page?pid="++pid2str(Pid)++
+                          "&amp;mfa=" ++ MFAValue,
                       format_node_with_label_and_url_1(
                         V, fun format_vertex/1,  Label, URL)
                   end   ||V <- NodeSet],
