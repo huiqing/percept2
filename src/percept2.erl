@@ -303,7 +303,7 @@ analyze(_FileName, _Suffux, _, _) ->
 analyze_par_1(FileNameSubDBPairs) ->
     Self = self(),
     process_flag(trap_exit, true),
-    case whereis(percept_httpd) of 
+    case whereis(percept2_httpd) of 
         undefined ->
             ok;
         _ ->
@@ -367,7 +367,7 @@ start_webserver() ->
                              {'started', string(), pos_integer()} | {'error', any()}.
 start_webserver(Port) when is_integer(Port) ->
     application:load(percept2),
-    case whereis(percept_httpd) of
+    case whereis(percept2_httpd) of
 	undefined ->
 	    {ok, Config} = get_webserver_config("percept2", Port),
             inets:start(),
@@ -378,7 +378,7 @@ start_webserver(Port) when is_integer(Port) ->
                     TmpDir= get_svg_alias_dir(Config),
 		    %% workaround until inets can get me a service from a name.
 		    Mem = spawn(fun() -> service_memory({Pid,AssignedPort,Host, TmpDir}) end),
-		    register(percept_httpd, Mem),
+		    register(percept2_httpd, Mem),
                     rm_tmp_files(TmpDir),
                     case ets:info(history_html) of 
                         undefined ->
@@ -402,7 +402,7 @@ start_webserver(Port) when is_integer(Port) ->
 %% @doc Stops webserver.
 -spec stop_webserver() -> ok | {error, not_started}.
 stop_webserver() ->
-    case whereis(percept_httpd) of
+    case whereis(percept2_httpd) of
     	undefined -> 
 	    {error, not_started};
 	Pid ->
@@ -417,7 +417,7 @@ do_stop([], Pid)->
     Port = receive P -> P end,
     do_stop(Port, Pid);
 do_stop(Port, [])->
-    case whereis(percept_httpd) of
+    case whereis(percept2_httpd) of
         undefined ->
             {error, not_started};
         Pid ->
@@ -603,7 +603,7 @@ rm_tmp_files(Dir) ->
     end.
 
 get_svg_alias_dir() ->
-    percept_httpd!{self(), get_dir},
+    percept2_httpd!{self(), get_dir},
     receive 
         {dir, Dir} ->
             Dir
