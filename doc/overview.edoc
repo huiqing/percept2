@@ -171,6 +171,12 @@ To view the data, we could start the web-server using `percept2:start_webserver/
 {started,"hl-lt",8888}
 (test@hl-lt)4> '''
 
+In order to be able to view the source definition of functions, you will need to load the `percept2_code_server' with the application source files.
+The command to use is `percept2_code_server:load(DirOrFiles::[filelib:dirname()|file:filename()]))'. 
+For instance, to recursively load the erlang files from the current directory, the command would be:
+
+```percept2_code_server:load([".."]).'''
+
 Now open a web-browser, and go to `localhost:8888', you should be able to see a webpage as shown blow.
 
 <img src="percept2_index.png" 

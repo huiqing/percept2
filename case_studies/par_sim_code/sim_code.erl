@@ -1383,6 +1383,6 @@ pforeach_wait(S,N) ->
 %% percept2:profile({"sim_code", wrap, ".dat", 20000000, 10}, {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [message, process_scheduling, concurrency,{function, [{sim_code, '_','_'}]}]).
 
 
-%% percept2:profile("sim_code.dat", {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [all]).
+%% %% percept2:profile("sim_code.dat", {sim_code,sim_code_detection, [["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [all, {callgraph, [sim_code]}]).
 
 %% percept2:profile("test_gc.dat", {sim_code_v5, sim_code_detection,[["c:/cygwin/home/hl/test"], 3, 40, 2, 4, 0.8, [], 8]},  [garbage_collection]).

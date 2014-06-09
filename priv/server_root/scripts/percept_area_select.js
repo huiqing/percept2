@@ -29,7 +29,7 @@ function load_image() {
 	var percept_graph = document.getElementById("percept_graph");
 	if (percept_graph) {
 	    percept_content = document.getElementById("content");
-	    var width  = percept_content.offsetWidth - 50;
+	    var width  = percept_content.offsetWidth -50;
 	    var height = max(screen.height - 550, 600); 
 	    var rmin   = document.form_area.data_min.value;
 	    var rmax   = document.form_area.data_max.value;
@@ -44,6 +44,26 @@ function load_image() {
 	}
 }
 
+function load_ratio_image() {
+	var ratio_graph = document.getElementById("percept_graph");
+	if (ratio_graph) {
+	    ratio_content = document.getElementById("content");
+	    var width  = ratio_content.offsetWidth -200;
+	    var height = max(screen.height - 550, 400); 
+	    var rmin   = document.form_area.data_min.value;
+	    var rmax   = document.form_area.data_max.value;
+            var scheds = document.form_area.scheds.value;
+	    ratio_graph.style.backgroundImage = "url('/cgi-bin/percept2_graph/procs_graph" +
+		"?range_min=" + rmin + 
+		"&range_max=" + rmax +
+		"&width=" + width + 
+		"&height=" + height + 
+                "&scheds=" + scheds +
+                "')";
+	    ratio_graph.style.width = width;
+	    ratio_graph.style.height = height;
+	}
+}
 function load_concurrency_image() {
 	var percept_graph = document.getElementById("percept_graph");
 	if (percept_graph) {
