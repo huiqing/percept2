@@ -10,7 +10,7 @@ ERL          = "@ERL@"
 ERLC         = "@ERLC@"
 
 
-YRL = src/percept2_parse.yrl
+YRL = src/wrangler_parse.yrl
 
 YRL_ERL = $(patsubst src/%.yrl,src/%.erl, $(YRL)))
 
