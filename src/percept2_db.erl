@@ -679,13 +679,14 @@ calc_acc_runtime_1([],_InActiveST, Acc) -> Acc;
 calc_acc_runtime_1([{in, TS1}, {out, TS2}|InOuts],InActiveST, {RunTime, WaitingTime}) ->
     calc_acc_runtime_1([{out,TS2}|InOuts], InActiveST, 
                        {RunTime+elapsed(TS1, TS2), WaitingTime});
-%% inconsistent data
 calc_acc_runtime_1([{out, TS1}, {in, TS2}|InOuts],InActiveST, {RunTime, WaitingTime}) ->
     calc_acc_runtime_1([{in, TS2}|InOuts], InActiveST, 
                        {RunTime, WaitingTime+elapsed(TS1, TS2)});
 %% inconsistent data
 calc_acc_runtime_1([{out, _TS1}, {out, _TS2}|InOuts],InActiveST, Acc) ->
     calc_acc_runtime_1(InOuts, InActiveST, Acc) ;
+calc_acc_runtime_1([{in, _TS1}, {in, _TS2}|InOuts],InActiveST, Acc) ->
+    calc_acc_runtime_1([{in, _TS1}|InOuts],InActiveST, Acc);
 calc_acc_runtime_1([{in, TS1}], InActiveST, {RunTime, WaitingTime}) ->
     {elapsed(TS1, InActiveST)+RunTime, WaitingTime};
 %%this should not happen.
