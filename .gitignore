@@ -7,3 +7,5 @@ autom4te.cache
 ebin
 .eunit
 .rebar
+support/conftest.beam
+conftest.out
