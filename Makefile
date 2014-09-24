@@ -18,7 +18,7 @@ include vsn.mk
 
 ERLANG_EI_DIR=`cat conftest.out | head -n 1`
 ERLANG_EI_LIB=`cat conftest.out| head -n 2 | tail -n 1`
-ERLANG_DIR=`cat conftest.out | tail -n 1`
+ERLANG_DIR?=`cat conftest.out | tail -n 1`
 
 LIB_DIR=$(ERLANG_DIR)/lib/percept2-$(VERSION)
 
