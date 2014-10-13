@@ -278,8 +278,10 @@ stop_profile() ->
     percept2_profile:stop().
 
 %%@doc Parallel analysis of trace files. See the <a href="overview-summary.html">Overview</a> page for examples.
--spec analyze(FileNames :: [file:filename()]) ->
+-spec analyze(FileNames :: file:filename() | [file:filename()]) ->
                      'ok' | {'error', any()}.
+analyze([H | _] = Filename) when not is_list(H) ->
+    analyze([Filename]);
 analyze(FileNames) ->
     case percept2_db:start(FileNames) of
 	{started, FileNameSubDBPairs} ->
