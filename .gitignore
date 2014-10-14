@@ -1,7 +1,11 @@
-Makefile
 config.log
 config.status
 autom4te.cache
 *.beam
 *.dat
 *~
+ebin
+.eunit
+.rebar
+support/conftest.beam
+conftest.out
