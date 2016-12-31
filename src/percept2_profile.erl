@@ -123,7 +123,8 @@ stop() ->
 	    {error, not_started};
 	Port ->
 	    erlang:port_command(Port, 
-                                erlang:term_to_binary({profile_stop, erlang:now()})),
+                                erlang:term_to_binary({profile_stop, 
+						       erlang:timestamp()})),
             erlang:port_close(Port),
        	    ok
     end. 
@@ -153,7 +154,8 @@ profile_to_file(FileSpec, Opts) ->
                         end,
 	    Port =  (dbg:trace_port(file, FileSpec1))(),
                                                 % Send start time
-	    erlang:port_command(Port, erlang:term_to_binary({profile_start, erlang:now()})),
+	    erlang:port_command(Port, erlang:term_to_binary({profile_start, 
+							     erlang:timestamp()})),
             erlang:port_command(Port, erlang:term_to_binary(
                                         {schedulers,erlang:system_info(schedulers)})),
             erlang:port_command(Port, erlang:term_to_binary({profile_opts, Opts})),

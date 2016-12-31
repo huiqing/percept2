@@ -552,7 +552,7 @@ Erlang code.
 -type abstract_expr() :: term().
 -type abstract_form() :: term().
 -type error_description() :: term().
--type error_info() :: {erl_scan:line(), module(), error_description()}.
+-type error_info() :: {erl_anno:line(), module(), error_description()}.
 -type token() :: erl_scan:token().
 
 %% mkop(Op, Arg) -> {op,Line,Op,Arg}.
@@ -956,7 +956,7 @@ abstract(T) ->
       Options :: Line | [Option],
       Option :: {line, Line} | {encoding, Encoding},
       Encoding :: latin1 | unicode | utf8,
-      Line :: erl_scan:line(),
+      Line :: erl_anno:line(),
       AbsTerm :: abstract_expr().
 
 abstract(T, Line) when is_integer(Line) ->
@@ -1125,12 +1125,13 @@ max_prec() -> 900.
 %%% get_attributes() should be used.
 
 set_line(L, F) ->
-    erl_scan:set_attribute(line, L, F).
+    erl_anno:set_attribute(line, L, F).
 
 get_attribute(L, Name) ->
-    erl_scan:attributes_info(L, Name).
+    erl_anno:Name(L).
 
 get_attributes(L) ->
-    erl_scan:attributes_info(L).
+    [erl_anno:column(L), erl_anno:line(L),
+     erl_anno:location(L), erl_anno:text(L)].
 
 %% vim: ft=erlang

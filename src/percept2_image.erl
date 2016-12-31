@@ -51,7 +51,7 @@ graph(Width,Height,{RXmin, RYmin, RXmax, RYmax},Data, Scheds, HO) ->
                      Data2=[{X, Y1 + Y2}||{X, Y1, Y2} <- [Last|Data]],
                      Data3 =lists:reverse([Last|lists:reverse(Data)]),
                      MinMax = minmax(Data2);
-                 N ->
+                 _N ->
                      Data3 =lists:reverse([{X, Y1 div Scheds, 0}||
                                              {X, Y1, _}<-[Last|lists:reverse(Data)]]),
                      {Xs, Ys, _}=lists:unzip3(Data3),

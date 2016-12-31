@@ -710,6 +710,13 @@ check_activity_consistency(SubDBIndex, Id, State) ->
             valid_state
     end.
 
+trace_spawned(SubDBIndex, {trace_ts, Pid, spawned, Parent, Mfa, _, TS}) ->
+    trace_spawn(SubDBIndex, {trace_ts, Parent, spawn, Pid, Mfa, TS});
+trace_spawned(SubDBIndex, {trace_ts, Pid, spawned, Parent, Mfa, TS}) ->
+    trace_spawn(SubDBIndex, {trace_ts, Parent, spawn, Pid, Mfa, TS}).
+
+trace_spawn(SubDBIndex, {trace_ts, Parent, spawn, Pid, Mfa, _, TS}) ->
+    trace_spawn(SubDBIndex, {trace_ts, Parent, spawn, Pid, Mfa, TS});
 trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_pid(Pid) ->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     InformativeMfa = mfarity(mfa2informative(Mfa)),
@@ -718,6 +725,8 @@ trace_spawn(SubDBIndex, _Trace={trace_ts, Parent, spawn, Pid, Mfa, TS}) when is_
                                     parent = pid2value(Parent), entry = InformativeMfa}),
     update_information_child(ProcRegName, pid2value(Parent), Pid).
 
+trace_exit(SubDBIndex, {trace_ts, Pid, exit, _Reason, _,TS}) ->
+    trace_exit(SubDBIndex, {trace_ts, Pid, exit, _Reason, TS}); 
 trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pid)->
     FuncProcRegName = mk_proc_reg_name("pdb_func", SubDBIndex),
     FuncProcRegName ! {trace_exit, {Pid, TS}},
@@ -725,6 +734,8 @@ trace_exit(SubDBIndex,_Trace= {trace_ts, Pid, exit, _Reason, TS}) when is_pid(Pi
     insert_profile_trace_1(SubDBIndex, Pid, inactive, undefined, TS, procs), 
     update_information(ProcRegName, #information{id = pid2value(Pid), node=node(Pid), stop = TS}).
 
+trace_register(SubDBIndex, {trace_ts, Pid, register, Name, _, Ts})->
+    trace_register(SubDBIndex, {trace_ts, Pid, register, Name, Ts});
 trace_register(SubDBIndex,_Trace={trace_ts, Pid, register, Name, _Ts}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     ets:insert(pdb_system, {{regname, Name}, pid2value(Pid)}),
@@ -745,6 +756,8 @@ trace_link(_SubDBIndex,_Trace) ->
 trace_unlink(_SubDBIndex, _Trace) ->
     ok.
 
+trace_in(SubDBIndex, {trace_ts, Pid, in, Rq, MFA, _, TS})->
+    trace_in(SubDBIndex, {trace_ts, Pid, in, Rq, MFA, TS});
 trace_in(SubDBIndex, _Trace={trace_ts, Pid, in, Rq, MFA, TS}) when is_pid(Pid)->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     case erlang:get({run_queue, Pid}) of 
@@ -843,6 +856,8 @@ trace_in_exiting(_SubDBIndex, _Trace) ->
 %%        true ->
 %%             ok
 %%     end;
+trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, _, Ts}) ->
+    trace_receive(SubDBIndex, {trace_ts, Pid, 'receive', Msg, Ts});
 trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, _Ts}) ->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
@@ -851,7 +866,9 @@ trace_receive(SubDBIndex, _Trace={trace_ts, Pid, 'receive', Msg, _Ts}) ->
             ok
     end.
 
-trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
+trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, _, Ts})->
+    trace_send(SubDBIndex, {trace_ts, Pid, send, Msg, To, Ts});
+trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts})->
     if is_pid(Pid) ->
             ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
             MsgSize = byte_size(term_to_binary(Msg)),
@@ -876,6 +893,12 @@ trace_send(SubDBIndex,_Trace= {trace_ts, Pid, send, Msg, To, Ts}) ->
     end.
 
 trace_send_to_non_existing_process(SubDBIndex,
+                                   _Trace={trace_ts, Pid, send_to_non_existing_process,
+                                           Msg, _To, _, Ts})->
+    trace_send_to_non_existing_process(SubDBIndex,
+                                   {trace_ts, Pid, send_to_non_existing_process,
+				    Msg, _To, Ts});
+trace_send_to_non_existing_process(SubDBIndex,
                                    _Trace={trace_ts, Pid, send_to_non_existing_process, 
                                            Msg, _To, Ts})->
     if is_pid(Pid) ->
@@ -884,13 +907,16 @@ trace_send_to_non_existing_process(SubDBIndex,
        true ->
             ok
     end.
-
+trace_open(SubDBIndex, _Trace={trace_ts, Port, open, Pid, Driver, _, TS}) ->
+    trace_open(SubDBIndex, {trace_ts, Pid, open, Port, Driver, TS});
 trace_open(SubDBIndex, _Trace={trace_ts, Caller, open, Port, Driver, TS})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{
                          id = Port, entry = Driver, start = TS,
                          parent =  pid2value(Caller)}).
 
+trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, Reason, _, Ts})->
+    trace_closed(SubDBIndex, {trace_ts, Port, closed, Reason, Ts});
 trace_closed(SubDBIndex,_Trace={trace_ts, Port, closed, _Reason, Ts})->
     ProcRegName = mk_proc_reg_name("pdb_info", SubDBIndex),
     update_information(ProcRegName, #information{id = Port, stop = Ts}).
@@ -909,9 +935,13 @@ trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, add_nodes, Args},
 trace_call(_SubDBIndex, _Trace={trace_ts, Pid, call, {s_group, remove_nodes, Args}, _, TS}) ->
     ets:insert(s_group, #s_group_info{timed_node={TS, get_node_name(Pid)}, 
                                  op={remove_nodes, Args}});
+trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA, {cp, CP}, _, TS}) ->
+     trace_call(SubDBIndex, Pid, MFA, TS, CP);
 trace_call(SubDBIndex, _Trace={trace_ts, Pid, call, MFA, {cp, CP}, TS}) ->
     trace_call(SubDBIndex, Pid, MFA, TS, CP).
 
+trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, _, TS}) ->
+    trace_return_to(SubDBIndex, Pid, MFA, TS);
 trace_return_to(SubDBIndex,_Trace={trace_ts, Pid, return_to, MFA, TS}) ->
     trace_return_to(SubDBIndex, Pid, MFA, TS).
 
@@ -933,7 +963,18 @@ trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}) ->
             erlang:erase({gc_start, Pid}),
             ok
     end.
-                
+         
+trace_gc_minor_start(SubDBIndex, {trace_ts, Pid, gc_minor_start, _Info, _, TS}) ->       
+    trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, _Info, TS}).
+
+trace_gc_minor_end(SubDBIndex, {trace_ts, Pid, gc_minor_end, _Info, _, TS}) ->
+    trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}).
+
+trace_gc_major_start(SubDBIndex, {trace_ts, Pid, gc_major_start, _Info, _, TS}) ->
+    trace_gc_start(SubDBIndex, {trace_ts, Pid, gc_start, _Info, TS}).
+
+trace_gc_major_end(SubDBIndex, {trace_ts, Pid, gc_major_end, _Info, _, TS}) ->
+    trace_gc_end(SubDBIndex, {trace_ts, Pid, gc_end, _Info, TS}).
 
 trace_end_of_trace(SubDBIndex, {trace_ts, Parent, end_of_trace}) ->
     ProcRegName =mk_proc_reg_name("pdb_func", SubDBIndex),
@@ -2711,7 +2752,7 @@ add_to_1({Fun, CNT}, Acc) ->
   
 -type process_tree()::{#information{},[process_tree()]}.
 
--spec gen_compressed_process_tree/0::()->[process_tree()].
+-spec gen_compressed_process_tree()->[process_tree()].
 gen_compressed_process_tree()->
     Trees = gen_process_tree(),
     put(last_index, 0),
@@ -2720,7 +2761,7 @@ gen_compressed_process_tree()->
     NewTrees.
     
 
--spec gen_process_tree/0::()->[process_tree()].
+-spec gen_process_tree()->[process_tree()].
 gen_process_tree() ->
     Res =ets:select(pdb_info, [{#information{id = {pid,'$1'},  
                                              start='$2', children='$3', _='_'},
@@ -2728,7 +2769,7 @@ gen_process_tree() ->
     List = lists:keysort(2,Res),
     gen_process_tree(List, []).
 
--spec gen_process_tree/2::([{pid_value(),any(), any()}],[process_tree()]) 
+-spec gen_process_tree([{pid_value(),any(), any()}],[process_tree()]) 
                           -> [process_tree()].
 gen_process_tree([], Out) ->
     add_ancestors(Out);
@@ -2741,7 +2782,7 @@ gen_process_tree([_Item={Pid, _Start, Children}|Tail], Out) ->
     [Parent] = ets:lookup(pdb_info, Pid),
      gen_process_tree(NewTail, [{Parent, NewChildren}|Out]).
 
--spec gen_process_tree_1/3::([{pid_value(),any(), any()}],
+-spec gen_process_tree_1([{pid_value(),any(), any()}],
                              [{pid_value(),any(), any()}],
                              [process_tree()])
                             -> {[process_tree()],[{pid_value(),any(), any()}]}.
@@ -2758,7 +2799,7 @@ gen_process_tree_1([_C={Pid, _Start, Children}|Cs], Tail, Out) ->
 
 
 
--spec add_ancestors/1::([process_tree()])->[process_tree()].
+-spec add_ancestors([process_tree()])->[process_tree()].
 add_ancestors(ProcessTree) ->
     add_ancestors(ProcessTree, []).
 

@@ -276,7 +276,7 @@ start_sampling(Items, TimeInterval, FilterFun, OutDir) ->
             erlang:system_flag(scheduler_wall_time, true);
         _ -> ok
     end,
-    spawn_link(?MODULE, init, [now(), Items, TimeInterval, FilterFun, OutDir]).
+    spawn_link(?MODULE, init, [erlang:timestamp(), Items, TimeInterval, FilterFun, OutDir]).
 
 %%@doc Stop the sampling.
 -spec (stop() ->{error, not_started}|ok).
@@ -341,7 +341,7 @@ do_sample(mem_info, StartTs) ->
     [{total, Total}, {processes, Processes}, {ets, ETS},
      {atom, Atom}, {code, Code}, {binary, Binary}] =
         erlang:memory([total, processes, ets, atom, code, binary]),
-    Info=#mem_info{timestamp=?seconds(now(), StartTs),
+    Info=#mem_info{timestamp=?seconds(erlang:timestamp(), StartTs),
                    total=to_megabytes(Total),
                    processes=to_megabytes(Processes),
                    ets=to_megabytes(ETS),
@@ -352,32 +352,32 @@ do_sample(mem_info, StartTs) ->
     ets:insert(mk_ets_tab_name(mem_info), Info);
 do_sample(run_queue, StartTs) ->
     RunQueue= erlang:statistics(run_queue),
-    Info=#run_queue_info{timestamp=?seconds(now(), StartTs),
+    Info=#run_queue_info{timestamp=?seconds(erlang:timestamp(), StartTs),
                          run_queue = RunQueue},
     ?dbg(0, "RunQueue:\n~p\n", [Info]),
     ets:insert(mk_ets_tab_name(run_queue), Info);
 do_sample(run_queues,StartTs) ->
     RunQueues= erlang:statistics(run_queues),
-    Info=#run_queues_info{timestamp=?seconds(now(), StartTs),
+    Info=#run_queues_info{timestamp=?seconds(erlang:timestamp(), StartTs),
                          run_queues = RunQueues},
     ?dbg(0, "RunQueues:\n~p\n", [Info]),
     ets:insert(mk_ets_tab_name(run_queues), Info);
 do_sample(scheduler_utilisation,StartTs) ->
     SchedulerWallTime=erlang:statistics(scheduler_wall_time),
     Info=#scheduler_utilisation_info{
-      timestamp=?seconds(now(), StartTs),
+      timestamp=?seconds(erlang:timestamp(), StartTs),
       scheduler_utilisation = lists:usort(SchedulerWallTime)},
     ?dbg(0, "Scheduler walltime:\n~p\n", [Info]),
     ets:insert(mk_ets_tab_name(scheduler_utilisation), Info);
 do_sample(schedulers_online,StartTs)->
     SchedulersOnline = erlang:system_info(schedulers_online),
-    Info=#schedulers_online_info{timestamp=?seconds(now(), StartTs),
+    Info=#schedulers_online_info{timestamp=?seconds(erlang:timestamp(), StartTs),
                                          schedulers_online = SchedulersOnline},
     ?dbg(0, "Schedulers online:\n~p\n", [Info]),
     ets:insert(mk_ets_tab_name(schedulers_online), Info);
 do_sample(process_count, StartTs) ->
     ProcessCount = erlang:system_info(process_count),
-    Info=#process_count_info{timestamp=?seconds(now(), StartTs),
+    Info=#process_count_info{timestamp=?seconds(erlang:timestamp(), StartTs),
                              process_count = ProcessCount},
     ?dbg(0, "Process count:\n~p\n", [Info]),
     ets:insert(mk_ets_tab_name(process_count), Info);
@@ -389,7 +389,7 @@ do_sample({message_queue_len, RegName}, StartTs) when is_atom(RegName) ->
     end;
 do_sample({message_queue_len,Pid},StartTs) ->
     [{message_queue_len, MsgQueueLen}] = erlang:process_info(Pid, [message_queue_len]),
-    Info = #message_queue_len_info{timestamp=?seconds(now(), StartTs),
+    Info = #message_queue_len_info{timestamp=?seconds(erlang:timestamp(), StartTs),
                                    message_queue_len = MsgQueueLen
                                   },
     ?dbg(0, "Message queue length:\n~p\n", [Info]),

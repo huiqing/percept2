@@ -72,9 +72,9 @@
 -define(PARALLEL, false).
 
 
--spec(sim_code_detection/8::(DirFileList::[filename()|dir()], MinLen::integer(), MinToks::integer(),
-			      MinFreq::integer(),  MaxVars::integer(),SimiScore::float(), 
-                                 SearchPaths::[dir()], TabWidth::integer()) -> {ok, string()}).
+-spec(sim_code_detection(DirFileList::[filename()|dir()], MinLen::integer(), MinToks::integer(),
+			   MinFreq::integer(),  MaxVars::integer(),SimiScore::float(), 
+			   SearchPaths::[dir()], TabWidth::integer()) -> {ok, string()}).
 sim_code_detection(DirFileList,MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1,SearchPaths,TabWidth) ->
     {MinLen,MinToks,MinFreq,MaxVars,SimiScore} = check_parameters(MinLen1,MinToks1,MinFreq1,MaxVars1,SimiScore1),
     Files = wrangler_misc:expand_files(DirFileList,".erl"),
@@ -1295,11 +1295,11 @@ same_expr(Expr1, Expr2) ->
 create_ets(Ets) ->
     ets:new(Ets, [set, public, {read_concurrency,true}, {write_concurrency, true}]).
   
--spec(check_parameters/5::(MinLen :: integer(), MinToks :: integer(),
-                           MinFreq :: integer(), MaxNewVars :: integer(),
-                           SimiScore :: float()) -> 
-                              {integer(), integer(), integer(), integer(),
-                               float()}).
+-spec(check_parameters(MinLen :: integer(), MinToks :: integer(),
+		       MinFreq :: integer(), MaxNewVars :: integer(),
+		       SimiScore :: float()) -> 
+	     {integer(), integer(), integer(), integer(),
+	      float()}).
 check_parameters(MinLen1,MinToks1,MinFreq1,MaxNewVars1,SimiScore1) ->
     MinLen = case MinLen1<1 of
 	       true ->
