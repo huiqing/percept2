@@ -580,7 +580,7 @@ get_webserver_config(Servername, Port)
 	          mod_esi,
 	          mod_actions,
 	          mod_cgi,
-	          mod_include,
+	%          mod_include,
 	          mod_dir,
 	          mod_get,
 	          mod_head
